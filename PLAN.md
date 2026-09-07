@@ -10,9 +10,9 @@ measured rather than claimed (`python -m harness.sweep`).
 
 | | |
 |---|---|
-| **Done** | 1-7 plus **8 fallback** — detect, blame, classify, and keep flying |
+| **Done** | 1-8 plus **9 fleet logic** — detect, blame, classify, keep flying, locate the attacker |
 | **In progress** | 4 attack injectors (Abishek, task 2) |
-| **Next** | truck (Abishek, task 3) · fleet attack-zone · evidence |
+| **Next** | fleet map on the console · truck (Abishek) · evidence |
 | **Not started** | 8 truck · 9 fleet · 10 evidence · 12 rehearsal |
 | **Tests** | 22 passing |
 
@@ -206,11 +206,11 @@ change**. You say this on stage, so it must be literally true.
 
 ## Phase 9 — Fleet and attack zone ★ · ~6h · C + D
 
-- [ ] Run four detector instances against four simulated vehicles
-- [ ] `cluster.py` — group incidents by radius and time window
-- [ ] `zone.py` — estimate centre and radius
-- [ ] Draw the zone on the fleet map
-- [ ] `advisory.py` — warn vehicles whose route crosses the zone
+- [x] Four detector instances against four simulated vehicles
+- [x] `cluster.py` — group by radius and time; attacks only, never faults window
+- [x] Zone centre and radius, from the vehicles' *own* positions
+- [ ] Draw the zone on the fleet map *(console still to do)*
+- [x] `advisory.py` — warn on time-to-reach, not distance
 
 **Done when:** four vehicles attacked together produce **one event and one
 circle** · one vehicle alone produces **no circle**.
@@ -271,7 +271,7 @@ playbook without asking a question.
 - [ ] Broken sensor reported as fault, not attack
 - [~] Magnet caught — but not yet *classified* as interference (phase 6)
 - [ ] Truck profile runs with configuration only
-- [ ] Four attacked vehicles → one event, one zone
+- [x] Attacked vehicles → one event, one zone
 - [ ] Incident replays to an identical verdict
 - [x] Strength ladder filled with measured numbers, including the failure point
 - [ ] Report switch turns off with no effect on detection

@@ -143,13 +143,18 @@ keeps navigating on the rest, with an error budget that grows honestly and
 tells the operator when to stop.
 
     harness/fallback_check.py  34 m from truth vs GPS's 91 m, budget honest
+    harness/fleet_check.py     3 attacked -> one zone; the clean one warned
 
-What remains: truck profile, fleet map, evidence, phone view.
+The fleet logic is built and tested — several vehicles attacked in one area
+become a single event with a located zone, and vehicles heading toward it
+are warned before they arrive. What remains: drawing that zone on the
+console, the truck profile, evidence, phone view.
 
 | Owner | Area | State |
 |---|---|---|
 | Abishek | Simulator | task 1 done (reviewed, fixed) · **task 2 in progress** — attack injectors |
-| — | Detector core | stages 1-8 done, 43 tests passing |
+| — | Detector core | stages 1-8 done, 50 tests passing |
+| — | Fleet | clustering, zone and advisories done — not yet on screen |
 | — | Console | live — canvas map, two paths, raw feed |
 | — | Blame (stage 5) | **done** — names the sensor, or says `cannot_isolate` |
 | — | Classify (stage 6) | **done** - attack / fault / interference, or `unclassified` |

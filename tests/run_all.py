@@ -19,6 +19,8 @@ from detector import classify as classify_mod
 from detector import fusion as fusion_mod
 from detector.crossvalidate import CrossValidator, PairScore
 from detector.residual import ResidualTracker
+from fleet import advisory as adv_mod
+from fleet import cluster as cluster_mod
 from harness import fixtures
 
 _TESTS: list[tuple[str, Callable[[], None]]] = []
@@ -684,6 +686,98 @@ def the_operator_is_told_to_stop_once_the_budget_runs_out() -> None:
     nav, _r, _t = _nav_after("gnss", free_s=600.0)
     assert nav.seconds_remaining == 0
     assert "stop" in nav.note.lower() or "land" in nav.note.lower()
+
+
+# --- fleet ----------------------------------------------------------------
+
+def _incident(vid, t, lat, lon, cause="attack"):
+    return cluster_mod.Incident(vehicle_id=vid, t=t, lat=lat, lon=lon,
+                                guilty="gnss", cause=cause, confidence=0.9)
+
+
+@test
+def one_attacked_vehicle_draws_no_zone() -> None:
+    """It could be a failing receiver, and a wrongly placed circle sends people
+    to look in the wrong street."""
+    zones = cluster_mod.find_zones([_incident("A", 10.0, 11.00, 76.95)])
+    assert zones == []
+
+
+@test
+def vehicles_attacked_together_become_one_zone() -> None:
+    """Four in the same area inside a minute is not four broken receivers."""
+    near = [
+        _incident("A", 10.0, 11.0000, 76.9500),
+        _incident("B", 22.0, 11.0060, 76.9530),
+        _incident("C", 35.0, 11.0030, 76.9580),
+        _incident("D", 48.0, 11.0010, 76.9460),
+    ]
+    zones = cluster_mod.find_zones(near)
+    assert len(zones) == 1, zones
+    zone = zones[0]
+    assert sorted(zone.vehicles) == ["A", "B", "C", "D"]
+    assert 400.0 < zone.radius_m < 4000.0, zone.radius_m
+    # The centre should sit among the vehicles, not off in a field.
+    for i in near:
+        assert cluster_mod.metres_between(zone.lat, zone.lon, i.lat, i.lon) < zone.radius_m
+
+
+@test
+def faults_never_form_a_zone() -> None:
+    """A fault belongs to one vehicle. Two compasses failing in the same week
+    is coincidence, and a zone drawn round them is a wild goose chase."""
+    faults = [
+        _incident("A", 10.0, 11.000, 76.950, cause="fault"),
+        _incident("B", 20.0, 11.002, 76.952, cause="fault"),
+        _incident("C", 30.0, 11.001, 76.951, cause="fault"),
+    ]
+    assert cluster_mod.find_zones(faults) == []
+
+
+@test
+def attacks_far_apart_are_separate_events() -> None:
+    spread = [
+        _incident("A", 10.0, 11.000, 76.950),
+        _incident("B", 12.0, 11.002, 76.952),
+        _incident("C", 14.0, 11.400, 77.400),   # ~60 km away
+        _incident("D", 16.0, 11.402, 77.402),
+    ]
+    zones = cluster_mod.find_zones(spread)
+    assert len(zones) == 2, [z.vehicles for z in zones]
+
+
+@test
+def one_vehicle_reporting_repeatedly_cannot_invent_a_zone() -> None:
+    """An alert every frame must not be able to outvote the other vehicles."""
+    spam = [_incident("A", float(t), 11.000, 76.950) for t in range(0, 40, 2)]
+    assert cluster_mod.find_zones(spam) == []
+
+
+@test
+def a_vehicle_heading_for_the_zone_is_warned() -> None:
+    """The point of locating the attacker is warning whoever has not reached
+    him yet. This is the part a lone vehicle cannot do at all."""
+    zones = cluster_mod.find_zones([
+        _incident("A", 10.0, 11.000, 76.950),
+        _incident("B", 20.0, 11.004, 76.954),
+    ])
+    assert zones
+    approaching = adv_mod.VehicleState("E", 11.010, 76.960, speed_mps=20.0)
+    far = adv_mod.VehicleState("F", 12.500, 78.500, speed_mps=20.0)
+    out = adv_mod.advise([approaching, far], zones)
+    assert [a.vehicle_id for a in out] == ["E"], [a.vehicle_id for a in out]
+    assert out[0].seconds_away is None or out[0].seconds_away > 0
+
+
+@test
+def a_vehicle_already_under_attack_is_not_told_to_reroute() -> None:
+    """It has a more urgent message already."""
+    zones = cluster_mod.find_zones([
+        _incident("A", 10.0, 11.000, 76.950),
+        _incident("B", 20.0, 11.004, 76.954),
+    ])
+    victim = adv_mod.VehicleState("A", 11.000, 76.950, 15.0, under_attack=True)
+    assert adv_mod.advise([victim], zones) == []
 
 
 # --- runner ---------------------------------------------------------------
