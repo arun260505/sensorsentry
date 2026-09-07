@@ -23,11 +23,27 @@ class Pair:
 
     `label` is what the operator sees in the evidence list, so it is written in
     plain words rather than field names.
+
+    `kind` selects which comparison runs, and two sensors may be paired more
+    than once under different kinds. That is not a technicality — it is what
+    makes blame possible. GNSS position against the inertial estimate and GNSS
+    course against gyro heading are both "gnss vs imu", but one is nearly blind
+    to a slow walk-off and the other is not.
     """
 
     a: str
     b: str
     label: str
+    kind: str
+    domain: str
+    """What the check is sensitive to: "horizontal", "vertical" or "heading".
+
+    Blame needs this. A sensor is only cleared by a check that *would have
+    caught* the fault being investigated — GNSS passing an altitude check says
+    nothing about whether it is lying horizontally, and passing a position
+    check says almost nothing about a slow walk-off. Allowing an unrelated
+    pass to exonerate a sensor lets the real culprit walk free.
+    """
 
 
 @dataclass(frozen=True)
@@ -47,11 +63,10 @@ DRONE = Profile(
     name="drone",
     sensors=(GNSS, IMU, BARO, MAG),
     pairs=(
-        Pair(GNSS, IMU, "GPS position vs inertial estimate"),
-        Pair(GNSS, BARO, "GPS altitude vs barometric altitude"),
-        Pair(GNSS, MAG, "GPS course vs compass heading"),
-        Pair(MAG, IMU, "compass heading vs gyro-integrated heading"),
-        Pair(BARO, IMU, "barometric climb vs vertical acceleration"),
+        Pair(GNSS, IMU, "GPS position vs inertial estimate", "position", "horizontal"),
+        Pair(GNSS, BARO, "GPS altitude vs barometric altitude", "altitude", "vertical"),
+        Pair(GNSS, MAG, "GPS course vs compass heading", "course_mag", "heading"),
+        Pair(MAG, IMU, "compass heading vs gyro-integrated heading", "heading_offset", "heading"),
     ),
     has_baro=True,
     accel_bias_sigma=0.05,
@@ -62,11 +77,10 @@ TRUCK = Profile(
     name="truck",
     sensors=(GNSS, IMU, MAG, ODOM),
     pairs=(
-        Pair(GNSS, IMU, "GPS position vs inertial estimate"),
-        Pair(GNSS, ODOM, "GPS distance vs wheel distance"),
-        Pair(GNSS, MAG, "GPS course vs compass heading"),
-        Pair(MAG, IMU, "compass heading vs gyro-integrated heading"),
-        Pair(ODOM, IMU, "wheel speed vs inertial speed"),
+        Pair(GNSS, IMU, "GPS position vs inertial estimate", "position", "horizontal"),
+        Pair(GNSS, ODOM, "GPS distance vs wheel distance", "distance", "horizontal"),
+        Pair(GNSS, MAG, "GPS course vs compass heading", "course_mag", "heading"),
+        Pair(MAG, IMU, "compass heading vs gyro-integrated heading", "heading_offset", "heading"),
     ),
     has_baro=False,
     accel_bias_sigma=0.08,

@@ -10,16 +10,19 @@ measured rather than claimed (`python -m harness.sweep`).
 
 | | |
 |---|---|
-| **Done** | 1 simulator · 2 witness · 3 console · 4 cross-validation · 7 hysteresis |
+| **Done** | 1 simulator · 2 witness · 3 console · 4 cross-validation · **5 blame** · 7 hysteresis |
 | **In progress** | 4 attack injectors (Abishek, task 2) |
-| **Next gate** | **5 — blame assignment**, then 6 — attack or fault |
+| **Next gate** | **6 — attack, fault or interference** |
 | **Not started** | 8 truck · 9 fleet · 10 evidence · 12 rehearsal |
 | **Tests** | 22 passing |
 
-What the system can do today: say *something is wrong* and show it on a live
-map. What it cannot yet do is the part that makes this project different —
-name **which** sensor is lying, and say whether it is an **attack or a
-breakdown**. Those are phases 5 and 6, and they are next for a reason.
+What the system can do today: catch a spoof or a magnet, **name the sensor
+responsible**, show the evidence, and refuse to guess when the evidence does
+not support an accusation. Verified 8 of 8 cases — `python -m harness.blame_check`.
+
+What it still cannot do is say **why**: attack, breakdown or interference.
+Those demand opposite responses from the operator, and telling them apart is
+phase 6 — the last of the two stages that make this project different.
 
 **Owners:** A = simulator · B = detector core · C = unique logic · D = console
 *(fewer people? see [Team](#team) at the bottom)*
@@ -134,11 +137,11 @@ pair's score is visible in the console.
 
 ## Phase 5 — Blame assignment ★ · ~6h · C ⛔ GATE
 
-- [ ] `blame.py` — count disagreements per sensor
-- [ ] Confirm the remaining sensors still agree among themselves
-- [ ] Name the guilty sensor
-- [ ] Attach failing pairs and magnitudes as evidence
-- [ ] Return `cannot_isolate` when two or more sensors conflict
+- [x] `blame.py` — corroboration first, then failure count
+- [x] Confirm the remaining sensors still agree among themselves
+- [x] Name the guilty sensor
+- [x] Attach failing pairs and magnitudes as evidence
+- [x] Return `cannot_isolate` when the evidence cannot choose
 
 **⛔ Done when:** spoofing GNSS names GNSS · a magnet names the magnetometer ·
 **both at once returns `cannot_isolate` rather than a wrong answer.**

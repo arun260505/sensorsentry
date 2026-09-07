@@ -150,7 +150,7 @@ class PairTrust:
         """Returns the overall state and each pair's settled state."""
         settled: dict[str, str] = {}
         for pair in pairs:
-            key = f"{pair.a}-{pair.b}"
+            key = pair.key
             hyst = self._per_pair.get(key)
             if hyst is None:
                 hyst = self._per_pair[key] = Hysteresis(self.rise_s, self.fall_s)

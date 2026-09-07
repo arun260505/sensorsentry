@@ -14,7 +14,8 @@ from detector import health, profiles
 from detector.deadreckon import DeadReckoner
 from detector.geo import ENU, Origin, enu_from_llh, heading_from_yaw, llh_from_enu, wrap_pi, yaw_from_heading
 from detector.ingest import FrameStream, SchemaViolation, validate_frame
-from detector.crossvalidate import CrossValidator
+from detector import blame as blame_mod
+from detector.crossvalidate import CrossValidator, PairScore
 from detector.residual import ResidualTracker
 from harness import fixtures
 
@@ -415,6 +416,91 @@ def anchor_is_taken_once_and_never_moves() -> None:
             origins.append(tracker.origin)
     assert origins, "never anchored"
     assert all(o == origins[0] for o in origins), "anchor moved during the run"
+
+
+# --- blame ----------------------------------------------------------------
+
+def _pair(a, b, kind, domain, ratio, valid=True):
+    return PairScore(a=a, b=b, label=f"{a} vs {b}", kind=kind, domain=domain,
+                     ratio=ratio, valid=valid)
+
+
+@test
+def blame_names_gnss_when_the_compass_is_corroborated() -> None:
+    """A walk-off breaks course-vs-compass. The compass still agrees with the
+    gyro, so it is cleared and GNSS is left holding the failure."""
+    pairs = [
+        _pair("gnss", "mag", "course_mag", "heading", 4.0),
+        _pair("mag", "imu", "heading_offset", "heading", 1.1),
+    ]
+    states = {pairs[0].key: "ALERT", pairs[1].key: "OK"}
+    verdict = blame_mod.assign(pairs, states)
+    assert verdict.guilty == "gnss", verdict.guilty
+    assert any("mag" in c for c in verdict.cleared), verdict.cleared
+
+
+@test
+def blame_names_the_compass_when_it_fails_everything() -> None:
+    """A magnet breaks both checks the compass is in, while GNSS and the gyro
+    are each in only one."""
+    pairs = [
+        _pair("gnss", "mag", "course_mag", "heading", 9.0),
+        _pair("mag", "imu", "heading_offset", "heading", 3.0),
+    ]
+    states = {p.key: "ALERT" for p in pairs}
+    verdict = blame_mod.assign(pairs, states)
+    assert verdict.guilty == "mag", verdict.guilty
+
+
+@test
+def blame_refuses_to_guess_from_a_single_check() -> None:
+    """One failing check names two sensors and gives no way to choose. The
+    system is allowed to say it does not know — judges test this exact case."""
+    pairs = [_pair("gnss", "mag", "course_mag", "heading", 5.0)]
+    states = {pairs[0].key: "ALERT"}
+    verdict = blame_mod.assign(pairs, states)
+    assert verdict.guilty == blame_mod.CANNOT_ISOLATE, verdict.guilty
+    assert not verdict.isolated
+
+
+@test
+def blame_stays_silent_when_nothing_is_failing() -> None:
+    pairs = [_pair("gnss", "mag", "course_mag", "heading", 1.0)]
+    verdict = blame_mod.assign(pairs, {pairs[0].key: "OK"})
+    assert verdict.guilty is None
+    assert not verdict.isolated
+
+
+@test
+def blame_will_not_clear_a_sensor_on_unrelated_evidence() -> None:
+    """GNSS passing an altitude check says nothing about it lying
+    horizontally. Cross-domain alibis let the real culprit walk free."""
+    pairs = [
+        _pair("gnss", "mag", "course_mag", "heading", 6.0),
+        _pair("gnss", "baro", "altitude", "vertical", 1.0),
+        _pair("mag", "imu", "heading_offset", "heading", 1.0),
+    ]
+    states = {pairs[0].key: "ALERT", pairs[1].key: "OK", pairs[2].key: "OK"}
+    verdict = blame_mod.assign(pairs, states)
+    assert verdict.guilty == "gnss", verdict.guilty
+    assert all("baro" not in c for c in verdict.cleared), (
+        "an altitude check cleared a horizontal suspect"
+    )
+
+
+@test
+def a_failed_self_check_strengthens_the_case() -> None:
+    """A sensor failing on its own terms outweighs one cross-check."""
+    pairs = [
+        _pair("gnss", "mag", "course_mag", "heading", 4.0),
+        _pair("mag", "imu", "heading_offset", "heading", 4.0),
+    ]
+    states = {p.key: "ALERT" for p in pairs}
+    sick = health.SensorHealth("mag")
+    sick.flag(health.STUCK)
+    verdict = blame_mod.assign(pairs, states, {"mag": sick})
+    assert verdict.guilty == "mag", verdict.guilty
+    assert any("health check" in e for e in verdict.evidence), verdict.evidence
 
 
 # --- runner ---------------------------------------------------------------

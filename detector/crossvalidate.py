@@ -96,6 +96,10 @@ class PairScore:
     a: str
     b: str
     label: str
+    kind: str = ""
+    domain: str = ""
+    """Which comparison this is. Two sensors can be checked more than one way,
+    so the kind — not the sensor names — is what identifies a check."""
     """Plain words, because this reaches the operator's evidence list."""
 
     value: float = 0.0
@@ -113,6 +117,10 @@ class PairScore:
 
     reason: str = ""
     """Why it could not — shown so a blank check never looks like a pass."""
+
+    @property
+    def key(self) -> str:
+        return f"{self.a}-{self.b}:{self.kind}"
 
     def as_evidence(self) -> str:
         return f"{self.label}: {self.value:.1f} {self.unit} ({self.ratio:.1f}x normal)"
@@ -220,33 +228,48 @@ class CrossValidator:
     # --- the checks ---------------------------------------------------------
 
     def _score(self, pair: profiles.Pair, frame: Frame, witness: Witness) -> PairScore:
-        key = (pair.a, pair.b)
-        score = PairScore(a=pair.a, b=pair.b, label=pair.label)
+        score = PairScore(a=pair.a, b=pair.b, label=pair.label,
+                          kind=pair.kind, domain=pair.domain)
 
-        if key == (profiles.GNSS, profiles.MAG):
-            return self._course_vs_compass(score, frame)
-        if key == (profiles.MAG, profiles.IMU):
+        if pair.kind == "course_mag":
+            return self._course_vs_heading(score, frame, use_compass=True)
+        if pair.kind == "heading_offset":
             return self._compass_vs_gyro(score, frame)
-        if key == (profiles.GNSS, profiles.BARO):
+        if pair.kind == "altitude":
             return self._gnss_alt_vs_baro(score, frame, witness)
-        if key == (profiles.GNSS, profiles.IMU):
+        if pair.kind == "position":
             return self._position_vs_witness(score, frame, witness)
 
         score.reason = "not implemented yet"
         return score
 
-    def _course_vs_compass(self, score: PairScore, frame: Frame) -> PairScore:
+    def _course_vs_heading(self, score: PairScore, frame: Frame,
+                           *, use_compass: bool) -> PairScore:
         """Which way GNSS says we are travelling, against which way we point.
 
-        The most sensitive check we have against a walk-off. Dragging a vehicle
-        sideways changes its course over the ground while the airframe carries
-        on pointing where it was pointing.
+        The most sensitive check we have against a walk-off: dragging a vehicle
+        sideways swings its course over the ground while the airframe carries on
+        pointing where it was pointing.
+
+        Compared against the compass, which gives an absolute heading. Running
+        the same check against the gyro-integrated heading was tried and
+        removed: a gyro has no absolute reference, so its heading accumulates
+        scale error over every turn and reads 51x normal on an honest
+        manoeuvring flight — far worse than any attack. Isolating GNSS instead
+        comes from the compass being corroborated by the gyro over the same
+        window, which is what `heading_offset` measures.
         """
         score.unit = "deg"
         score.sigma = COURSE_SIGMA_DEG
 
-        if not frame.has_gnss() or self._origin is None or frame.mag is None:
+        if not frame.has_gnss() or self._origin is None:
             score.reason = "no GNSS fix this frame"
+            return score
+        if use_compass and frame.mag is None:
+            score.reason = "no compass"
+            return score
+        if not use_compass and not self._gyro_seeded:
+            score.reason = "gyro heading not established yet"
             return score
         if self._turning(COURSE_WINDOW_S, frame.dt):
             score.reason = "turning — course and heading legitimately differ"
@@ -266,7 +289,8 @@ class CrossValidator:
             return score
 
         course_deg = (90.0 - math.degrees(math.atan2(dn, de))) % 360.0
-        error = abs(math.degrees(wrap_pi(math.radians(course_deg - now[2]))))
+        heading_deg = now[2] if use_compass else self._gyro_heading_deg
+        error = abs(math.degrees(wrap_pi(math.radians(course_deg - heading_deg))))
         score.value = error
         score.ratio = error / score.sigma
         score.valid = True

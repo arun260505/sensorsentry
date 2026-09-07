@@ -126,21 +126,22 @@ short.**
 
 ## Status
 
-**Current phase:** 5 — blame assignment. Phases 1-4 and 7's hysteresis are done.
+**Current phase:** 6 — attack or fault. Phases 1-5 and 7's hysteresis are done.
 **Last updated:** 7 September 2026
 
 The detector works end to end: honest flights are silent, GPS spoofing and
-compass interference are both caught, and `python -m harness.sweep` prints the
-measured numbers. What it still cannot do is the part that makes this project
-different — name *which* sensor is lying, and say whether it is an attack or a
-breakdown. That is next.
+compass interference are caught, and the guilty sensor is **named** with its
+evidence. `harness/sweep.py` measures detection, `harness/blame_check.py`
+checks the accusations — 8 of 8 correct. What is still missing is *why*:
+attack, breakdown or interference. That is phase 6.
 
 | Owner | Area | State |
 |---|---|---|
 | Abishek | Simulator | task 1 done (reviewed, fixed) · **task 2 in progress** — attack injectors |
-| — | Detector core | stages 1-4 + hysteresis done, 22 tests passing |
+| — | Detector core | stages 1-5 + hysteresis done, 28 tests passing |
 | — | Console | live — canvas map, two paths, raw feed |
-| — | **Blame + classify** | **not started — phases 5, 6, and they are the point** |
+| — | Blame (stage 5) | **done** — names the sensor, or says `cannot_isolate` |
+| — | **Classify (stage 6)** | **not started — attack vs fault vs interference** |
 | — | Truck, fleet, evidence | not started — phases 8, 9, 10 |
 
 Full checklist: **[PLAN.md](PLAN.md)**
@@ -166,6 +167,26 @@ Two things about the console that are deliberate and easy to undo by accident:
   that tells it an attack is happening."*
 
 ### Engineering findings — these cost real time, don't rediscover them
+
+**-1. A sensor is only cleared by a check that would have caught the fault.**
+GNSS passing an altitude check says nothing about it lying horizontally, and
+passing the position check says almost nothing about a slow walk-off. Blame
+therefore works inside one *domain* — heading, horizontal, vertical — and only
+same-domain evidence can provide an alibi. Allowing cross-domain alibis let
+the real culprit walk free in every test.
+
+**Two failing checks accuse; one only detects.** A single failing check names
+two sensors and cannot choose between them, so it returns `cannot_isolate` —
+which is the honest answer, not a gap. A walk-off is isolated because the
+compass is *cleared* by still agreeing with the gyro; a magnet is isolated
+because the compass fails everything it takes part in.
+
+**Comparing GNSS course against gyro-integrated heading does not work.** It
+looked like the obvious way to isolate GNSS without involving the compass, but
+a gyro has no absolute reference: its heading accumulates scale error over
+every turn and reads 51x normal on an honest manoeuvring flight, far worse
+than any attack. Removed.
+
 
 **0. Position integration cannot catch a slow walk-off, and no amount of
 filter tuning changes that.** A constant half-degree pitch error — well inside

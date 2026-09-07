@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from typing import Any, Optional
 
 from . import health, profiles
+from . import blame as blame_mod
 from .crossvalidate import CrossValidator, PairScore
 from .deadreckon import DeadReckoner, Witness
 from .geo import ENU, llh_from_enu
@@ -63,6 +64,8 @@ class State:
     console can show evidence building without the badge flickering."""
 
     pair_states: dict[str, str] = field(default_factory=dict)
+    blame: "blame_mod.Blame" = field(default_factory=lambda: blame_mod.Blame())
+    """Which sensor is lying — stage 5."""
     """Each cross-check's settled state, after its own hysteresis."""
 
     anchored: bool = False
@@ -86,6 +89,14 @@ class State:
             "state": self.state,
             "instant_state": self.instant_state,
             "pair_states": dict(self.pair_states),
+            "blame": {
+                "guilty": self.blame.guilty,
+                "domain": self.blame.domain,
+                "confidence": round(self.blame.confidence, 2),
+                "evidence": list(self.blame.evidence),
+                "cleared": list(self.blame.cleared),
+                "suspects": list(self.blame.suspects),
+            },
             "residual": None if residual is None else {
                 "horizontal_m": round(residual.horizontal_m, 2),
                 "vertical_m": round(residual.vertical_m, 2),
@@ -187,6 +198,7 @@ class Pipeline:
             if instant is not None:
                 state.instant_state = instant
             state.state, state.pair_states = self.trust.update(frame.dt, pairs)
+            state.blame = blame_mod.assign(pairs, state.pair_states, report)
 
         self.last_state = state
         return state
