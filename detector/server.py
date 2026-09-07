@@ -31,11 +31,21 @@ from fleet.cluster import Incident, find_zones
 
 from .evidence import Recorder
 from .report import compose
+from .geo import ENU, Origin, llh_from_enu
 from .ingest import DEFAULT_PORT, SchemaViolation, UdpReceiver
 from .pipeline import Pipeline
 
 CONSOLE_DIR = Path(__file__).resolve().parent.parent / "console"
 SIMULATOR_CONTROL = "http://127.0.0.1:5010"
+STALE_VEHICLE_S = 8.0
+"""How long a vehicle may go unheard before it leaves the fleet view.
+
+Switching scenarios would otherwise leave the previous run's vehicle on
+screen — and since the detail panels follow whichever vehicle is worst, the
+console kept describing a drone that had finished flying while a truck was
+running. Vehicles genuinely do go quiet, so this is also the right behaviour
+in the field: no report for eight seconds and it is no longer current."""
+
 TRAIL_LIMIT = 4000
 """Points kept per path. At 5 Hz that is over ten minutes — long enough for any
 demo, bounded so a forgotten run cannot eat memory."""
@@ -50,8 +60,10 @@ class VehicleView:
         self.gnss_trail: list[tuple[float, float]] = []
         self.witness_trail: list[tuple[float, float]] = []
         self.run_id = None
+        self.last_heard = 0.0
 
     def update(self, payload: dict) -> None:
+        self.last_heard = time.monotonic()
         if payload["run_id"] != self.run_id:
             self.run_id = payload["run_id"]
             self.gnss_trail.clear()
@@ -110,6 +122,7 @@ class Shared:
             if view is None:
                 view = self.vehicles[vid] = VehicleView(vid)
             view.update(payload)
+            self._drop_stale()
 
             self._record_incident(payload)
             self._recompute()
@@ -123,6 +136,18 @@ class Shared:
 
             self.raw = raw
             self.version += 1
+
+    def _drop_stale(self) -> None:
+        """Forget vehicles that have stopped reporting."""
+        now = time.monotonic()
+        gone = [v for v, w in self.vehicles.items()
+                if now - w.last_heard > STALE_VEHICLE_S]
+        for vehicle_id in gone:
+            del self.vehicles[vehicle_id]
+            self.records.pop(vehicle_id, None)
+            self.incidents = [i for i in self.incidents if i.vehicle_id != vehicle_id]
+            if self.focus == vehicle_id:
+                self.focus = None
 
     def _record_incident(self, payload: dict) -> None:
         """Keep one report per vehicle: the newest.
@@ -309,6 +334,8 @@ class Handler(BaseHTTPRequestHandler):
             self._json(self.shared.snapshot())
         elif path == "/report":
             self._json(self._report())
+        elif path == "/basemap":
+            self._json(self._basemap())
         elif path.startswith("/control/"):
             # The console asks the simulator what scenarios it has rather than
             # carrying its own list. A judge picking from a list that came out
@@ -324,6 +351,54 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(payload)
         else:
             self._static(path.lstrip("/"))
+
+    def _basemap(self) -> dict[str, Any]:
+        """The world the vehicles are driving through, as lat/lon.
+
+        Served from the simulator's own road network rather than a tile
+        server. Two reasons, and the second is the one that matters.
+
+        The demo runs with wifi off, and an online map fails silently — a grey
+        rectangle with no error, in front of judges, at the worst moment.
+
+        And these are the actual roads the truck is following. A real street
+        map would be prettier and would not line up with anything: the truck
+        would drive through buildings and the cargo-theft story would make no
+        sense. Here, when the fake track runs neatly up the highway while the
+        real truck sits at the warehouse, both of those places are on screen.
+        """
+        try:
+            from simulator.roads import ROADS
+            from simulator.vehicle import ORIGIN_ALT, ORIGIN_LAT, ORIGIN_LON
+        except Exception:
+            return {"roads": [], "places": []}
+
+        origin = Origin(ORIGIN_LAT, ORIGIN_LON, ORIGIN_ALT)
+
+        def to_llh(east: float, north: float) -> list[float]:
+            lat, lon, _alt = llh_from_enu(ENU(east, north, 0.0), origin)
+            return [lat, lon]
+
+        roads = [
+            {"name": name, "points": [to_llh(e, n) for e, n in points],
+             "major": name.upper().startswith(("NH", "SH"))}
+            for name, points in ROADS
+        ]
+
+        # Named ends of the network, so the story has landmarks rather than
+        # coordinates. Taken from the roads themselves so they cannot drift
+        # out of step with the simulator.
+        places = []
+        by_name = {name: points for name, points in ROADS}
+        if "warehouse lane" in by_name:
+            end = by_name["warehouse lane"][-1]
+            places.append({"name": "Warehouse", "at": to_llh(*end), "kind": "building"})
+        if "NH-544" in by_name:
+            places.append({"name": "Depot", "at": to_llh(*by_name["NH-544"][0]),
+                           "kind": "building"})
+            places.append({"name": "NH-544 north", "at": to_llh(*by_name["NH-544"][-1]),
+                           "kind": "waypoint"})
+        return {"roads": roads, "places": places}
 
     def _report(self) -> dict[str, Any]:
         """Write up the focused vehicle's incident from its stored record.

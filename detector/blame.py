@@ -49,6 +49,7 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from . import health as health_mod
+from . import profiles
 from .crossvalidate import PairScore
 
 CANNOT_ISOLATE = "cannot_isolate"
@@ -213,6 +214,11 @@ def _within_domain(
     suspects: set[str] = set()
     for pair in domain_failing:
         suspects.update((pair.a, pair.b))
+    # A map cannot be at fault. When a reported position and the road network
+    # disagree exactly one of them is wrong, and it is never the road — so it
+    # must not be a candidate, or the check would be as likely to accuse the
+    # map as the receiver and would prove nothing.
+    suspects -= profiles.INFALLIBLE
 
     blame = Blame(domain=domain, suspects=sorted(suspects))
 

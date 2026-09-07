@@ -15,6 +15,10 @@ IMU = "imu"
 BARO = "baro"
 MAG = "mag"
 ODOM = "odom"
+ROAD = "road"
+"""The road network. Not a sensor — a prior about where a truck can possibly
+be, and treated as a party to a check so that disagreeing with it accuses the
+other side."""
 
 
 @dataclass(frozen=True)
@@ -75,10 +79,11 @@ DRONE = Profile(
 
 TRUCK = Profile(
     name="truck",
-    sensors=(GNSS, IMU, MAG, ODOM),
+    sensors=(GNSS, IMU, MAG, ODOM, ROAD),
     pairs=(
         Pair(GNSS, IMU, "GPS position vs inertial estimate", "position", "horizontal"),
         Pair(GNSS, ODOM, "GPS distance vs wheel distance", "distance", "horizontal"),
+        Pair(GNSS, ROAD, "GPS position vs the road network", "road", "horizontal"),
         Pair(GNSS, MAG, "GPS course vs compass heading", "course_mag", "heading"),
         Pair(MAG, IMU, "compass heading vs gyro-integrated heading", "heading_offset", "heading"),
     ),
@@ -91,12 +96,22 @@ TRUCK = Profile(
     ),
 )
 
+INFALLIBLE = frozenset({ROAD})
+"""Parties to a check that cannot themselves be at fault.
+
+A map does not drift, fail or get spoofed. When a reported position and the
+road network disagree, exactly one of them is wrong, and it is never the road
+— so blame must not be allowed to name it. Without this the road check would
+be as likely to accuse the map as the receiver, and prove nothing."""
+
+
 HOW_SENSED = {
     GNSS: "radio",
     MAG: "field",
     BARO: "field",
     IMU: "inertial",
     ODOM: "mechanical",
+    ROAD: "prior",
 }
 """How each sensor comes by its information.
 

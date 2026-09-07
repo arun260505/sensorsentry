@@ -505,3 +505,19 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
     var(--panel);
   background-attachment: local, local, scroll;
 }
+
+/* --- layout: nothing may overlap the panels ------------------------------
+   The controls row wraps once the scenario buttons need a second line, and
+   with the grid rows fixed it grew over the side column instead of pushing
+   it — which hid the navigation panel behind a blank block and clipped the
+   buttons at the bottom edge. */
+
+body { min-height: 0; }
+main { min-height: 0; overflow: hidden; }
+.feedwrap { min-height: 0; }
+.controls { flex-wrap: wrap; row-gap: 10px; }
+.scenarios { flex: 1 1 100%; order: 2; }
+.ctrl-label { order: 1; }
+.spacer { display: none; }
+#reset, #reporttoggle, #reportopen { order: 3; }
+.hint { order: 4; flex: 1 1 100%; }

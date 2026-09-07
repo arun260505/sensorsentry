@@ -21,6 +21,10 @@ const COLOR = {
   witness: "#0b5c7a",
   link: "#b3352a",
   text: "#788894",
+  road: "#e8e2d6",        /* carriageway */
+  roadCase: "#cfc7b6",    /* its casing, so trails stay readable over it */
+  roadText: "#8a8272",
+  building: "#ded6c6",
 };
 const CANVAS_BG = "#ffffff";
 
@@ -54,6 +58,11 @@ function computeView(w, h) {
   const pts = trails.gnss.concat(trails.witness);
   for (const v of Object.values(fleet)) {
     if (v.trails) pts.push(...v.trails.gnss, ...v.trails.witness);
+  }
+  // The roads frame the view as well, so a stationary vehicle is shown in
+  // its surroundings rather than filling the screen on its own.
+  for (const road of basemap.roads) {
+    for (const [lat, lon] of road.points) pts.push(toLocal(lat, lon));
   }
   // Keep the whole zone in view, not just its centre.
   for (const z of zones) {
@@ -105,6 +114,7 @@ function gridStep(scale) {
  * here earns its place against one of those.
  */
 
+let basemap = { roads: [], places: [] };
 let tick = 0;                       // drives the slow pulse on live elements
 let lastDraw = 0;
 
@@ -117,6 +127,7 @@ function draw() {
 
   const view = computeView(w, h);
   drawGrid(w, h, view);
+  drawRoads(view, w, h);
   drawRangeRings(w, h, view);
   drawZones(view, w, h);
   drawFleet(view, w, h);
@@ -170,6 +181,79 @@ function drawGrid(w, h, view) {
 /* Range rings around the focused vehicle. A grid tells you a metre is a
  * metre; rings tell you how far away something is at a glance, which is the
  * question actually being asked of this screen. */
+/* The roads the vehicles are actually driving on.
+ *
+ * Not decoration. When the fake track runs neatly up the highway while the
+ * real truck sits at the warehouse, the whole cargo-theft story is on screen
+ * instead of being narrated — and a spoofed position that wanders into a
+ * field is visibly in a field.
+ */
+function drawRoads(view, w, h) {
+  for (const road of basemap.roads) {
+    const pts = road.points.map(([lat, lon]) => toLocal(lat, lon));
+    if (pts.length < 2) continue;
+
+    // Casing under colour, the way roads are drawn on real maps: it keeps
+    // them readable where a vehicle trail crosses them.
+    for (const [width, colour] of [[road.major ? 13 : 8, COLOR.roadCase],
+                                   [road.major ? 9 : 5, COLOR.road]]) {
+      ctx.strokeStyle = colour;
+      ctx.lineWidth = width;
+      ctx.lineJoin = "round";
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      pts.forEach(([e, n], i) => {
+        const [x, y] = project(e, n, view, w, h);
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+    }
+
+    // Name it along its longest straight, the way a road label sits.
+    let best = 0, bi = 0;
+    for (let i = 1; i < pts.length; i++) {
+      const d = Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
+      if (d > best) { best = d; bi = i; }
+    }
+    const [ax, ay] = project(pts[bi - 1][0], pts[bi - 1][1], view, w, h);
+    const [bx, by] = project(pts[bi][0], pts[bi][1], view, w, h);
+    if (Math.hypot(bx - ax, by - ay) > 70) {
+      ctx.save();
+      ctx.translate((ax + bx) / 2, (ay + by) / 2);
+      let angle = Math.atan2(by - ay, bx - ax);
+      if (angle > Math.PI / 2 || angle < -Math.PI / 2) angle += Math.PI;
+      ctx.rotate(angle);
+      ctx.fillStyle = COLOR.roadText;
+      ctx.font = "600 10px system-ui, sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText(road.name.toUpperCase(), 0, -road.major ? -8 : -6);
+      ctx.restore();
+    }
+  }
+
+  for (const place of basemap.places) {
+    const [e, n] = toLocal(place.at[0], place.at[1]);
+    const [x, y] = project(e, n, view, w, h);
+    if (place.kind === "building") {
+      ctx.fillStyle = COLOR.building;
+      ctx.strokeStyle = COLOR.roadText;
+      ctx.lineWidth = 1;
+      ctx.fillRect(x - 9, y - 7, 18, 14);
+      ctx.strokeRect(x - 9, y - 7, 18, 14);
+    } else {
+      ctx.fillStyle = COLOR.roadText;
+      ctx.beginPath();
+      ctx.arc(x, y, 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.fillStyle = COLOR.roadText;
+    ctx.font = "600 10px system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText(place.name, x, y + 20);
+    ctx.textAlign = "left";
+  }
+}
+
 function drawRangeRings(w, h, view) {
   const here = trails.witness[trails.witness.length - 1];
   if (!here) return;
@@ -770,7 +854,17 @@ async function openReport() {
   }
 }
 
+async function loadBasemap() {
+  try {
+    basemap = await (await fetch("/basemap")).json();
+  } catch (err) {
+    basemap = { roads: [], places: [] };   // a grid is still usable
+  }
+  draw();
+}
+
 resize();
 connect();
 loadScenarios();
+loadBasemap();
 requestAnimationFrame(animate);

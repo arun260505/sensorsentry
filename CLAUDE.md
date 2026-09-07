@@ -157,6 +157,8 @@ python -m harness.send_fleet                  # 4 vehicles, 3 attacked
 | Attack / fault / interference | 7 of 8 |
 | Drops the liar, keeps flying | 34 m from truth vs GPS's 91 m |
 | Fleet locates the attacker | 3 hit -> one zone, 4th warned |
+| Truck: honest run | silent |
+| Truck: walk-off 2 m/s and up | caught ~60 s, gnss/attack |
 | Incident replays to identical verdict | yes |
 
 ### Owners

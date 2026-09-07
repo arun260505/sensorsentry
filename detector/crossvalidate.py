@@ -93,6 +93,24 @@ ALT_SIGMA_M = 5.0
 """Expected GNSS-vs-barometric altitude disagreement, in metres. GNSS altitude
 noise alone is about 3 m, and the barometer has its own slow drift."""
 
+ROAD_SIGMA_M = 45.0
+"""How far a truck's reported position may sit from the nearest road before
+that means something, in metres.
+
+Generous, and measured rather than guessed. On an honest three-minute run the
+reported position sits a median of 1.8 m from the network but reaches 70 m —
+not because the truck left the road, but because the network is a handful of
+straight segments standing in for a road that curves, and the truck cuts the
+corner at a junction. Set to 25 first, which raised alarms on a truck doing
+nothing wrong.
+
+What it does not have to cover is a truck in a field, which is what a spoofed
+position becomes: measured at 179 m and climbing.
+
+This is the check a drone cannot have, and the concrete reason a truck is
+easier to protect. Wheels measure real distance and a truck has to be on a
+road — neither is reachable by a transmitter."""
+
 POSITION_SIGMA_FLOOR_M = 4.0
 """Floor for the position pair. See residual.py — that pair is kept for the
 map and the operator's error budget, and is deliberately not what decides."""
@@ -185,6 +203,14 @@ class CrossValidator:
         GPS — which was innocent. A reference must stop following a sensor the
         moment that sensor stops being trustworthy."""
 
+        self._road_offset = (0.0, 0.0)
+        """Where this vehicle's own anchor sits in the road network's frame.
+
+        The detector anchors on its first GNSS fix and has no idea where that
+        is on any map; the network is drawn from its own origin. The first fix
+        of a truck run is on a road, so the offset is whatever puts it there.
+        Fixed once, from the first fix, before any attack exists."""
+
         self._total_turn_deg = 0.0
         """How far the vehicle has turned in total. Gyro heading error is
         mostly scale error, so it accumulates with rotation, not with time."""
@@ -196,6 +222,7 @@ class CrossValidator:
         self._gyro_heading_deg = 0.0
         self._gyro_seeded = False
         self._total_turn_deg = 0.0
+        self._road_offset = (0.0, 0.0)
 
     # --- main entry ---------------------------------------------------------
 
@@ -278,6 +305,16 @@ class CrossValidator:
     def _record(self, frame: Frame) -> None:
         if not frame.has_gnss() or self._origin is None:
             return
+        if self._road_offset == (0.0, 0.0) and not self._history:
+            # First fix of the run: take it as the vehicle's place on the map.
+            try:
+                from simulator.vehicle import ORIGIN_LAT, ORIGIN_LON, ORIGIN_ALT
+                anchor = enu_from_llh(self._origin.lat, self._origin.lon,
+                                      self._origin.alt,
+                                      Origin(ORIGIN_LAT, ORIGIN_LON, ORIGIN_ALT))
+                self._road_offset = (anchor.e, anchor.n)
+            except Exception:
+                self._road_offset = (0.0, 0.0)
         gnss = frame.gnss or {}
         pos = enu_from_llh(
             float(gnss["lat"]), float(gnss["lon"]), float(gnss["alt"]), self._origin
@@ -322,6 +359,8 @@ class CrossValidator:
             return self._gnss_alt_vs_baro(score, frame, witness)
         if pair.kind == "position":
             return self._position_vs_witness(score, frame, witness)
+        if pair.kind == "road":
+            return self._gnss_vs_road(score, frame)
 
         score.reason = "not implemented yet"
         return score
@@ -442,6 +481,48 @@ class CrossValidator:
         score.signed = signed
         score.value = error
         score.ratio = error / score.sigma
+        score.valid = True
+        return score
+
+    def _gnss_vs_road(self, score: PairScore, frame: Frame) -> PairScore:
+        """Is the reported position anywhere a truck could actually be?
+
+        A lorry cannot drive across a field. So a reported position that
+        wanders off the road network is either a receiver being lied to or a
+        map that is wrong, and the map does not change. Measured on a spoofed
+        run: 179 m from the nearest road, which no truck has ever been.
+
+        Unlike every other check here this one compares against a prior rather
+        than a second sensor, which is what makes it immune to the attack —
+        there is nothing for a transmitter to reach.
+        """
+        score.unit = "m"
+        score.sigma = ROAD_SIGMA_M
+
+        if not frame.has_gnss() or self._origin is None:
+            score.reason = "no GNSS fix this frame"
+            return score
+
+        try:
+            from simulator.roads import distance_to_nearest_road
+        except Exception:
+            # No road network available for this deployment. Say so rather
+            # than silently passing — a check that cannot run is not a pass.
+            score.reason = "no road network loaded"
+            return score
+
+        gnss = frame.gnss or {}
+        pos = enu_from_llh(
+            float(gnss["lat"]), float(gnss["lon"]), float(gnss["alt"]), self._origin
+        )
+        # The detector anchors on its own first fix, the map is drawn from the
+        # network's own origin; the offset between them is where the truck
+        # started, which was on a road.
+        away = distance_to_nearest_road(pos.e + self._road_offset[0],
+                                        pos.n + self._road_offset[1])
+        score.value = away
+        score.signed = away
+        score.ratio = away / score.sigma
         score.valid = True
         return score
 

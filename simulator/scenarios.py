@@ -296,7 +296,12 @@ def truck_theft():
             "t_start": 40.0,
             "kind":    "attack",
             "cls":     "WalkOff",
-            "kwargs":  {"speed_mps": 18.0, "bearing_deg": 90.0},
+            # 3.5 m/s, not the 18 it was. Eighteen metres a second is faster
+            # than the truck drives — the reported position leaves the road
+            # immediately, drags the inertial estimate with it before the
+            # alert can fire, and stops being a walk-off at all. A thief
+            # wants the control room to see a truck making normal progress.
+            "kwargs":  {"speed_mps": 3.5, "bearing_deg": 90.0},
         }
     ]
     return waypoints, "truck", schedule

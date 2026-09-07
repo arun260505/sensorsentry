@@ -212,15 +212,19 @@ class Classifier:
                 {"health_flags": float(len(report.flags))},  # type: ignore[union-attr]
             )
 
-        # Judge the single check with the strongest disagreement, rather than
-        # pooling every check the sensor is in. Pooling mixes quantities that
-        # behave differently — a course error swings with each turn while a
-        # compass offset sits still — and the two cancel into noise. A magnet
-        # that holds +40 degrees for two minutes scored 0.1 coherence pooled,
-        # and 0.99 on its own check.
-        # "multiple" and "self-check" are not real domains — they mean blame
-        # reached its answer by standing back from any single one, so every
-        # check the sensor takes part in is relevant.
+        # Judge every failing check the sensor is in, and take the clearest
+        # answer rather than the loudest check.
+        #
+        # Picking by ratio alone looked obvious and was wrong. Some checks
+        # swing by nature — a course error grows and shrinks as a truck goes
+        # round bends — so the check shouting hardest can be the worst one to
+        # read a *pattern* from. A spoofed truck sat at "unclassified" with
+        # coherence 0.45 on its course check while its distance from the road
+        # was climbing monotonically and said "attack" plainly.
+        #
+        # Checks are not pooled either: pooling mixes quantities that behave
+        # differently and they cancel into noise. Each is judged on its own and
+        # the most confident verdict wins.
         involved = [
             p for p in pairs
             if guilty in (p.a, p.b)
@@ -230,21 +234,36 @@ class Classifier:
         if not involved:
             return Cause(reason="not enough history yet to judge the pattern")
 
-        strongest = max(involved, key=lambda p: p.ratio)
-        samples = list(self._history[strongest.key])
+        sensed = profiles.HOW_SENSED.get(guilty, "inertial")
+        best: Optional[Cause] = None
 
+        for check in sorted(involved, key=lambda p: p.ratio, reverse=True):
+            samples = list(self._history[check.key])
+            cause = self._read(check, samples, guilty, sensed)
+            if cause.label == UNCLASSIFIED:
+                if best is None:
+                    best = cause
+                continue
+            if best is None or best.label == UNCLASSIFIED or cause.confidence > best.confidence:
+                best = cause
+
+        return best or Cause()
+
+    def _read(self, check: PairScore, samples: list[float],
+              guilty: str, sensed: str) -> Cause:
+        """What one check says about why the sensor is wrong."""
         coherence = _coherence(samples)
         erraticness = _erraticness(samples)
-        arrived_at_once = self._biggest_step[strongest.key]
-        sensed = profiles.HOW_SENSED.get(guilty, "inertial")
+        arrived_at_once = self._biggest_step[check.key]
 
         features = {
+            "check": 0.0,
             "coherence": round(coherence, 3),
             "erraticness": round(erraticness, 3),
             "step": round(arrived_at_once, 2),
             "samples": float(len(samples)),
         }
-        features_check = strongest.label
+        features.pop("check")
 
         # --- messy means broken ---------------------------------------------
         if erraticness > ERRATIC and coherence < COHERENT:

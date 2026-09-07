@@ -161,7 +161,9 @@ class HealthMonitor:
         if self._first_t is None:
             self._first_t = frame.t
 
-        report = {name: SensorHealth(name) for name in self.profile.sensors}
+        # The road network is a prior, not a sensor — nothing to health-check.
+        report = {name: SensorHealth(name) for name in self.profile.sensors
+                  if name not in profiles.INFALLIBLE}
 
         self._check_imu(frame, report[profiles.IMU])
         if profiles.BARO in report:

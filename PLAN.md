@@ -135,7 +135,7 @@ without explanation.
 
 **Cross-validation** (B)
 - [x] `crossvalidate.py` — GNSS ↔ inertial
-- [ ] GNSS ↔ wheels, GNSS ↔ road map
+- [x] GNSS ↔ road map — the check a drone cannot have
 - [x] GNSS altitude ↔ barometer
 - [x] GNSS course ↔ compass **(this is what actually detects)**
 - [x] Compass ↔ gyro *(catches the magnet case)*
