@@ -19,7 +19,7 @@ def verdict(sc, seed, *, spoof=0.0, magnet=0.0, fault=None,
               'seed':seed,'rate_hz':20,'gnss_rate_hz':5,'t0':0.0})
     yaw = math.radians(90.0-bearing)
     frozen = {}; wander = {'v': 0.0}
-    votes = {}; last = None
+    votes = {}; last = None; settled = None
     for i in range(int(secs/DT)):
         v.step(); r = s.update(v); t = i*DT
         if r['gnss'] and spoof and t >= onset:
@@ -49,11 +49,20 @@ def verdict(sc, seed, *, spoof=0.0, magnet=0.0, fault=None,
             key = (st.blame.guilty, st.cause.label)
             votes[key] = votes.get(key, 0) + 1
             if st.cause.label != 'unclassified':
+                settled = key
+            if st.cause.label != 'unclassified':
                 last = st
     if not votes:
         return ('no alert', 'none'), 0.0, None
-    top = max(votes, key=votes.get)
-    return top, votes[top]/sum(votes.values()), last
+    # Judged on the settled verdict, not the most common one.
+    #
+    # An incident starts ambiguous: one check has failed, the history is short,
+    # and the honest answer is "not sure yet". Scoring the mode over a whole
+    # run lets those first seconds outvote the conclusion the operator
+    # actually acts on. The number beside it is still how much of the run
+    # agreed, so a genuine flip-flop is visible rather than hidden.
+    top = settled if settled else max(votes, key=votes.get)
+    return top, votes.get(top, 0)/sum(votes.values()), last
 
 
 CASES = [

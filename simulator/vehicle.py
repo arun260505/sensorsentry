@@ -235,6 +235,208 @@ class Vehicle:
 
 
 # ---------------------------------------------------------------------------
+# TruckVehicle — stays on the road, cannot fly, cannot turn on the spot
+# ---------------------------------------------------------------------------
+class TruckVehicle(Vehicle):
+    """
+    Trucks drive on roads: level (up == 0 always), limited steering and
+    braking, and they stop. The motion limits are the ones in Task 3:
+
+        cruise speed    15–22 m/s
+        max acceleration  1.5 m/s²
+        max braking       3.0 m/s²
+        max turn rate     0.3 rad/s
+
+    The base Vehicle model is airframe-flavoured: it climbs with a rate limit
+    and roles into coordinated turns. A truck does neither, so this overrides
+    `step()` to keep altitude at exactly the waypoint's `up` (which the truck
+    scenarios set to a constant) and to steer with the gentler limits above.
+
+    Nothing here reaches the wire; sensors.py reads this through the same
+    read-only properties as the drone.
+    """
+
+    MAX_SPEED_MPS    = 22.0    # hard ceiling, cruise is set per waypoint
+    MAX_ACC_MPS2     = 1.5     # acceleration demand
+    MAX_BRAKE_MPS2   = 3.0     # braking demand
+    MAX_TURN_RAD_S   = 0.3     # max yaw rate
+    MAX_TURN_ACC_MPS2 = 6.0    # lateral g at speed, cut below road-limit worry
+    MAX_BODY_ROLL    = math.radians(2.0)   # a truck does not bank like a drone
+
+    STOP_HOLD_S      = 5.0     # dwell at a speed-0 waypoint (red light, depot)
+    STOP_RADIUS_M    = 25.0    # how close counts as "at" the stop waypoint
+    STOP_APPROACH_MPS = 8.0    # speed cap while braking toward a stop
+
+    def __init__(self, waypoints, rng: np.random.Generator):
+        # Forced ZYX-rotation-free truck: leave the drone roll rates untouched
+        # at 0 so the gyro stays calm and the accelerometer only sees flat.
+        self._wp = waypoints
+        self._wp_idx = 0
+        self._rng = rng
+        self._stop_hold_s = 0.0
+
+        first = waypoints[0]
+        self._pos = first.position.copy()
+        self._pos[2] = first.up              # start exactly at road altitude
+        self._vel = np.zeros(3)
+        self._roll = 0.0
+        self._pitch = 0.0
+        self._yaw = 0.0
+        self._climb_rate = 0.0
+        self._t = 0.0
+
+    # -- truck speed / rate-friendly properties ------------------------
+    @property
+    def speed_mps(self) -> float:
+        return math.hypot(self._vel[0], self._vel[1])
+
+    def step(self):
+        """Advance the truck by one timestep (DT seconds)."""
+        if self.done:
+            return
+
+        wp = self._wp[self._wp_idx]
+        to_wp = wp.position - self._pos
+        to_wp[2] = 0.0                       # flat ground only
+        dist = math.hypot(to_wp[0], to_wp[1])
+
+        if wp.speed_mps == 0.0:
+            self._handle_stop(wp, to_wp, dist)
+            return
+
+        # --- ordinary waypoint: cruise, brake, or accelerate -------------
+        # Arrived?
+        if dist < max(2.0, self.speed_mps * DT * 2):
+            self._wp_idx += 1
+            self._stop_hold_s = 0.0
+            if self.done:
+                return
+            wp = self._wp[self._wp_idx]
+            to_wp = wp.position - self._pos
+            to_wp[2] = 0.0
+            dist = math.hypot(to_wp[0], to_wp[1])
+            if wp.speed_mps == 0.0:
+                self._handle_stop(wp, to_wp, dist)
+                return
+
+        # Desired direction (unit vector, horizontal)
+        if dist > 0.01:
+            direction_e = to_wp[0] / dist
+            direction_n = to_wp[1] / dist
+        else:
+            direction_e, direction_n = 1.0, 0.0
+
+        # Desired heading — yaw = atan2(north, east) since 0 = East.
+        desired_yaw = math.atan2(direction_n, direction_e)
+
+        # Steer, limited by speed: a truck cannot turn on the spot. Lateral
+        # acceleration is speed x yaw rate, so cap the yaw rate so that
+        #   speed * yaw_rate <= MAX_TURN_ACC_MPS2.
+        yaw_err = _wrap_pi(desired_yaw - self._yaw)
+        lat_limited = (
+            self.MAX_TURN_ACC_MPS2 / max(self.speed_mps, 1e-3)
+            if self.speed_mps > 0.1 else self.MAX_TURN_RAD_S
+        )
+        yaw_rate_limit = min(self.MAX_TURN_RAD_S, lat_limited)
+        yaw_change = np.clip(yaw_err, -yaw_rate_limit * DT, yaw_rate_limit * DT)
+        self._yaw += float(yaw_change)
+
+        # Desired speed — decelerate for the turn/stops with the braking limit
+        desired_speed = min(wp.speed_mps, self.MAX_SPEED_MPS)
+        current_speed = self.speed_mps
+        speed_err = desired_speed - current_speed
+
+        if speed_err >= 0.0:
+            max_dv = self.MAX_ACC_MPS2 * DT
+        else:
+            max_dv = self.MAX_BRAKE_MPS2 * DT
+        new_speed = max(0.0, current_speed + float(np.clip(speed_err, -max_dv, max_dv)))
+
+        # Horizontal velocity from speed and heading. Altitude pinned to the
+        # road level this waypoint is stated at.
+        self._vel[0] = new_speed * math.cos(self._yaw)
+        self._vel[1] = new_speed * math.sin(self._yaw)
+        self._vel[2] = 0.0
+
+        # Integrate
+        self._pos += self._vel * DT
+        self._pos[2] = wp.up
+        self._t += DT
+
+    # ------------------------------------------------------------------
+    def _handle_stop(self, wp, to_wp, dist: float):
+        """Brake to a halt at a speed-0 waypoint, hold, then move on.
+
+        A plain "brake when close" never quits: braking distance at 3 m/s^2
+        from 12 m/s is 24 m, so the truck sits short of the waypoint forever
+        without the dwell logic, and gets within a couple of metres only by
+        arriving at walking pace. Real stops also linger — a red light holds
+        the truck for seconds, and the demo wants to *see* the wheels read
+        0.0 while it waits.
+        """
+        # Heading to the stop point.
+        if dist > 0.01:
+            direction_e = to_wp[0] / dist
+            direction_n = to_wp[1] / dist
+        else:
+            direction_e, direction_n = self._vel[0], self._vel[1]
+            norm = math.hypot(direction_e, direction_n) or 1.0
+            direction_e, direction_n = direction_e / norm, direction_n / norm
+
+        current_speed = self.speed_mps
+
+        # At rest and close enough: hold for the stop duration, then leave.
+        if current_speed < 0.1 and dist < self.STOP_RADIUS_M:
+            self._vel[0] = self._vel[1] = self._vel[2] = 0.0
+            self._stop_hold_s += DT
+            if self._stop_hold_s >= self.STOP_HOLD_S:
+                self._wp_idx += 1
+                self._stop_hold_s = 0.0
+            self._t += DT
+            return
+
+        # Shape speed so the truck can always brake to a stop short of the
+        # waypoint: target = what it has room to brake away from. Far away it
+        # approaches at a modest cap; close in it smoothly bleeds off.
+        room = max(0.0, dist - 2.0)
+        stop_target = math.sqrt(2.0 * self.MAX_BRAKE_MPS2 * room)
+        target_speed = min(stop_target, self.STOP_APPROACH_MPS)
+        speed_err = target_speed - current_speed
+        max_dv = (
+            self.MAX_ACC_MPS2 * DT if speed_err >= 0.0
+            else self.MAX_BRAKE_MPS2 * DT
+        )
+        new_speed = max(0.0, current_speed + float(np.clip(speed_err, -max_dv, max_dv)))
+
+        # Steer toward the stop, still never turning on the spot.
+        desired_yaw = math.atan2(direction_n, direction_e)
+        yaw_err = _wrap_pi(desired_yaw - self._yaw)
+        lat_limited = (
+            self.MAX_TURN_ACC_MPS2 / max(current_speed, 1e-3)
+            if current_speed > 0.1 else self.MAX_TURN_RAD_S
+        )
+        yaw_rate_limit = min(self.MAX_TURN_RAD_S, lat_limited)
+        self._yaw += float(np.clip(yaw_err, -yaw_rate_limit * DT, yaw_rate_limit * DT))
+
+        self._vel[0] = new_speed * math.cos(self._yaw)
+        self._vel[1] = new_speed * math.sin(self._yaw)
+        self._vel[2] = 0.0
+        self._pos += self._vel * DT
+        self._pos[2] = wp.up
+        self._t += DT
+
+
+# ---------------------------------------------------------------------------
+# Factory — pick the motion model for a vehicle type
+# ---------------------------------------------------------------------------
+def make_vehicle(vehicle_type: str, waypoints, rng: np.random.Generator):
+    """Return a Vehicle subclass for `vehicle_type` ('drone' or 'truck')."""
+    if vehicle_type == "truck":
+        return TruckVehicle(waypoints, rng)
+    return Vehicle(waypoints, rng)
+
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 def _wrap_pi(angle: float) -> float:

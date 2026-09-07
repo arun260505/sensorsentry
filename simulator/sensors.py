@@ -252,7 +252,13 @@ class SensorSuite:
         odom = None
         if self._vehicle_type == "truck":
             true_speed = vehicle.speed_mps
-            wheel_speed = true_speed * self._odom_scale + rng.normal(0, 0.05)
+            # A parked truck reads exactly 0.0 — no noise, no drift. A wheel is
+            # digital: it either turns or it does not. This is also what the
+            # detector's stuck-check is built around (health exempts < 0.01).
+            if true_speed < 0.01:
+                wheel_speed = 0.0
+            else:
+                wheel_speed = true_speed * self._odom_scale + rng.normal(0, 0.05)
             odom = {"wheel_speed_mps": round(float(wheel_speed), 3)}
 
         return {

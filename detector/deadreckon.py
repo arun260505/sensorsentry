@@ -59,6 +59,38 @@ of pitch, and the witness integrates *backwards* down the wrong axis.
 
 So we only trust gravity when the vehicle is very nearly unaccelerated. During
 a manoeuvre the gyro carries attitude alone, which is exactly what it is for.
+
+Note this magnitude band alone cannot tell a parked-but-tilted vehicle from a
+level vehicle pulling away gently (see FORCE_CONSISTENCY_MPS2 for the check
+that does). It still earns its keep for vertical thrust, where the force is
+along z and the direction check below sees nothing.
+"""
+
+FORCE_CONSISTENCY_MPS2 = 0.30
+"""How far the horizontal specific force may sit from what the *current*
+attitude estimate would produce before we stop believing it represents tilt.
+
+The magnitude band above is blind to gentle fore-aft acceleration: a truck
+pulling away at 1.5 m/s^2 raises |a| from 9.81 to only 9.90, inside the band,
+so the band alone would read the pull-out as -8.7 degrees of pitch and leak
+gravity into the forward axis. The discriminator is direction. A vehicle that
+is *tilted and stationary* reads ax = -g sin(pitch) on its forward axis and
+ay = g cos(pitch) sin(roll) on its lateral axis — exactly what its own
+gyro-tracked attitude predicts. A level vehicle accelerating reads ax = 1.5
+with a zero pitch to show for it: the reading is not what a tilted vehicle
+would produce, so it is thrust, and we no more correct pitch from it than a
+piloting system would.
+
+The tolerance has to stay above the accel bias (+/-0.04 in the simulator, 0.2
+in the unit test that relies on bias absorption) so that a steady bias can
+still be absorbed into a small pitch offset — which is the point of a
+complementary filter — while the truck's 1.5 m/s^2 pull-out (measured ax
+mismatch ~1.5) and the drone's 2.4+ m/s^2 ramps fall far outside.
+
+The floor this implies is genuinely low: fore-aft acceleration below ~0.3 m/s^2
+is indistinguishable from tilt and the witness will under-read a slow creep.
+That is a property of the accelerometer, not a tuning decision — same argument
+as the 2 m/s walk-off floor in CLAUDE.md.
 """
 
 GYRO_TRUST_RATE = 0.15
@@ -156,6 +188,28 @@ class DeadReckoner:
         self._excess_window: deque[float] = deque(maxlen=MOTION_WINDOW)
         self._rate_window: deque[float] = deque(maxlen=MOTION_WINDOW)
 
+    def _force_consistent(self, ax: float) -> bool:
+        """Does the forward specific force match a *tilted* stationary
+        vehicle of our current pitch, rather than a level one accelerating?
+
+        A level truck pulling away reads ax = 1.5 m/s^2 on the same axis that
+        gravity would put g sin(pitch) on ~ 0 for a level attitude. Correcting
+        pitch from that reading would write a false pitch the gyro then
+        preserves, and gravity leaks into the forward axis for the rest of the
+        run. A vehicle genuinely parked on a -8.7 degree slope reads the same
+        1.5: the two only separate once we compare against our own estimate —
+        which the gyro has kept honest through the motion that brought the
+        vehicle to the slope.
+
+        Only the forward axis is guarded this way, deliberately. The lateral
+        axis stays on the magnitude and rate gates alone: during a banked
+        turn the tracked roll legitimately lags the real bank, and gating it
+        here would starve the very roll corrections a manoeuvring drone needs
+        (measured: it regressed the hard-manoeuvre clean run).
+        """
+        pred_x = -GRAVITY * math.sin(self.pitch)
+        return abs(ax - pred_x) < FORCE_CONSISTENCY_MPS2
+
     def _unaccelerated(self, ax: float, ay: float, az: float,
                        p: float, q: float, r: float) -> bool:
         """Is the vehicle steady enough for gravity to mean 'down'?
@@ -247,9 +301,11 @@ class DeadReckoner:
         self.yaw += dt * ((sin_roll * q + cos_roll * r) / cos_pitch)
 
         # Gravity corrects roll and pitch, but only while the accelerometer is
-        # actually measuring gravity rather than a manoeuvre.
+        # actually measuring gravity rather than a manoeuvre. The magnitude
+        # band and the direction check together: a gentle pull-out stays under
+        # the magnitude band yet is rejected by the direction check.
         ax, ay, az = (float(frame.imu[k]) for k in ("ax", "ay", "az"))
-        if self._unaccelerated(ax, ay, az, p, q, r):
+        if self._unaccelerated(ax, ay, az, p, q, r) and self._force_consistent(ax):
             roll_obs = math.atan2(ay, az)
             pitch_obs = math.atan2(-ax, math.hypot(ay, az))
             self.roll += ACCEL_TILT_GAIN * wrap_pi(roll_obs - self.roll)

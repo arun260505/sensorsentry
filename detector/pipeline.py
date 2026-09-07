@@ -255,7 +255,7 @@ class Pipeline:
                     if k.endswith(":heading_offset")
                 )
             state.blame = blame_mod.assign(pairs, state.pair_states, report)
-            state.cause = self.classifier.update(pairs, state.blame, report)
+            state.cause = self.classifier.update(pairs, state.blame, report, frame.t)
             if self.fusion is not None:
                 state.navigation = self.fusion.update(
                     state.blame, state.state, witness, self.reckoner, self.tracker

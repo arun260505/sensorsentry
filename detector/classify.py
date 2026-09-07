@@ -84,14 +84,38 @@ A sensor whose reading changes as much between adjacent samples as its whole
 error is not measuring anything any more."""
 
 
-STEADY = 0.45
-"""How much the size of the error may vary and still look externally caused.
+ARRIVED_AS_STEP = 2.5
+"""How large a single-sample jump must be, in multiples of the check's own
+noise, to say the error *arrived* rather than crept in.
 
-Measured as the spread of the error against its average size. A magnet laid
-beside a compass holds its offset — put it at 40 degrees and it stays near 40.
-A compass that is failing wanders, so the offset it produces keeps changing
-size even while pointing the same way. Coherence alone cannot separate those
-two; steadiness can."""
+This is what separates interference from a sensor quietly failing, and it took
+being wrong once to find.
+
+The first attempt measured steadiness — the idea being that a magnet holds its
+offset while a failing compass wanders. Measured against the simulator it is
+simply untrue, and backwards: the magnet scored 0.78 and the wandering compass
+0.49. Once a suspect compass stops re-seeding the gyro, the reference itself
+free-runs, so even a perfectly static magnet produces an offset that drifts.
+Steadiness was measuring our own reference, not the world.
+
+The real difference is in how the error *begins*. Something placed beside a
+sensor appears at once: a magnet swings the compass forty degrees between one
+sample and the next. A sensor going bad ramps in — degradation has no reason
+to happen in fifty milliseconds. Measured: a step of 40 degrees against about
+3 for the worst wander.
+
+Latched for the incident, because the step is only visible in the window that
+contains it, and a minute later the question is still being asked."""
+
+STEP_WINDOW_S = 0.3
+"""How quickly a jump must happen to count as one.
+
+Size alone is not enough. Checks are not all sampled evenly — the course check
+needs a GNSS fix and straight flight, so two consecutive readings of it can be
+seconds apart, and a perfectly ordinary change across that gap looks like a
+step. A failing compass was called interference on exactly that mistake.
+
+A step is large *and* fast. Anything slower is a ramp, whatever its size."""
 
 
 @dataclass
@@ -131,19 +155,40 @@ class Classifier:
 
     def __init__(self) -> None:
         self._history: dict[str, deque[float]] = defaultdict(lambda: deque(maxlen=WINDOW))
+        self._seen_at: dict[str, tuple[float, float]] = {}
+        """When each check was last read, and what it read. A jump only counts
+        as a step if the two readings were close together in time."""
+
+        self._biggest_step: dict[str, float] = defaultdict(float)
+        """Largest single-sample jump seen on each check since it was last
+        healthy, in multiples of its own noise. Latched: the step that gives
+        interference away is visible only in the window containing it, and the
+        question is still being asked a minute later."""
 
     def reset(self) -> None:
         self._history.clear()
+        self._seen_at.clear()
+        self._biggest_step.clear()
 
     def update(
         self,
         pairs: list[PairScore],
         blame: Blame,
         health: Optional[dict[str, health_mod.SensorHealth]] = None,
+        t: float = 0.0,
     ) -> Cause:
         for pair in pairs:
-            if pair.valid:
-                self._history[pair.key].append(pair.signed)
+            if not pair.valid:
+                continue
+            previous = self._seen_at.get(pair.key)
+            self._history[pair.key].append(pair.signed)
+            self._seen_at[pair.key] = (t, pair.signed)
+            if previous is not None and pair.sigma > 0:
+                gap = t - previous[0]
+                if 0.0 < gap <= STEP_WINDOW_S:
+                    jump = abs(pair.signed - previous[1]) / pair.sigma
+                    if jump > self._biggest_step[pair.key]:
+                        self._biggest_step[pair.key] = jump
 
         if not blame.isolated or blame.guilty is None:
             return Cause()
@@ -190,13 +235,13 @@ class Classifier:
 
         coherence = _coherence(samples)
         erraticness = _erraticness(samples)
-        variability = _variability(samples)
+        arrived_at_once = self._biggest_step[strongest.key]
         sensed = profiles.HOW_SENSED.get(guilty, "inertial")
 
         features = {
             "coherence": round(coherence, 3),
             "erraticness": round(erraticness, 3),
-            "variability": round(variability, 3),
+            "step": round(arrived_at_once, 2),
             "samples": float(len(samples)),
         }
         features_check = strongest.label
@@ -220,24 +265,24 @@ class Classifier:
                     "error means somebody is transmitting.",
                     _ACTIONS[ATTACK], features,
                 )
-            if sensed == "field" and variability > STEADY:
-                # Coherent but restless. A magnet or a pressure source sits
-                # there and holds its offset; an offset that keeps changing
-                # size is the sensor drifting, not the world around it.
+            if sensed == "field" and arrived_at_once < ARRIVED_AS_STEP:
+                # Coherent, but it crept in. Something placed beside a sensor
+                # appears between one sample and the next; degradation has no
+                # reason to happen in fifty milliseconds.
                 return Cause(
-                    FAULT, min(1.0, variability),
-                    f"The {_friendly(guilty)} is wrong by an amount that keeps "
-                    "changing. Something interfering from outside would hold "
-                    "steady, so this looks like the sensor itself degrading.",
+                    FAULT, min(1.0, coherence * 0.8),
+                    f"The {_friendly(guilty)} drifted wrong rather than jumping. "
+                    "Something placed beside it would appear at once, so this "
+                    "looks like the sensor itself going bad.",
                     _ACTIONS[FAULT], features,
                 )
             if sensed == "field":
                 return Cause(
                     INTERFERENCE, min(1.0, coherence),
-                    f"The {_friendly(guilty)} is offset steadily while the "
-                    "vehicle's own motion sensors show nothing unusual. It "
-                    "measures the air around it, so the field itself has been "
-                    "changed by something close by.",
+                    f"The {_friendly(guilty)} jumped and has stayed wrong, while "
+                    "the vehicle's own motion sensors show nothing unusual. It "
+                    "measures the field around it, and that field changed all at "
+                    "once — something was placed close to the vehicle.",
                     _ACTIONS[INTERFERENCE], features,
                 )
             return Cause(
@@ -271,19 +316,6 @@ def _coherence(samples: list[float]) -> float:
     if magnitude == 0.0:
         return 0.0
     return abs(sum(samples)) / magnitude
-
-
-def _variability(samples: list[float]) -> float:
-    """Spread of the error against its average size."""
-    n = len(samples)
-    if n < 2:
-        return 0.0
-    mean = sum(samples) / n
-    scale = sum(abs(s) for s in samples) / n
-    if scale == 0.0:
-        return 0.0
-    var = sum((s - mean) ** 2 for s in samples) / (n - 1)
-    return math.sqrt(var) / scale
 
 
 def _erraticness(samples: list[float]) -> float:

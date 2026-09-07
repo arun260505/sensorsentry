@@ -138,6 +138,7 @@ or interference, and gives a different instruction for each. It says
     harness/blame_check.py     8 of 8 - which sensor
     harness/classify_check.py  8 of 8 - attack / fault / interference
 
+<<<<<<< HEAD
 It now **acts** on the verdict: the lying sensor is dropped and the vehicle
 keeps navigating on the rest, with an error budget that grows honestly and
 tells the operator when to stop.
@@ -156,9 +157,20 @@ console, the truck profile, evidence, phone view.
 | — | Detector core | stages 1-10 done, 59 tests passing |
 | — | Fleet | clustering, zone and advisories done — not yet on screen |
 | — | Console | live — canvas map, two paths, raw feed |
+=======
+What remains is plumbing rather than invention: act on the verdict (7), the
+detector's truck road-check in crossvalidate (8), fleet map (9), evidence and
+phone view (10).
+
+| Owner | Area | State |
+|---|---|---|
+| Abishek | Simulator | tasks 1-3 done: vehicle + sensors, attack/fault/interference injectors (single-axis `Bias`), **the truck** — `roads.py`, `TruckVehicle`, `truck_clean`/`truck_theft` (zero-alert gate green, theft → GPS/attack) |
+| — | Detector core | stages 1-7 (bar fusion) done, 41 tests passing |
+| — | Console | live — canvas map, two paths, raw feed (scenario buttons from `/control/scenarios`) |
+>>>>>>> origin/sim/truck
 | — | Blame (stage 5) | **done** — names the sensor, or says `cannot_isolate` |
 | — | Classify (stage 6) | **done** - attack / fault / interference, or `unclassified` |
-| — | Truck, fleet, evidence | not started — phases 8, 9, 10 |
+| — | Fleet map, evidence | not started — phases 9, 10 |
 
 Full checklist: **[PLAN.md](PLAN.md)**
 
@@ -267,6 +279,18 @@ on the *worst* sample in the last second, not the average: an averaged gate
 still opens at the start of a manoeuvre while the window is half full of the
 stationary samples before it, which is enough to do the damage.
 
+A magnitude gate alone still cannot reach a truck: at the briefed 1.5 m/s²
+pull-away, |a| − g ≈ 0.10, comfortably inside any band that also lets a
+resting drone level itself. So the gate gained a **direction check**
+(`deadreckon.py`, `FORCE_CONSISTENCY_MPS2`): a pitch correction is refused
+unless the forward specific force matches −g·sin(pitch). A level truck pulling
+away reads ax ≈ 1.5 on the same axis gravity would use, so nothing writes a
+false pitch and the witness keeps navigating. The check is pitch-only by
+design — gating the roll axis the same way starved the drone's banked-turn
+leveling and regressed the hard-manoeuvre clean run. Below ~0.3 m/s² the
+direction check also stops telling a pull-away from noise; that is the honest
+truck floor, and the brief (1.5 m/s²) sits above it.
+
 **2. Health checks must measure sample-to-sample noise, not raw spread, and
 use a median.** Real motion is smooth so it barely shows between adjacent
 samples; a failing sensor is not. And one genuine jump — a vehicle moving off
@@ -286,13 +310,16 @@ seeds per point. These are the numbers to put on the results card.
 
 | | result |
 |---|---|
-| **False alarms**, 8 honest flights incl. hard manoeuvres | **zero** |
+| **False alarms**, 12 honest runs (drone clean + hard manoeuvre, truck_clean) | **zero** |
 | GPS walk-off 5 m/s | caught 15-16 s after onset |
-| GPS walk-off 3 m/s | caught 16-17 s after onset |
+| GPS walk-off 3 m/s | caught 15-17 s after onset |
 | GPS walk-off 2 m/s | caught 16-18 s after onset |
 | GPS walk-off 1 m/s and below | **not detected** |
 | Magnet on compass, 25 deg or more | caught 2 s after onset |
 | Magnet on compass, 10 deg | caught 14 s after onset |
+| Truck walk-off 2-5 m/s, parallel to the road | caught ~69-70 s after onset |
+| Truck walk-off 1 m/s | **not detected** |
+| Truck demo `truck_theft` (18 m/s walk-off) | GPS blamed ~t=108; cause attack |
 
 **Say the floor out loud on stage.** Below about 2 m/s a walk-off is slower
 than our own inertial drift and we do not catch it. That is a property of the
@@ -302,6 +329,13 @@ move a vehicle a kilometre.
 The 15-17 s latency is honest too, and worth explaining rather than hiding:
 the course check only means anything while the vehicle is flying straight, so
 detection waits for the next straight segment after the attack starts.
+
+The truck's ~70 s latency is a different animal and needs its own one-liner:
+a walk-off *parallel* to travel bends the reported course almost not at all,
+so the compass/course eyes that catch the drones stay quiet, and detection
+rides the cumulative GPS-vs-wheel-distance residual instead. The demo's
+`truck_theft` is caught sooner (~t=108) precisely because the real truck turns
+off the road — divergence is instantly visible.
 
 ### Open questions
 
@@ -317,6 +351,12 @@ detection waits for the next straight segment after the attack starts.
   **Phase 7 is now a blocker, not an improvement:** while GNSS is trusted it must
   aid the witness so drift stops growing without bound and the residual becomes
   a filter innovation. Free-running for three minutes is a phase 2 shortcut.
+- **Truck walk-off cause flaps fault/attack while the truck sits parked.**
+  During the in-line walk-off the wheels read 0.0 and the real GNSS is
+  legitimately static at the red light, so health flags GPS "stuck" exactly
+  when the drift pattern reads "attack". Blame never wavers (gnss throughout),
+  but the cause toggles for a couple of seconds around the hold. A classifier
+  tie-break is deserved in a later phase; not started.
 - Abishek's raw-integration drift check (target 20–120 m at 60 s) measures
   *unfiltered* integration, so it is not the same quantity as our filtered
   witness error (~12 m). Both are useful; don't confuse them.

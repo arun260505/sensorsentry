@@ -10,6 +10,8 @@ import sys
 import traceback
 from typing import Callable
 
+import numpy as np
+
 from detector import health, profiles
 from detector.deadreckon import DeadReckoner
 from detector.geo import ENU, Origin, enu_from_llh, heading_from_yaw, llh_from_enu, wrap_pi, yaw_from_heading
@@ -20,10 +22,20 @@ from detector import evidence as evidence_mod
 from detector import fusion as fusion_mod
 from detector import report as report_mod
 from detector.crossvalidate import CrossValidator, PairScore
+from detector.pipeline import Pipeline
 from detector.residual import ResidualTracker
 from fleet import advisory as adv_mod
 from fleet import cluster as cluster_mod
 from harness import fixtures
+from simulator.attacks import AltitudeOnly, Replay, Teleport, WalkOff
+from simulator.faults import Bias, Dropout, Noisy, Stuck
+from simulator.interference import Magnet, Pressure
+from simulator.roads import distance_to_nearest_road, nearest_road_name
+from simulator.scenarios import get_scenario
+from simulator.sensors import SensorSuite
+from simulator.vehicle import make_vehicle
+
+DT = 1.0 / 20.0
 
 _TESTS: list[tuple[str, Callable[[], None]]] = []
 
@@ -546,9 +558,9 @@ def _classified(guilty, series, domain="heading", health=None, kind="heading_off
     verdict = blame_mod.Blame(guilty=guilty, domain=domain, confidence=1.0)
     engine = classify_mod.Classifier()
     cause = classify_mod.Cause()
-    for value in series:
+    for i, value in enumerate(series):
         pair.signed = value
-        cause = engine.update([pair], verdict, health)
+        cause = engine.update([pair], verdict, health, i * 0.05)
     return cause
 
 
@@ -562,12 +574,25 @@ def a_steady_one_way_pull_on_gps_is_an_attack() -> None:
 
 
 @test
-def a_steady_offset_on_the_compass_is_interference() -> None:
-    """A compass measures the field around it. Nobody transmits a magnetic
-    field from orbit, so a steady offset means something is next to it."""
-    steady = [40.0 + (0.3 if i % 2 else -0.3) for i in range(120)]
-    cause = _classified("mag", steady)
+def an_offset_that_arrives_at_once_is_interference() -> None:
+    """A compass measures the field around it, and nobody transmits a magnetic
+    field from orbit — so an offset means something is next to it.
+
+    It has to *arrive*, though. Something placed beside a sensor appears
+    between one sample and the next; a sensor going bad ramps in, because
+    degradation has no reason to happen in fifty milliseconds. The series here
+    sits at zero, jumps, and stays."""
+    arrives = [0.0] * 45 + [40.0 + (0.3 if i % 2 else -0.3) for i in range(120)]
+    cause = _classified("mag", arrives)
     assert cause.label == classify_mod.INTERFERENCE, (cause.label, cause.features)
+
+
+@test
+def an_offset_that_creeps_in_is_the_sensor() -> None:
+    """Same size, same direction, no arrival — that is degradation."""
+    creeps = [40.0 * (i / 160.0) for i in range(160)]
+    cause = _classified("mag", creeps)
+    assert cause.label == classify_mod.FAULT, (cause.label, cause.features)
 
 
 @test
@@ -580,9 +605,15 @@ def an_error_thrashing_both_ways_is_a_fault() -> None:
 
 @test
 def a_restless_offset_is_the_sensor_not_the_world() -> None:
-    """Coherent but changing size. A magnet holds its offset; a dying compass
-    does not — steadiness is what separates them."""
-    restless = [20.0 + 25.0 * math.sin(i / 9.0) for i in range(120)]
+    """Coherent, and it wandered in rather than arriving.
+
+    This test used to assert that *steadiness* separated a magnet from a dying
+    compass — the idea being that a magnet holds its offset. Measured against
+    the simulator that is untrue and backwards: the magnet varied more than the
+    failing compass, because once a suspect compass stops re-seeding the gyro
+    the reference itself free-runs. What separates them is how the error began.
+    """
+    restless = [20.0 + 25.0 * math.sin(i / 40.0) for i in range(160)]
     cause = _classified("mag", restless)
     assert cause.label == classify_mod.FAULT, (cause.label, cause.features)
 
@@ -936,6 +967,141 @@ def a_vehicle_already_under_attack_is_not_told_to_reroute() -> None:
     ])
     victim = adv_mod.VehicleState("A", 11.000, 76.950, 15.0, under_attack=True)
     assert adv_mod.advise([victim], zones) == []
+
+# --- truck (simulator Task 3) ----------------------------------------------
+
+
+def _truck_injectors(schedule: list[dict]) -> list[dict]:
+    """Map a scenario's schedule onto injector objects, exactly as run.py does."""
+    registry = {
+        "attack":       {cls.__name__: cls for cls in (WalkOff, Teleport, AltitudeOnly, Replay)},
+        "fault":        {cls.__name__: cls for cls in (Stuck, Noisy, Dropout, Bias)},
+        "interference": {cls.__name__: cls for cls in (Magnet, Pressure)},
+    }
+    entries = []
+    for e in schedule:
+        cls = registry[e["kind"]][e["cls"]]
+        entries.append({"t_start": e["t_start"], "kind": e["kind"],
+                        "inj": cls(**e.get("kwargs", {})), "armed": False})
+    return sorted(entries, key=lambda x: x["t_start"])
+
+
+def _truck_run(scenario: str, seed: int, secs: float = 180.0) -> list[tuple]:
+    """Whole real simulator + whole real pipeline. Returns state transitions
+    (t, state, guilty, cause) — mirrors harness/sweep but keeps the event log."""
+    wps, vtype, schedule = get_scenario(scenario)
+    entries = _truck_injectors(schedule)
+    rng = np.random.default_rng(seed)
+    vehicle = make_vehicle(vtype, wps, rng)
+    sensors = SensorSuite(rng, vehicle_type=vtype)
+    pipeline = Pipeline()
+    pipeline.accept({
+        "type": "run_start", "run_id": f"truck-test-{seed}", "vehicle_id": "TRUCK-42",
+        "vehicle_type": vtype, "seed": seed, "rate_hz": 20, "gnss_rate_hz": 5, "t0": 0.0,
+    })
+    active: object | None = None
+    active_t = 0.0
+    prev = None
+    events: list[tuple] = []
+    for i in range(int(secs / DT)):
+        sdata = sensors.update(vehicle)
+        t = vehicle.t
+        for e in entries:
+            if not e["armed"] and t >= e["t_start"]:
+                e["armed"] = True
+                active, active_t = e["inj"], t
+        if active is not None:
+            t_since = t - active_t
+            kind = next(e["kind"] for e in entries if e["inj"] is active)
+            if kind == "attack":
+                if sdata["gnss"] is not None:
+                    sdata["gnss"] = active.apply(sdata["gnss"], t_since)
+            elif kind == "fault":
+                sdata = active.apply(sdata, t_since, rng)
+            else:
+                sdata = active.apply(sdata, t_since)
+        st = pipeline.accept({
+            "vehicle_id": "TRUCK-42", "t": round(t, 3), "seq": i,
+            "gnss": sdata["gnss"], "imu": sdata["imu"],
+            "baro": sdata["baro"], "mag": sdata["mag"], "odom": sdata["odom"],
+        })
+        vehicle.step()
+        if st is None:
+            continue
+        key = (st.state, st.blame.guilty, st.cause.label)
+        if key != prev:
+            prev = key
+            events.append((t, st.state, st.blame.guilty, st.cause.label))
+    return events
+
+
+@test
+def truck_roads_answer_distance_and_name() -> None:
+    """roads.py: a point on the highway is on a road; the middle of nowhere is not."""
+    assert distance_to_nearest_road(0.0, 0.0) == 0.0
+    assert nearest_road_name(0.0, 0.0) == "NH-544"
+    assert distance_to_nearest_road(1200.0, 100.0) == 0.0  # highway/service junction
+    far = (9e4, -9e4)
+    assert nearest_road_name(*far) == "none"
+    assert distance_to_nearest_road(*far) > 50.0
+
+
+@test
+def truck_parks_wheels_read_zero_then_moves_on() -> None:
+    """A truck stops (red light), its wheels read exactly 0.0 while parked, then
+    it pulls away and drives on — and it never leaves the road's shape."""
+    rng = np.random.default_rng(7)
+    wps, _vtype, _schedule = get_scenario("truck_clean")[:3]
+    vehicle = make_vehicle("truck", wps, rng)
+    sensors = SensorSuite(rng, vehicle_type="truck")
+    longest = 0.0
+    cur = 0.0
+    stop_wheels_zero = True
+    longest_wheels_zero = True
+    final_speed = 0.0
+    final_e = 0.0
+    for _ in range(int(180.0 / DT)):
+        sdata = sensors.update(vehicle)
+        wheel = sdata["odom"]["wheel_speed_mps"]
+        speed = vehicle.speed_mps
+        if speed < 0.01:
+            cur += DT
+            stop_wheels_zero = stop_wheels_zero and wheel == 0.0
+        else:
+            if cur > longest:
+                longest = cur
+                longest_wheels_zero = stop_wheels_zero
+            cur = 0.0
+            stop_wheels_zero = True
+        final_speed = speed
+        final_e = float(vehicle.position_enu[0])
+        vehicle.step()
+    if cur > longest:
+        longest = cur
+        longest_wheels_zero = stop_wheels_zero
+    assert longest >= 4.0, "the red-light hold never happened"
+    assert longest_wheels_zero, "stopped truck wheel did not read exactly 0.0"
+    assert final_speed > 15.0, "truck never pulled away after the stop"
+    assert 500.0 < final_e < 1100.0, "truck did not round-trip past the stop"
+
+
+@test
+def truck_clean_three_minutes_produces_no_alerts() -> None:
+    """The truck gate: a clean 3-minute run — junction, red light, service road,
+    pull-away — must clear with zero alerts. If this number leaves zero, stop."""
+    for seed in (0, 1, 2):
+        alarming = [e for e in _truck_run("truck_clean", seed) if e[1] != "OK"]
+        assert not alarming, f"truck_clean seed {seed} raised: {alarming[:5]}"
+
+
+@test
+def truck_theft_walkoff_blames_gps_as_attack() -> None:
+    """The demo: a walk-off drags the reported path away while the real truck is
+    diverted to the warehouse. The detector must name GPS and call it an attack."""
+    for seed in (0, 1):
+        events = _truck_run("truck_theft", seed)
+        assert any(e[2] == "gnss" for e in events), f"seed {seed} never blamed gnss"
+        assert any(e[3] == "attack" for e in events), f"seed {seed} never said attack"
 
 
 # --- runner ---------------------------------------------------------------
