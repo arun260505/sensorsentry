@@ -65,20 +65,29 @@ COURSE_SIGMA_DEG = 3.0
 Measured 2.2-2.6 mean, 5.3-6.1 at the 95th percentile, across both scenarios
 and several seeds."""
 
-HEADING_SIGMA_DEG = 2.5
-"""Expected compass-vs-gyro disagreement over that window, in degrees, before
-allowing for how far the vehicle actually turned."""
+HEADING_SIGMA_DEG = 6.0
+"""Expected compass-vs-gyro disagreement, in degrees.
 
-HEADING_SCALE_TOLERANCE = 0.08
-"""Extra tolerance as a fraction of how far the vehicle has turned in total.
+Fixed rather than growing, now that the gyro heading is re-seeded and so
+cannot drift away on its own. Measured on honest flights including hard
+manoeuvring."""
 
-A gyroscope's error is largely a scale factor — it under- or over-reads
-rotation by a percentage — so the disagreement you should expect after turning
-100 degrees is far larger than after turning 2. A flat tolerance therefore
-reads a hard banking turn as a failing compass: measured 9.8x on an honest
-manoeuvre, worse than an actual magnet. Scaling with the turn puts an
-aggressive turn back at 1.5x while leaving a magnet at 11x, because a magnet
-shifts the compass without the vehicle turning at all."""
+GYRO_RESEED_TAU_S = 45.0
+"""Time constant for pulling the gyro heading back toward the compass.
+
+Left alone, an integrated gyro heading drifts without bound — scale error
+accumulates over every turn — so comparing it against the compass across a
+whole flight measures our own drift more than anything else. Growing the
+tolerance to cover that just makes the check blind: a compass wandering by 35
+degrees scored 1.0x normal and raised nothing at all.
+
+So the gyro heading is slowly re-seeded from the compass. Drift is absorbed;
+anything faster than the time constant is not. A magnet arriving shows up for
+about a minute before being absorbed, which is far longer than needed, and a
+compass that keeps wandering never stops showing.
+
+The honest cost, and it is the same trade as the GNSS aiding: a compass error
+that creeps in more slowly than 45 seconds is invisible to this check."""
 
 ALT_SIGMA_M = 5.0
 """Expected GNSS-vs-barometric altitude disagreement, in metres. GNSS altitude
@@ -96,14 +105,25 @@ class PairScore:
     a: str
     b: str
     label: str
-    kind: str = ""
-    domain: str = ""
-    """Which comparison this is. Two sensors can be checked more than one way,
-    so the kind — not the sensor names — is what identifies a check."""
     """Plain words, because this reaches the operator's evidence list."""
 
+    kind: str = ""
+    """Which comparison this is. Two sensors can be checked more than one way,
+    so the kind — not the sensor names — is what identifies a check."""
+
+    domain: str = ""
+    """What the check is sensitive to: heading, horizontal or vertical. Blame
+    only lets a sensor be cleared by a check from the same domain."""
+
     value: float = 0.0
-    """Measured disagreement, in `unit`."""
+    """Measured disagreement, in `unit`. Always positive."""
+
+    signed: float = 0.0
+    """The same disagreement, keeping its direction.
+
+    Stage 6 needs the sign. A failing sensor wanders either way at random; an
+    attacker pulls one way, because he wants the vehicle somewhere specific.
+    Take the absolute value first and that distinction is gone for good."""
 
     unit: str = "m"
     sigma: float = 1.0
@@ -142,6 +162,16 @@ class CrossValidator:
         self._turn_rates: deque[float] = deque(maxlen=200)
         self._gyro_heading_deg = 0.0
         self._gyro_seeded = False
+        self.compass_trusted = True
+        """Whether the compass may still correct the gyro heading.
+
+        Cleared once the compass is under suspicion. Otherwise the re-seeding
+        quietly absorbs the very offset that raised the suspicion: a magnet was
+        correctly blamed for fifty seconds, then the gyro caught up with the
+        corrupted compass, the two agreed again, and the accusation moved to
+        GPS — which was innocent. A reference must stop following a sensor the
+        moment that sensor stops being trustworthy."""
+
         self._total_turn_deg = 0.0
         """How far the vehicle has turned in total. Gyro heading error is
         mostly scale error, so it accumulates with rotation, not with time."""
@@ -161,7 +191,7 @@ class CrossValidator:
         the same list in the same order, valid or not — stage 5 needs to know
         which checks were unavailable as much as which ones failed."""
         self._origin = origin
-        self._track_gyro_heading(frame)
+        self._track_gyro_heading(frame, witness)
         self._record(frame)
 
         scores: list[PairScore] = []
@@ -171,7 +201,7 @@ class CrossValidator:
 
     # --- bookkeeping --------------------------------------------------------
 
-    def _track_gyro_heading(self, frame: Frame) -> None:
+    def _track_gyro_heading(self, frame: Frame, witness: Witness) -> None:
         """Integrate the gyro into a heading of its own.
 
         Deliberately kept separate from the compass so the two can be compared.
@@ -186,11 +216,40 @@ class CrossValidator:
             return
 
         if frame.dt > 0.0 and self._gyro_seeded:
-            # gz is a rotation about the up axis, counter-clockwise. Compass
-            # heading runs clockwise from north, so the sign flips.
-            step = math.degrees(float(frame.imu.get("gz", 0.0))) * frame.dt
-            self._gyro_heading_deg = (self._gyro_heading_deg - step) % 360.0
+            # Heading rate is not the gyro's z reading. Only a level vehicle
+            # turns about its own z axis; banked over, part of the turn shows
+            # up on y and the rest is foreshortened by pitch. Integrating gz
+            # raw under-reads every banked turn by about 13 percent at 30
+            # degrees, which accumulated into 171 degrees of phantom offset
+            # across a manoeuvring flight — read as a failing compass on a
+            # vehicle that was completely fine.
+            roll, pitch = witness.roll, witness.pitch
+            cos_pitch = math.cos(pitch)
+            if abs(cos_pitch) < 1e-4:
+                cos_pitch = math.copysign(1e-4, cos_pitch or 1.0)
+            yaw_rate = (
+                math.sin(roll) * float(frame.imu.get("gy", 0.0))
+                + math.cos(roll) * float(frame.imu.get("gz", 0.0))
+            ) / cos_pitch
+
+            # Positive yaw is counter-clockwise in ENU; compass heading runs
+            # clockwise from north, so the sign flips.
+            step = math.degrees(yaw_rate) * frame.dt
+            heading = self._gyro_heading_deg - step
             self._total_turn_deg += abs(step)
+
+            # Pull slowly back toward the compass. Without this the integrated
+            # heading drifts without bound and the check ends up measuring our
+            # own error; with it, drift is absorbed while anything faster than
+            # the time constant still stands off.
+            if (self.compass_trusted and frame.mag is not None
+                    and "heading_deg" in frame.mag):
+                gain = min(1.0, frame.dt / GYRO_RESEED_TAU_S)
+                heading += gain * math.degrees(
+                    wrap_pi(math.radians(float(frame.mag["heading_deg"]) - heading))
+                )
+
+            self._gyro_heading_deg = heading % 360.0
 
     def _record(self, frame: Frame) -> None:
         if not frame.has_gnss() or self._origin is None:
@@ -290,7 +349,9 @@ class CrossValidator:
 
         course_deg = (90.0 - math.degrees(math.atan2(dn, de))) % 360.0
         heading_deg = now[2] if use_compass else self._gyro_heading_deg
-        error = abs(math.degrees(wrap_pi(math.radians(course_deg - heading_deg))))
+        signed = math.degrees(wrap_pi(math.radians(course_deg - heading_deg)))
+        error = abs(signed)
+        score.signed = signed
         score.value = error
         score.ratio = error / score.sigma
         score.valid = True
@@ -328,7 +389,8 @@ class CrossValidator:
             wrap_pi(math.radians(compass_now - self._gyro_heading_deg))
         )
 
-        score.sigma = HEADING_SIGMA_DEG + HEADING_SCALE_TOLERANCE * self._total_turn_deg
+        score.sigma = HEADING_SIGMA_DEG
+        score.signed = offset
         score.value = abs(offset)
         score.ratio = score.value / score.sigma
         score.valid = True
@@ -351,7 +413,9 @@ class CrossValidator:
             return score
 
         gnss_alt_change = float((frame.gnss or {})["alt"]) - self._origin.alt
-        error = abs(gnss_alt_change - witness.displacement.u)
+        signed = gnss_alt_change - witness.displacement.u
+        error = abs(signed)
+        score.signed = signed
         score.value = error
         score.ratio = error / score.sigma
         score.valid = True
@@ -375,6 +439,9 @@ class CrossValidator:
         )
         error = (pos - witness.displacement).horizontal_norm()
         score.sigma = max(POSITION_SIGMA_FLOOR_M, witness.sigma_m)
+        # A distance has no sign; coherence for this check comes from whether
+        # it grows steadily, which stage 6 measures as a trend instead.
+        score.signed = error
         score.value = error
         score.ratio = error / score.sigma
         score.valid = True

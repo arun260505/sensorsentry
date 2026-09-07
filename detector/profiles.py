@@ -91,6 +91,31 @@ TRUCK = Profile(
     ),
 )
 
+HOW_SENSED = {
+    GNSS: "radio",
+    MAG: "field",
+    BARO: "field",
+    IMU: "inertial",
+    ODOM: "mechanical",
+}
+"""How each sensor comes by its information.
+
+Stage 6 needs this to work out what could *cause* a coherent error, and the
+answer is physics rather than a lookup table of sensor names.
+
+A radio sensor is told its answer from 20,000 km away, below the noise floor.
+A steady, purposeful error in one means somebody is transmitting — an attack.
+
+A field sensor measures something in the air immediately around it. Nobody can
+transmit a magnetic field from orbit, so a steady error in one means the field
+itself was changed — interference, at close range.
+
+Inertial and mechanical sensors measure the vehicle's own body. Neither can be
+reached without touching the vehicle, so a coherent error in one is far more
+likely to be the sensor failing than anyone attacking it.
+"""
+
+
 _BY_NAME = {p.name: p for p in (DRONE, TRUCK)}
 
 

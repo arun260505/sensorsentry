@@ -45,6 +45,16 @@ get the system back to OK, and an operator watching a borderline case should
 not see the badge flickering between states while they try to read it."""
 
 
+LEAK = 0.5
+"""How fast the case for changing state decays when evidence stops, relative
+to how fast it builds.
+
+Half speed. Evidence that appears more than a third of the time still gets
+there eventually, which is what a noisy sensor looks like; evidence that
+appears in one sample of a thousand never does, which is what noise looks
+like."""
+
+
 @dataclass
 class Hysteresis:
     """Turns an instantaneous reading into a state that means something.
@@ -84,11 +94,14 @@ class Hysteresis:
         here, there = _RANK[self.state], _RANK[instant]
 
         if there == here:
-            # Reading agrees with where we are. Any partial case for moving
-            # decays immediately — evidence has to be continuous, not merely
-            # frequent, or a sensor flickering on and off would eventually
-            # accumulate its way to an alarm.
-            self._held_s = 0.0
+            # Agrees with where we are: the case for moving leaks away, but it
+            # does not vanish. Demanding strictly *continuous* evidence looked
+            # tidier and quietly missed the most obvious fault there is — a
+            # compass gone noisy crosses back under the threshold between
+            # samples, resetting the timer forever, so a sensor reading 17x
+            # normal raised nothing at all. Intermittent evidence is still
+            # evidence; a single spike is not.
+            self._held_s = max(0.0, self._held_s - dt * LEAK)
             return self.state
 
         self._held_s += dt
@@ -146,9 +159,24 @@ class PairTrust:
     def reset(self) -> None:
         self._per_pair.clear()
 
-    def update(self, dt: float, pairs) -> tuple[str, dict[str, str]]:
-        """Returns the overall state and each pair's settled state."""
+    def update(self, dt: float, pairs, health=None) -> tuple[str, dict[str, str]]:
+        """Returns the overall state and each signal's settled state.
+
+        A sensor's own health is treated as a signal in its own right, not
+        merely as supporting evidence. A barometer frozen on one value is a
+        fault whether or not any cross-check happens to notice — and one may
+        well not, if the vehicle is holding altitude at the time. Waiting for
+        a disagreement to appear before admitting a sensor is broken means the
+        obvious failures are the ones that get missed.
+        """
         settled: dict[str, str] = {}
+        for sensor, report in (health or {}).items():
+            key = f"health:{sensor}"
+            hyst = self._per_pair.get(key)
+            if hyst is None:
+                hyst = self._per_pair[key] = Hysteresis(self.rise_s, self.fall_s)
+            settled[key] = hyst.update(dt, ALERT if not report.healthy else OK)
+
         for pair in pairs:
             key = pair.key
             hyst = self._per_pair.get(key)

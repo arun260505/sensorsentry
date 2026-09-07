@@ -126,22 +126,28 @@ short.**
 
 ## Status
 
-**Current phase:** 6 — attack or fault. Phases 1-5 and 7's hysteresis are done.
+**Current phase:** 7 — fusion and fallback. Phases 1-6 are done; 7's hysteresis is done.
 **Last updated:** 7 September 2026
 
-The detector works end to end: honest flights are silent, GPS spoofing and
-compass interference are caught, and the guilty sensor is **named** with its
-evidence. `harness/sweep.py` measures detection, `harness/blame_check.py`
-checks the accusations — 8 of 8 correct. What is still missing is *why*:
-attack, breakdown or interference. That is phase 6.
+**Both starred stages are built.** The detector catches a spoof, a magnet or
+a failing sensor, names the sensor, says whether it is an attack, a breakdown
+or interference, and gives a different instruction for each. It says
+`cannot_isolate` or `unclassified` rather than guessing.
+
+    harness/sweep.py           zero false alarms; detection floor ~2 m/s
+    harness/blame_check.py     8 of 8 - which sensor
+    harness/classify_check.py  8 of 8 - attack / fault / interference
+
+What remains is plumbing rather than invention: act on the verdict (7), truck
+profile (8), fleet map (9), evidence and phone view (10).
 
 | Owner | Area | State |
 |---|---|---|
 | Abishek | Simulator | task 1 done (reviewed, fixed) · **task 2 in progress** — attack injectors |
-| — | Detector core | stages 1-5 + hysteresis done, 28 tests passing |
+| — | Detector core | stages 1-7 (bar fusion) done, 35 tests passing |
 | — | Console | live — canvas map, two paths, raw feed |
 | — | Blame (stage 5) | **done** — names the sensor, or says `cannot_isolate` |
-| — | **Classify (stage 6)** | **not started — attack vs fault vs interference** |
+| — | Classify (stage 6) | **done** - attack / fault / interference, or `unclassified` |
 | — | Truck, fleet, evidence | not started — phases 8, 9, 10 |
 
 Full checklist: **[PLAN.md](PLAN.md)**
@@ -167,6 +173,30 @@ Two things about the console that are deliberate and easy to undo by accident:
   that tells it an attack is happening."*
 
 ### Engineering findings — these cost real time, don't rediscover them
+
+**-2. A reference must stop following a sensor the moment it becomes suspect.**
+The gyro heading is slowly re-seeded from the compass so it cannot drift
+without bound. Left running, that re-seeding quietly *absorbed* a magnet
+offset: the magnet was correctly blamed for fifty seconds, the gyro caught up
+with the corrupted compass, the two agreed again, and the accusation moved to
+GPS - which was innocent. Same rule as freezing GNSS aiding under attack.
+
+**Evidence must be allowed to be intermittent.** Requiring strictly continuous
+evidence looked tidy and missed the most obvious fault there is: a compass
+gone noisy dips back under the threshold between samples, resetting the timer
+forever, so a sensor reading 17x normal raised nothing at all. The accumulator
+now leaks at half speed instead of resetting.
+
+**Heading rate is not the gyro's z reading.** Only a level vehicle turns about
+its own z axis; banked over, part of the turn appears on y and the rest is
+foreshortened by pitch. Integrating gz raw under-reads a 30-degree banked turn
+by 13 percent, which accumulated to 171 degrees across a flight and read as a
+failing compass on a healthy vehicle.
+
+**Coherence alone cannot separate interference from a dying sensor** - both
+give a smooth one-way error. Steadiness can: a magnet holds its offset, a
+failing compass keeps changing how wrong it is.
+
 
 **-1. A sensor is only cleared by a check that would have caught the fault.**
 GNSS passing an altitude check says nothing about it lying horizontally, and
@@ -236,10 +266,10 @@ seeds per point. These are the numbers to put on the results card.
 | **False alarms**, 8 honest flights incl. hard manoeuvres | **zero** |
 | GPS walk-off 5 m/s | caught 15-16 s after onset |
 | GPS walk-off 3 m/s | caught 16-17 s after onset |
-| GPS walk-off 2 m/s | caught in 2 of 3 runs |
+| GPS walk-off 2 m/s | caught 16-18 s after onset |
 | GPS walk-off 1 m/s and below | **not detected** |
 | Magnet on compass, 25 deg or more | caught 2 s after onset |
-| Magnet on compass, 10 deg | not detected |
+| Magnet on compass, 10 deg | caught 14 s after onset |
 
 **Say the floor out loud on stage.** Below about 2 m/s a walk-off is slower
 than our own inertial drift and we do not catch it. That is a property of the

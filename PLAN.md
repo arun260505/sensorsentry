@@ -10,19 +10,24 @@ measured rather than claimed (`python -m harness.sweep`).
 
 | | |
 |---|---|
-| **Done** | 1 simulator · 2 witness · 3 console · 4 cross-validation · **5 blame** · 7 hysteresis |
+| **Done** | 1 simulator · 2 witness · 3 console · 4 cross-validation · **5 blame** · **6 classify** · 7 hysteresis |
 | **In progress** | 4 attack injectors (Abishek, task 2) |
-| **Next gate** | **6 — attack, fault or interference** |
+| **Next** | 7 — fusion and fallback · 8 truck · 9 fleet |
 | **Not started** | 8 truck · 9 fleet · 10 evidence · 12 rehearsal |
 | **Tests** | 22 passing |
 
-What the system can do today: catch a spoof or a magnet, **name the sensor
-responsible**, show the evidence, and refuse to guess when the evidence does
-not support an accusation. Verified 8 of 8 cases — `python -m harness.blame_check`.
+**Both of the stages that make this project different are now built.** It
+catches a spoof, a magnet or a failing sensor, names the sensor responsible,
+says whether it is an attack, a breakdown or interference, gives the operator
+a different instruction for each, and refuses to guess when the evidence does
+not support an answer.
 
-What it still cannot do is say **why**: attack, breakdown or interference.
-Those demand opposite responses from the operator, and telling them apart is
-phase 6 — the last of the two stages that make this project different.
+Verified against the real simulator: 8 of 8 blame cases
+(`python -m harness.blame_check`), 8 of 8 cause cases
+(`python -m harness.classify_check`), zero false alarms (`python -m harness.sweep`).
+
+What is left is plumbing rather than invention: act on the verdict (7), the
+truck profile (8), the fleet map (9), evidence and the phone view (10).
 
 **Owners:** A = simulator · B = detector core · C = unique logic · D = console
 *(fewer people? see [Team](#team) at the bottom)*
@@ -152,11 +157,11 @@ pair's score is visible in the console.
 
 ## Phase 6 — Attack or fault ★ · ~6h · C ⛔ GATE
 
-- [ ] `classify.py` — measure directional consistency of error over a window
-- [ ] Steady and one-directional → `attack`
-- [ ] Erratic, or paired with a health failure → `fault`
-- [ ] One measurement shifting while motion sensors report nothing → `interference`
-- [ ] Below confidence threshold → `unclassified`, default to safe response
+- [x] `classify.py` — coherence, steadiness and erraticness over a window
+- [x] Steady and one-directional, radio-sensed → `attack`
+- [x] Erratic, restless, or failing its own health check → `fault`
+- [x] Steady offset on a field-sensed measurement → `interference`
+- [x] Below confidence threshold → `unclassified`, default to safe response
 
 **⛔ Done when:** the three scenarios classify correctly with **no
 scenario-specific code anywhere in the classifier.**

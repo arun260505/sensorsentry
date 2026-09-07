@@ -16,6 +16,7 @@ from typing import Any, Optional
 
 from . import health, profiles
 from . import blame as blame_mod
+from .classify import Classifier, Cause
 from .crossvalidate import CrossValidator, PairScore
 from .deadreckon import DeadReckoner, Witness
 from .geo import ENU, llh_from_enu
@@ -66,6 +67,9 @@ class State:
     pair_states: dict[str, str] = field(default_factory=dict)
     blame: "blame_mod.Blame" = field(default_factory=lambda: blame_mod.Blame())
     """Which sensor is lying — stage 5."""
+
+    cause: Cause = field(default_factory=Cause)
+    """Why it is lying — stage 6."""
     """Each cross-check's settled state, after its own hysteresis."""
 
     anchored: bool = False
@@ -96,6 +100,13 @@ class State:
                 "evidence": list(self.blame.evidence),
                 "cleared": list(self.blame.cleared),
                 "suspects": list(self.blame.suspects),
+            },
+            "cause": {
+                "label": self.cause.label,
+                "confidence": round(self.cause.confidence, 2),
+                "reason": self.cause.reason,
+                "action": self.cause.action,
+                "features": dict(self.cause.features),
             },
             "residual": None if residual is None else {
                 "horizontal_m": round(residual.horizontal_m, 2),
@@ -147,6 +158,7 @@ class Pipeline:
         self.reckoner: Optional[DeadReckoner] = None
         self.tracker: Optional[ResidualTracker] = None
         self.crossvalidator: Optional[CrossValidator] = None
+        self.classifier = Classifier()
         self.trust = PairTrust(WATCH_RATIO, ALERT_RATIO)
         self.last_state: Optional[State] = None
         self.started = False
@@ -197,8 +209,16 @@ class Pipeline:
             instant = self._instant_state(pairs)
             if instant is not None:
                 state.instant_state = instant
-            state.state, state.pair_states = self.trust.update(frame.dt, pairs)
+            state.state, state.pair_states = self.trust.update(frame.dt, pairs, report)
+            # Once the compass is suspect it may no longer steer the gyro
+            # heading we check it against.
+            if self.crossvalidator is not None:
+                self.crossvalidator.compass_trusted = all(
+                    v == "OK" for k, v in state.pair_states.items()
+                    if k.endswith(":heading_offset")
+                )
             state.blame = blame_mod.assign(pairs, state.pair_states, report)
+            state.cause = self.classifier.update(pairs, state.blame, report)
 
         self.last_state = state
         return state
@@ -218,6 +238,7 @@ class Pipeline:
         self.reckoner = DeadReckoner(self.profile)
         self.tracker = ResidualTracker(self.profile.accel_bias_sigma)
         self.crossvalidator = CrossValidator(self.profile)
+        self.classifier.reset()
         self.trust.reset()
         self.last_state = None
         self.started = True

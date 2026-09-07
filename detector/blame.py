@@ -102,8 +102,25 @@ def assign(
     """
     health = health or {}
 
+    sick = [
+        name for name, report in health.items()
+        if not report.healthy and pair_states.get(f"health:{name}", "OK") != "OK"
+    ]
+
     failing = [p for p in pairs if pair_states.get(p.key, "OK") != "OK"]
     if not failing:
+        if len(sick) == 1:
+            # Nothing disagrees, but a sensor is plainly broken on its own
+            # terms. That is still an answer, and a confident one.
+            name = sick[0]
+            flags = ", ".join(health[name].flags)
+            return Blame(guilty=name, domain="self-check", confidence=0.9,
+                         evidence=[f"{name} failed its own health check: {flags}"])
+        if len(sick) > 1:
+            return Blame(guilty=CANNOT_ISOLATE, domain="self-check",
+                         suspects=sorted(sick),
+                         evidence=[f"{len(sick)} sensors are failing their own "
+                                   "health checks at once"])
         return Blame()
 
     # Try every domain that is failing, and keep the verdict that actually
@@ -168,6 +185,25 @@ def _within_domain(
             "every sensor involved is corroborated by another — the checks "
             "disagree but nothing stands out"
         )
+        return blame
+
+    # A sensor that is also failing its own health check needs no tie-break
+    # from the cross-checks. Checked before the bail-outs below, because
+    # otherwise the clearest case of all — a plainly broken sensor that only
+    # one check happens to notice — comes back as "cannot isolate".
+    sick_candidates = [
+        c for c in candidates
+        if (r := health.get(c)) is not None and not r.healthy
+    ]
+    if len(sick_candidates) == 1:
+        name = sick_candidates[0]
+        blame.guilty = name
+        blame.confidence = 0.9
+        flags = ", ".join(health[name].flags)
+        blame.evidence.append(f"{name} failed its own health check: {flags}")
+        for pair in domain_failing:
+            if name in (pair.a, pair.b) and pair.valid:
+                blame.evidence.append(pair.as_evidence())
         return blame
 
     if len(domain_failing) == 1 and not domain_passing:

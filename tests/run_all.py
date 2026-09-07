@@ -15,6 +15,7 @@ from detector.deadreckon import DeadReckoner
 from detector.geo import ENU, Origin, enu_from_llh, heading_from_yaw, llh_from_enu, wrap_pi, yaw_from_heading
 from detector.ingest import FrameStream, SchemaViolation, validate_frame
 from detector import blame as blame_mod
+from detector import classify as classify_mod
 from detector.crossvalidate import CrossValidator, PairScore
 from detector.residual import ResidualTracker
 from harness import fixtures
@@ -501,6 +502,84 @@ def a_failed_self_check_strengthens_the_case() -> None:
     verdict = blame_mod.assign(pairs, states, {"mag": sick})
     assert verdict.guilty == "mag", verdict.guilty
     assert any("health check" in e for e in verdict.evidence), verdict.evidence
+
+
+# --- classify -------------------------------------------------------------
+
+def _classified(guilty, series, domain="heading", health=None, kind="heading_offset"):
+    """Push a synthetic error series through the classifier and read the cause."""
+    other = "imu" if guilty != "imu" else "mag"
+    pair = _pair(guilty, other, kind, domain, 5.0)
+    verdict = blame_mod.Blame(guilty=guilty, domain=domain, confidence=1.0)
+    engine = classify_mod.Classifier()
+    cause = classify_mod.Cause()
+    for value in series:
+        pair.signed = value
+        cause = engine.update([pair], verdict, health)
+    return cause
+
+
+@test
+def a_steady_one_way_pull_on_gps_is_an_attack() -> None:
+    """GPS is told its answer by radio, so a purposeful error means somebody
+    is transmitting."""
+    ramp = [0.4 * i for i in range(120)]
+    cause = _classified("gnss", ramp, domain="heading", kind="course_mag")
+    assert cause.label == classify_mod.ATTACK, (cause.label, cause.features)
+
+
+@test
+def a_steady_offset_on_the_compass_is_interference() -> None:
+    """A compass measures the field around it. Nobody transmits a magnetic
+    field from orbit, so a steady offset means something is next to it."""
+    steady = [40.0 + (0.3 if i % 2 else -0.3) for i in range(120)]
+    cause = _classified("mag", steady)
+    assert cause.label == classify_mod.INTERFERENCE, (cause.label, cause.features)
+
+
+@test
+def an_error_thrashing_both_ways_is_a_fault() -> None:
+    """Hardware fails messily. An attacker is trying to get somewhere."""
+    thrash = [(30.0 if i % 2 else -30.0) for i in range(120)]
+    cause = _classified("mag", thrash)
+    assert cause.label == classify_mod.FAULT, (cause.label, cause.features)
+
+
+@test
+def a_restless_offset_is_the_sensor_not_the_world() -> None:
+    """Coherent but changing size. A magnet holds its offset; a dying compass
+    does not — steadiness is what separates them."""
+    restless = [20.0 + 25.0 * math.sin(i / 9.0) for i in range(120)]
+    cause = _classified("mag", restless)
+    assert cause.label == classify_mod.FAULT, (cause.label, cause.features)
+
+
+@test
+def a_failed_self_check_settles_it_immediately() -> None:
+    """A stuck sensor is a broken part, whatever shape its disagreement has —
+    and it is judged without waiting for history, because a frozen sensor may
+    not be producing a disagreement at all."""
+    sick = health.SensorHealth("baro")
+    sick.flag(health.STUCK)
+    cause = _classified("baro", [1.0], domain="vertical", health={"baro": sick})
+    assert cause.label == classify_mod.FAULT
+    assert "health check" in cause.reason
+
+
+@test
+def every_cause_carries_a_different_action() -> None:
+    """The whole point of stage 6: the three causes demand opposite responses,
+    so each must tell the operator something different to do."""
+    actions = {classify_mod._ACTIONS[c] for c in
+               (classify_mod.ATTACK, classify_mod.FAULT, classify_mod.INTERFERENCE)}
+    assert len(actions) == 3
+
+
+@test
+def nothing_wrong_means_no_cause() -> None:
+    cause = classify_mod.Classifier().update([], blame_mod.Blame(), {})
+    assert cause.label == classify_mod.UNCLASSIFIED
+    assert cause.reason == ""
 
 
 # --- runner ---------------------------------------------------------------
