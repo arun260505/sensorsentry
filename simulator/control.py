@@ -31,6 +31,7 @@ from .scenarios import list_scenarios, get_scenario
 from .attacks import make_attack
 from .faults import make_fault
 from .interference import make_interference
+from .puppet import make_puppet
 
 PORT = 5010
 
@@ -132,9 +133,15 @@ class SimState:
 # HTTP handler
 # ---------------------------------------------------------------------------
 TARGET_SLOT = {
-    "gps":      "attack",
-    "compass":  "interference:magnet",
-    "altitude": "interference:pressure",
+    # what the console calls it -> the slot it steers
+    "gps":      "puppet:gnss",
+    "compass":  "puppet:mag",
+    "altitude": "puppet:baro",
+    "wheels":   "puppet:odom",
+    # task 4's nudge-an-existing-sensor weapons, still reachable
+    "drift":    "attack",
+    "magnet":   "interference:magnet",
+    "pressure": "interference:pressure",
 }
 """What the console calls a target, and which slot it steers.
 
@@ -252,18 +259,17 @@ def _make_handler(state: SimState, run_fn, default_seed_fn):
                 self._bad("that one is not in your hands yet — take it first")
                 return
             try:
-                inj.steer(
-                    speed_mps=(float(body["speed_mps"]) if "speed_mps" in body else None),
-                    bearing_deg=(float(body["bearing_deg"]) if "bearing_deg" in body else None),
-                    offset=(float(body["offset"]) if "offset" in body else None),
-                )
+                passthrough = {k: v for k, v in body.items() if k != "target"}
+                inj.steer(**passthrough)
             except (ValueError, TypeError) as exc:
                 self._bad(str(exc))
                 return
 
             out = {"steering": True, "target": body.get("target", "gps")}
+            if hasattr(inj, "readout"):
+                out.update(inj.readout())
             for name in ("speed_mps", "bearing_deg"):
-                if hasattr(inj, name):
+                if hasattr(inj, name) and name not in out:
                     out[name] = getattr(inj, name)
             if hasattr(inj, "offset_m"):
                 out["offset_m"] = round(inj.offset_m, 1)
@@ -291,6 +297,12 @@ def _make_handler(state: SimState, run_fn, default_seed_fn):
                     inj = make_fault(itype, sensor, strength)
                 elif kind == "interference":
                     inj = make_interference(itype, strength)
+                elif kind == "puppet":
+                    # The operator takes the sensor over outright rather than
+                    # nudging it. Everything downstream is unchanged: it is
+                    # still just a sensor reading, and the detector has no way
+                    # of knowing a person is behind it.
+                    inj = make_puppet(sensor)
                 elif kind == "clear":
                     # "which" clears one hand and leaves the other running:
                     # drop the spoof but keep the magnet, or the reverse.
@@ -299,7 +311,8 @@ def _make_handler(state: SimState, run_fn, default_seed_fn):
                     self._send(200, {"injecting": False, "cleared": which or "all"})
                     return
                 else:
-                    self._bad(f"unknown kind {kind!r} — use attack/fault/interference/clear")
+                    self._bad(f"unknown kind {kind!r} — "
+                              "use puppet/attack/fault/interference/clear")
                     return
             except (ValueError, TypeError) as exc:
                 self._bad(str(exc))
@@ -307,7 +320,9 @@ def _make_handler(state: SimState, run_fn, default_seed_fn):
 
             # Each weapon gets its own slot, so taking hold of the compass
             # does not make them let go of the GPS.
-            if kind == "fault":
+            if kind == "puppet":
+                slot = f"puppet:{sensor}"
+            elif kind == "fault":
                 slot = f"fault:{sensor}"
             elif kind == "interference":
                 slot = f"interference:{itype.lower()}"
@@ -463,6 +478,12 @@ def _make_run_fn(vehicle_id_fn, truth_log_path, quiet):
                     sensor_data = inj.apply(sensor_data, t_since, rng)
                 elif kind == "interference":
                     sensor_data = inj.apply(sensor_data, t_since)
+                elif kind == "puppet":
+                    if inj.sensor == "gnss":
+                        if sensor_data["gnss"] is not None:
+                            sensor_data["gnss"] = inj.apply(sensor_data["gnss"], t_since)
+                    else:
+                        sensor_data = inj.apply(sensor_data, t_since)
 
             pub.send_frame(t_sim, seq, sensor_data)
 

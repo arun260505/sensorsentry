@@ -730,14 +730,21 @@ async function post(path, body) {
    the name — stripping the prefix left a "clean" button for the drone and
    another for the truck, side by side and indistinguishable. */
 const SCENARIOS = {
-  drone_clean:     ["drone · clean",     "no attack"],
+  truck_clean:     ["Start · truck",     "the Sriperumbudur delivery"],
+  drone_clean:     ["Start · drone",     "a survey flight"],
   drone_manoeuvre: ["drone · manoeuvre", "hard flying, no attack"],
   drone_walkoff:   ["drone · walkoff",   "GPS spoofing"],
   drone_fault:     ["drone · fault",     "sensor failure"],
   drone_magnet:    ["drone · magnet",    "magnet on compass"],
-  truck_clean:     ["truck · clean",     "no attack"],
   truck_theft:     ["truck · theft",     "cargo theft"],
 };
+
+/* The honest runs are the way in: press Start, then attack it yourself. The
+ * scripted attacks are demoted rather than deleted — they are the fallback if
+ * a laptop misbehaves in the room, and harness/results.py still measures
+ * against them. They just stop being the first thing a judge sees, because a
+ * row of buttons named "truck · theft" is what made this look canned. */
+const START_WITH = ["truck_clean", "drone_clean"];
 
 let running = null;
 
@@ -755,13 +762,24 @@ async function loadScenarios() {
       return;
     }
     box.innerHTML = "";
-    for (const name of data.scenarios || []) {
+    const offered = data.scenarios || [];
+    const make = (name, scripted) => {
       const b = document.createElement("button");
       const [label, note] = SCENARIOS[name] || [name.replace(/_/g, " "), ""];
       b.textContent = label;
       b.dataset.note = note;
+      if (scripted) b.classList.add("scripted");
       b.addEventListener("click", () => startScenario(name, b));
       box.appendChild(b);
+    };
+    for (const name of offered) if (START_WITH.includes(name)) make(name, false);
+    const rest = offered.filter((n) => !START_WITH.includes(n));
+    if (rest.length) {
+      const tag = document.createElement("span");
+      tag.className = "scripted-label";
+      tag.textContent = "scripted runs";
+      box.appendChild(tag);
+      for (const name of rest) make(name, true);
     }
     // The fleet finale is not a simulator scenario — it needs four vehicles
     // at once — but on stage it should be one more button, not a terminal.
@@ -894,46 +912,67 @@ loadScenarios();
 loadBasemap();
 requestAnimationFrame(animate);
 
-/* --- attacker mode -------------------------------------------------------
+/* --- you are the sensor --------------------------------------------------
  *
- * The judge is the attacker. They pick a sensor, take hold of it, and drive
- * it with the arrow keys at a moment nobody scripted.
+ * The vehicle drives its real route. The judge takes a sensor over and drives
+ * that instead, with the arrow keys, at a moment nobody scripted.
  *
- * THE RULE THIS SECTION MUST NOT BREAK: the detector is never told that an
- * attack was injected — not the time, not the strength, not the direction,
- * not the fact of it. The click happens here, the stopwatch runs here, and it
- * is compared against an alert arriving over the ordinary stream. That is the
- * only reason the number on screen is worth anything. If this timing ever
- * travelled through the detector, the whole claim would be dead.
+ * The two cases that matter come from the same control:
+ *   drive it   -> the reading moves in a way the vehicle never moved -> TAMPERED
+ *   let go     -> the reading stops dead while everything else moves -> FAILED
+ *
+ * THE RULE THIS SECTION MUST NOT BREAK: the detector is never told any of it.
+ * The click happens here, the stopwatch runs here, and it is compared against
+ * an alert arriving over the ordinary stream. That is the only reason the
+ * number on screen is worth anything.
  */
 
 const AWAY_AFTER_S = 90;
 
-/* What each target does with an arrow. GPS steers a heading; the other two
- * are offsets that go up and down. One control scheme, three meanings. */
 const TARGETS = {
   gps: {
-    label: "You are driving the fake GPS",
-    take: () => fireDrift(Number(el("bearing").value)),
-    arrow: { up: 0, right: 90, down: 180, left: 270 },
+    sensor: "gnss", label: "You are the GPS",
+    hint: "Arrows drive it. Stop, and it freezes where it is.",
+    arrow: (dir) => ({ bearing_deg: { up: 0, right: 90, down: 180, left: 270 }[dir],
+                       moving: true }),
+    stop:  () => ({ moving: false }),
+    show:  (d) => d.moving
+      ? String(Math.round(d.bearing_deg || 0)).padStart(3, "0") + "°"
+      : "frozen",
   },
   compass: {
-    label: "You are turning the compass",
-    dial: "magdial", step: 5, unit: "°",
-    take: () => setDial("compass", Number(el("magdial").value) || 30),
+    sensor: "mag", label: "You are the compass",
+    hint: "Left and right turn it. The gyro does not follow.",
+    arrow: (dir) => ({ turn_deg: (dir === "right" || dir === "up") ? 5 : -5 }),
+    stop:  () => ({}),
+    show:  (d) => Math.round(d.heading_deg || 0) + "°",
   },
   altitude: {
-    label: "You are squeezing the barometer",
-    dial: "altdial", step: 10, unit: " m",
-    take: () => setDial("altitude", Number(el("altdial").value) || 40),
+    sensor: "baro", label: "You are the barometer",
+    hint: "Up and down move its reported height.",
+    arrow: (dir) => ({ step_m: (dir === "up" || dir === "right") ? 10 : -10 }),
+    stop:  () => ({ height_offset_m: 0 }),
+    show:  (d) => (d.height_offset_m > 0 ? "+" : "") + Math.round(d.height_offset_m || 0) + " m",
   },
-  break: { label: "", noDrive: true },
+  wheels: {
+    sensor: "odom", label: "You are the wheel sensor",
+    hint: "Hold it at zero while the truck drives on.",
+    arrow: (dir) => ({ step_mps: (dir === "up" || dir === "right") ? 2 : -2 }),
+    stop:  () => ({ speed_mps: 0 }),
+    show:  (d) => (Math.round((d.speed_mps || 0) * 10) / 10) + " m/s",
+  },
 };
 
-let target = "gps";      // which one the arrows drive
-let holding = null;      // the target currently injected, or null
-let aiming = false;
-let hunting = null;      // { at, label } while an attack is unanswered
+/* What the detector currently believes, in the judge's own words. */
+const VERDICT = {
+  attack:       ["TAMPERED", "someone is inventing this reading"],
+  fault:        ["FAILED SENSOR", "the sensor has stopped telling the truth"],
+  interference: ["INTERFERENCE", "something physical is affecting it"],
+};
+
+let target = "gps";       // which one the arrows drive
+let held = {};            // sensor -> true, everything taken over
+let hunting = null;
 let swTimer = null;
 const score = { you: 0, us: 0 };
 
@@ -945,13 +984,10 @@ function setAttackEnabled() {
         "#attackpanel button, #attackpanel input, #attackpanel select")) {
     node.disabled = !live;
   }
-  if (!live && holding) releaseWheel();
-  const hint = el("atkhint");
-  if (!hint) return;
-  hint.textContent = !live
-    ? "Start a scenario first, then attack it."
-    : aiming ? "Click the map where you want the GPS to drift."
-             : "The detector is not told any of this happened.";
+  if (!live && Object.keys(held).length) { held = {}; renderHeld(); }
+  el("atkhint").textContent = live
+    ? TARGETS[target].hint
+    : "Press Start below, then take a sensor.";
 }
 
 function selectTarget(name) {
@@ -959,11 +995,20 @@ function selectTarget(name) {
   for (const button of document.querySelectorAll(".target")) {
     button.classList.toggle("on", button.dataset.target === name);
   }
-  for (const key of Object.keys(TARGETS)) {
-    const pane = el("pane-" + key);
-    if (pane) pane.hidden = key !== name;
+  renderHeld();
+  setAttackEnabled();
+}
+
+function renderHeld() {
+  const spec = TARGETS[target];
+  const mine = Boolean(held[spec.sensor]);
+  el("taketarget").textContent = mine ? "Let go of it" : "Take it over";
+  el("taketarget").classList.toggle("ghost", mine);
+  el("drive").hidden = !mine;
+  el("drivewhat").textContent = spec.label;
+  for (const button of document.querySelectorAll(".target")) {
+    button.classList.toggle("mine", Boolean(held[TARGETS[button.dataset.target].sensor]));
   }
-  if (holding && holding !== name) releaseWheel();
 }
 
 /* --- the stopwatch, timed here and nowhere else -------------------------- */
@@ -999,217 +1044,105 @@ function endHunt(caught, secs) {
   hunting = null;
 }
 
-/* An alert only counts as a catch if it arrives after the judge's click.
- * Otherwise a previous attack's alert gets scored for this one, which would
- * be us cheating in our own favour, on stage. */
+/* Called on every snapshot: the live readout, and the stopwatch. An alert
+ * only counts as a catch if it arrives after the judge's click — otherwise a
+ * previous attack's alert is scored for this one, which would be us cheating
+ * in our own favour, on stage. */
 function attackWatch(state) {
-  if (!hunting || !state) return;
-  if (state.state === "ALERT") {
+  const box = el("verdictread");
+  if (!state || state.state !== "ALERT") {
+    box.dataset.state = "quiet";
+    el("verdictword").textContent = Object.keys(held).length ? "nothing yet" : "—";
+    el("verdictwhy").textContent = "";
+  } else {
+    const known = VERDICT[state.cause && state.cause.label];
+    const named = state.blame && state.blame.guilty;
+    if (known && named && named !== "cannot_isolate") {
+      box.dataset.state = state.cause.label;
+      el("verdictword").textContent = known[0];
+      el("verdictwhy").textContent = SENSOR_LABEL[named] + " — " + known[1];
+    } else {
+      box.dataset.state = "unsure";
+      el("verdictword").textContent = "not sure yet";
+      el("verdictwhy").textContent =
+        "something is wrong; not enough evidence to name one sensor";
+    }
+  }
+  if (hunting && state && state.state === "ALERT") {
     endHunt(true, (performance.now() - hunting.at) / 1000);
   }
 }
 
-/* --- taking hold --------------------------------------------------------- */
+/* --- taking a sensor over ------------------------------------------------ */
 
-async function inject(body, label) {
-  if (!attackLive()) return false;
+async function takeOver() {
+  const spec = TARGETS[target];
+  if (held[spec.sensor]) {
+    await post("/control/inject", { kind: "clear", which: "puppet:" + spec.sensor });
+    delete held[spec.sensor];
+    if (hunting) endHunt(false, (performance.now() - hunting.at) / 1000);
+    renderHeld();
+    return;
+  }
+  if (!attackLive()) return;
   if (latest && latest.state === "ALERT" && !hunting) {
-    el("atkhint").textContent = "It is already alerting — put everything down first.";
-    return false;
+    el("atkhint").textContent = "It is already alerting — let go of everything first.";
+    return;
   }
-  const ok = await post("/control/inject", body);
-  if (ok) startHunt(label);
-  return ok;
+  const ok = await post("/control/inject", { kind: "puppet", sensor: spec.sensor });
+  if (!ok) return;
+  held[spec.sensor] = true;
+  renderHeld();
+  startHunt("you took the " + target);
 }
 
-async function fireDrift(bearing) {
-  const speed = Number(el("walkoff").value);
-  // 'manual' rather than 'walkoff': it can be re-aimed mid-attack without
-  // restarting, so turning does not snap the fake position back onto truth.
-  const ok = await inject(
-    { kind: "attack", type: "manual", strength: speed, bearing_deg: bearing },
-    "you took the wheel at " + speed + " m/s");
-  if (ok) takeWheel("gps", bearing);
-  return ok;
-}
-
-async function setDial(which, value) {
-  const spec = TARGETS[which];
-  const body = which === "compass"
-    ? { kind: "interference", type: "magnet", strength: value }
-    // ~1 hPa is about 8.5 m of apparent height, so the judge sets metres and
-    // we convert — nobody thinks in hectopascals.
-    : { kind: "interference", type: "pressure", strength: -value / 8.5 };
-  const ok = await inject(body, "you moved the " + which + " by " + value + spec.unit);
-  if (ok) {
-    el(spec.dial).value = String(value);
-    showDial(which);
-    takeWheel(which, value);
-  }
-  return ok;
-}
-
-function showDial(which) {
-  const spec = TARGETS[which];
-  if (!spec || !spec.dial) return;
-  const v = Number(el(spec.dial).value);
-  const out = which === "compass" ? el("magout") : el("altout");
-  out.textContent = (v > 0 ? "+" : "") + v + spec.unit;
-}
-
-function takeWheel(which, value) {
-  holding = which;
-  const spec = TARGETS[which];
-  el("drive").hidden = Boolean(spec.noDrive);
-  el("drivewhat").textContent = spec.label;
-  showWheel(value);
-}
-
-function releaseWheel() {
-  holding = null;
-  el("drive").hidden = true;
-}
-
-function showWheel(value) {
-  if (!holding) return;
-  const spec = TARGETS[holding];
-  if (holding === "gps") {
-    const b = ((Math.round(value) % 360) + 360) % 360;
-    el("driveheading").textContent = String(b).padStart(3, "0") + "°";
-    el("bearing").value = String(b);
-  } else {
-    el("driveheading").textContent = (value > 0 ? "+" : "") + value + spec.unit;
-  }
-}
-
-/* Steering, not re-injecting. What has already been stolen is kept — an
- * attacker who turns the wheel does not undo the ground already covered. */
 async function steer(body) {
-  if (!holding) return;
+  const spec = TARGETS[target];
+  if (!held[spec.sensor]) return;
   try {
     const res = await fetch("/control/steer", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(Object.assign({ target: holding }, body)),
+      body: JSON.stringify(Object.assign({ target: target }, body)),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) return;
-    if (holding === "gps") {
-      showWheel(data.bearing_deg);
-      el("driveoffset").textContent = Math.round(data.offset_m || 0) + " m off";
-    } else {
-      const spec = TARGETS[holding];
-      const shown = holding === "compass"
-        ? Math.round(data.offset)
-        : Math.round(-data.offset * 8.5);
-      el(spec.dial).value = String(shown);
-      showDial(holding);
-      showWheel(shown);
-      el("driveoffset").textContent = (shown > 0 ? "+" : "") + shown + spec.unit;
-    }
+    el("driveheading").textContent = spec.show(data);
   } catch (err) { /* the run ended under us; the panel resets on its own */ }
 }
 
 function pressArrow(direction) {
-  if (!holding) return;
-  const spec = TARGETS[holding];
-  if (holding === "gps") {
-    steer({ bearing_deg: spec.arrow[direction] });
-    return;
-  }
-  // The dials go up and down rather than round.
-  const step = (direction === "up" || direction === "right") ? spec.step : -spec.step;
-  const now = Number(el(spec.dial).value) + step;
-  steer({ offset: holding === "compass" ? now : -now / 8.5 });
+  const spec = TARGETS[target];
+  if (!held[spec.sensor]) return;
+  steer(spec.arrow(direction));
 }
 
 /* --- wiring -------------------------------------------------------------- */
-
-function setAiming(on) {
-  aiming = on && attackLive();
-  document.querySelector(".mapwrap").classList.toggle("aiming", aiming);
-  el("doaim").textContent = aiming ? "Cancel aiming" : "Aim on the map instead";
-  setAttackEnabled();
-}
 
 function initAttackPanel() {
   for (const button of document.querySelectorAll(".target")) {
     button.addEventListener("click", () => selectTarget(button.dataset.target));
   }
-
-  const showSpeed = () => {
-    el("walkoffout").textContent = Number(el("walkoff").value).toFixed(1) + " m/s";
-  };
-  el("walkoff").addEventListener("input", showSpeed);
-  el("walkoff").addEventListener("change", () => {
-    if (holding === "gps") steer({ speed_mps: Number(el("walkoff").value) });
-  });
-  showSpeed();
-
-  el("magdial").addEventListener("input", () => showDial("compass"));
-  el("altdial").addEventListener("input", () => showDial("altitude"));
-  showDial("compass"); showDial("altitude");
-
-  el("dowalkoff").addEventListener("click", () => { setAiming(false); TARGETS.gps.take(); });
-  el("domagnet").addEventListener("click", () => TARGETS.compass.take());
-  el("doalt").addEventListener("click", () => TARGETS.altitude.take());
-  el("doaim").addEventListener("click", () => setAiming(!aiming));
-
-  el("doteleport").addEventListener("click", () => inject(
-    { kind: "attack", type: "teleport", strength: 300, bearing_deg: 90 },
-    "you jumped GPS 300 m"));
-
-  el("dofault").addEventListener("click", () => {
-    const sensor = el("faultsensor").value, how = el("faulttype").value;
-    const words = { stuck: "froze", noisy: "made noise on", dropout: "cut" };
-    const named = { baro: "the barometer", mag: "the compass",
-                    odom: "the wheels", imu: "the motion sensor" };
-    inject({ kind: "fault", type: how, sensor: sensor, strength: 8 },
-           "you " + words[how] + " " + named[sensor]);
-  });
+  el("taketarget").addEventListener("click", takeOver);
 
   for (const key of document.querySelectorAll(".key[data-arrow]")) {
     key.addEventListener("click", () => pressArrow(key.dataset.arrow));
   }
-  el("driveoff").addEventListener("click", () => {
-    if (holding === "gps") steer({ speed_mps: 0 }); else steer({ offset: 0 });
-  });
+  el("driveoff").addEventListener("click", () => steer(TARGETS[target].stop()));
 
   const ARROWS = { ArrowUp: "up", ArrowRight: "right",
                    ArrowDown: "down", ArrowLeft: "left" };
   window.addEventListener("keydown", (event) => {
-    if (!holding) return;
     const tag = (event.target.tagName || "").toLowerCase();
     if (tag === "input" || tag === "select" || tag === "textarea") return;
     if (event.key in ARROWS) { event.preventDefault(); pressArrow(ARROWS[event.key]); }
+    if (event.key === " ") { event.preventDefault(); steer(TARGETS[target].stop()); }
   });
 
   el("doclear").addEventListener("click", async () => {
-    setAiming(false);
     await post("/control/inject", { kind: "clear" });
-    if (hunting) {
-      // Called it off before we found it. That is a point to them: the
-      // scoreboard has to be able to lose, or it is a fairground stall.
-      endHunt(false, (performance.now() - hunting.at) / 1000);
-    }
-    releaseWheel();
-    el("magdial").value = "0"; el("altdial").value = "0";
-    showDial("compass"); showDial("altitude");
-  });
-
-  // Aiming: convert the click back through the same transform the map draws
-  // with, so where they clicked is where it goes.
-  canvas.addEventListener("click", (event) => {
-    if (!aiming) return;
-    const rect = canvas.getBoundingClientRect();
-    const w = rect.width, h = rect.height;
-    const view = computeView(w, h);
-    const e = view.cx + (event.clientX - rect.left - w / 2) / view.scale;
-    const n = view.cy - (event.clientY - rect.top - h / 2) / view.scale;
-    const here = trails.gnss.length ? trails.gnss[trails.gnss.length - 1] : [0, 0];
-    const bearing = (Math.atan2(e - here[0], n - here[1]) * 180 / Math.PI + 360) % 360;
-    setAiming(false);
-    if (holding === "gps") steer({ bearing_deg: bearing });
-    else fireDrift(bearing);
+    if (hunting) endHunt(false, (performance.now() - hunting.at) / 1000);
+    held = {};
+    renderHeld();
   });
 
   selectTarget("gps");

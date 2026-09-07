@@ -84,6 +84,18 @@ class SensorHealth:
         self.detail.update(detail)
 
 
+def _pack_position(lat: float, lon: float) -> float:
+    """Both halves of a position as one comparable number.
+
+    `_Channel` compares scalars, and a position is two of them. Packing rather
+    than adding, so that a change in either axis registers: latitude carries
+    the whole number, longitude the fraction, at a resolution finer than any
+    real fix. Adding them would let a movement north-west cancel itself out
+    and read as frozen.
+    """
+    return round(lat, 7) * 1e7 + round(lon % 1.0, 7)
+
+
 def _median(values: list[float]) -> float:
     ordered = sorted(values)
     n = len(ordered)
@@ -150,6 +162,18 @@ class HealthMonitor:
         self._channels: dict[str, _Channel] = {}
         self._last_gnss_t: Optional[float] = None
         self._first_t: Optional[float] = None
+        self._gnss_stuck = False
+        """Whether the last fix we saw was frozen.
+
+        Held between fixes on purpose. GNSS arrives at 5 Hz against 20 Hz
+        frames, so three frames in four carry no position at all — and this
+        report is rebuilt from scratch every frame. Without this the verdict
+        flickered: stuck on one frame, healthy on the next three, which is
+        intermittent evidence that the hysteresis in stage 7 will never
+        promote to an alert. A receiver whose position is frozen stayed
+        invisible.
+
+        Not having a fix this instant is not evidence the receiver is fine."""
 
     def _channel(self, key: str) -> _Channel:
         chan = self._channels.get(key)
@@ -247,13 +271,26 @@ class HealthMonitor:
 
             # Position frozen to the bit is a receiver fault, not a stopped
             # vehicle: real fixes dither even at a standstill.
-            chan = self._channel("gnss.lat")
-            chan.push(float(gnss["lat"]))
-            if chan.identical >= STUCK_CYCLES // 4:  # GNSS is 5 Hz, not 20
+            #
+            # Both axes together, not latitude alone. A truck waiting at a
+            # signal holds its latitude constant for a hundred fixes quite
+            # honestly, and a spoof dragging it due east leaves that latitude
+            # untouched — so watching one axis called a parked lorry a broken
+            # receiver, and did it at a moment that had nothing to do with the
+            # attack. A position has two numbers; freezing means both.
+            chan = self._channel("gnss.pos")
+            chan.push(_pack_position(float(gnss["lat"]), float(gnss["lon"])))
+            self._gnss_stuck = chan.identical >= STUCK_CYCLES // 4  # 5 Hz, not 20
+            if self._gnss_stuck:
                 health.flag(STUCK, lat=float(gnss["lat"]))
             return
 
         # No GNSS this frame is normal three times in four. Only silence is not.
+        # A frozen position, though, stays frozen between fixes — carry that
+        # verdict forward or it flickers away before anything can act on it.
+        if self._gnss_stuck:
+            health.flag(STUCK)
+
         reference = self._last_gnss_t if self._last_gnss_t is not None else self._first_t
         if reference is not None and frame.t - reference > GNSS_GAP_S:
             health.flag(DROPPED, silent_for_s=frame.t - reference)

@@ -182,6 +182,42 @@ can say the truck was handed more time.
 | — | Detector | stages 1-10 done |
 | — | Console | map, banner, verdict, fleet, phone view, report |
 
+### The judge drives a sensor — and two detector bugs it exposed
+
+`console` → **You are the sensor**. The vehicle drives its real route; the
+judge takes a sensor over (`kind: "puppet"`) and drives it with the arrow keys.
+Same control, two verdicts, and the difference is only how they press:
+
+| They do | Reads as | In |
+|---|---|---|
+| Drive the GPS away | **TAMPERED** `gnss/attack` | 9.7 s |
+| Let go — GPS freezes | **FAILED SENSOR** `gnss/fault` | 3.0 s |
+| Turn the compass | **FAILED SENSOR** `mag/fault` | 5.0 s |
+| Freeze the wheels at 0 | detected, `cannot_isolate` | 7.0 s |
+
+The stopwatch and scoreboard run **in the browser only** — the click, the
+timer and the comparison all happen in the page. The detector is never told an
+attack was injected, which is the only reason the number means anything.
+
+Building it exposed two real detector faults, both invisible to the tests:
+
+**1. A frozen GNSS was invisible.** The stuck flag only existed on frames that
+carried a fix, and three frames in four have none, so it flickered at 5 Hz and
+the hysteresis never promoted it. `health.py` now holds that verdict between
+fixes. *Not having a fix this instant is not evidence the receiver is fine* —
+the same "absence of evidence" trap as the course check.
+
+**2. `gnss-odom:distance` was declared in `profiles.py` and never
+implemented**, so it reported OK forever and a seized odometer reading zero
+while the lorry drove was undetected. Now implemented in `crossvalidate.py`.
+
+And one near-miss worth remembering: the first version of fix 1 watched
+**latitude alone**, so a truck waiting at a signal read as a broken receiver,
+and an east-bound walk-off left latitude untouched. It made the truck floor
+*look* like 0.5 m/s — a number that came from a parked lorry, not from
+detection. The check now packs both axes. **A measurement that improves for a
+reason you cannot explain has not improved.**
+
 ### Two things that only fail live — the test suite cannot see either
 
 The tests drive `Pipeline` directly. Everything between the UDP socket and the

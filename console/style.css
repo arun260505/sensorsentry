@@ -674,3 +674,40 @@ button.target.on {
 }
 button.target:disabled { opacity: .4; cursor: not-allowed; }
 .tpane { margin-bottom: 4px; }
+
+/* the live readout: what the detector currently believes, in the words the
+   judge used when they did it. "not sure yet" stays on screen rather than
+   being hidden — refusing to answer is the feature, not a gap. */
+.verdictread {
+  display: grid; gap: 2px; margin-bottom: 12px;
+  padding: 10px 12px; border-radius: 6px;
+  background: var(--panel-2); border-left: 4px solid var(--rule);
+}
+.vr-label {
+  font-size: .62rem; letter-spacing: .09em; text-transform: uppercase;
+  color: var(--ink-3);
+}
+.vr-word { font-size: 1.1rem; font-weight: 700; color: var(--ink-3); line-height: 1.15; }
+.vr-why  { font-size: .72rem; color: var(--ink-2); }
+.verdictread[data-state="attack"]       { border-left-color: var(--alert); background: #fbeceb; }
+.verdictread[data-state="attack"] .vr-word { color: var(--alert); }
+.verdictread[data-state="fault"]        { border-left-color: var(--watch); background: #fdf4e3; }
+.verdictread[data-state="fault"] .vr-word  { color: var(--watch); }
+.verdictread[data-state="interference"] { border-left-color: var(--accent); background: #e8f1f5; }
+.verdictread[data-state="interference"] .vr-word { color: var(--accent); }
+.verdictread[data-state="unsure"]       { border-left-color: var(--ink-3); }
+.verdictread[data-state="unsure"] .vr-word { color: var(--ink-2); }
+
+/* a target you are currently holding */
+button.target.mine:not(.on) {
+  border-color: var(--claimed); color: var(--claimed); background: #fff7ec;
+}
+button.target.mine.on::after { content: " ●"; font-size: .6em; vertical-align: super; }
+
+/* scripted runs, demoted: kept as a fallback, no longer the way in */
+.scenarios .scripted-label {
+  font-size: .62rem; letter-spacing: .07em; text-transform: uppercase;
+  color: var(--ink-3); align-self: center; margin-left: 10px;
+}
+.scenarios button.scripted { opacity: .72; font-size: .72rem; padding: 5px 8px; }
+.scenarios button.scripted:hover { opacity: 1; }

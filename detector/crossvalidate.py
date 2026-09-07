@@ -115,6 +115,28 @@ POSITION_SIGMA_FLOOR_M = 4.0
 """Floor for the position pair. See residual.py — that pair is kept for the
 map and the operator's error budget, and is deliberately not what decides."""
 
+DISTANCE_WINDOW_S = 8.0
+"""How long a stretch the GPS-vs-wheels comparison is measured over.
+
+Long enough that real distance dominates GNSS noise — a truck covers well over
+a hundred metres in eight seconds while the noise stays around a metre — and
+short enough that a sensor which fails mid-run is caught while it still
+matters."""
+
+DISTANCE_SIGMA_M = 12.0
+DISTANCE_CURVE_FRACTION = 0.25
+"""Tolerance for the same stretch: a fixed floor plus a quarter of the
+distance covered.
+
+The percentage term is there because the two sides measure different things
+around a corner. GNSS gives the straight line between where we were and where
+we are; the wheels give the length of the path actually driven, which is
+longer. On the Oragadam turn that difference is real and honest, and a
+tolerance without it would call every corner a broken sensor.
+
+Generous on purpose. A wheel sensor that has failed reads zero or nonsense,
+not a quarter low, so nothing is lost by leaving room for geometry."""
+
 
 @dataclass
 class PairScore:
@@ -190,6 +212,9 @@ class CrossValidator:
         self._gyro_heading_deg = 0.0
         self._gyro_seeded = False
         self._last_good: dict[str, tuple[float, float, float, str]] = {}
+        self._odom_path_m = 0.0
+        """Wheel distance since the run began. Only differences matter."""
+        self._dist_window: deque[tuple[float, ENU, float]] = deque()
         """Last real reading per check, carried so a failing check can still
         say what it read rather than only that it could not be read."""
 
@@ -361,8 +386,75 @@ class CrossValidator:
             return self._position_vs_witness(score, frame, witness)
         if pair.kind == "road":
             return self._gnss_vs_road(score, frame)
+        if pair.kind == "distance":
+            return self._gnss_vs_odometer(score, frame)
 
         score.reason = "not implemented yet"
+        return score
+
+    def _gnss_vs_odometer(self, score: PairScore, frame: Frame) -> PairScore:
+        """How far GPS says we went, against how far the wheels turned.
+
+        The profile has declared this pair since the truck was added and
+        nothing ever evaluated it, so it reported OK forever — which meant a
+        seized odometer reading zero while the lorry drove down the road was
+        invisible. That is the problem statement's "false readings" case on
+        the sensor a truck has and a drone does not.
+
+        Measured over a window rather than frame to frame. GNSS noise is
+        roughly a metre per fix and a truck covers three metres in that time,
+        so instant-to-instant the comparison is mostly noise; over several
+        seconds the real distance dominates.
+
+        Straight-line displacement on the GNSS side against path length on the
+        wheel side. Those differ around a corner — the chord is shorter than
+        the arc — which is why the tolerance carries a percentage term as well
+        as a floor. Being generous here costs little: a wheel sensor that has
+        failed reads zero or nonsense, not five percent low.
+        """
+        score.unit = "m"
+
+        if frame.odom is None or frame.odom.get("wheel_speed_mps") is None:
+            score.reason = "no wheel reading"
+            return score
+
+        speed = float(frame.odom["wheel_speed_mps"])
+        if frame.dt > 0.0:
+            self._odom_path_m += abs(speed) * frame.dt
+
+        if frame.has_gnss() and self._origin is not None:
+            gnss = frame.gnss or {}
+            pos = enu_from_llh(float(gnss["lat"]), float(gnss["lon"]),
+                               float(gnss["alt"]), self._origin)
+            self._dist_window.append((frame.t, pos, self._odom_path_m))
+
+        # Drop anything older than the window.
+        while (len(self._dist_window) > 1
+               and frame.t - self._dist_window[0][0] > DISTANCE_WINDOW_S):
+            self._dist_window.popleft()
+
+        if len(self._dist_window) < 2:
+            score.reason = "not enough of a window yet"
+            return score
+
+        t0, pos0, odom0 = self._dist_window[0]
+        t1, pos1, odom1 = self._dist_window[-1]
+        span = t1 - t0
+        if span < DISTANCE_WINDOW_S * 0.5:
+            score.reason = "not enough of a window yet"
+            return score
+
+        gnss_m = (pos1 - pos0).horizontal_norm()
+        wheel_m = odom1 - odom0
+
+        gap = gnss_m - wheel_m
+        sigma = (DISTANCE_SIGMA_M
+                 + DISTANCE_CURVE_FRACTION * max(gnss_m, wheel_m))
+        score.value = abs(gap)
+        score.signed = gap        # positive: GPS moved further than the wheels
+        score.sigma = sigma
+        score.ratio = abs(gap) / sigma
+        score.valid = True
         return score
 
     def _course_vs_heading(self, score: PairScore, frame: Frame,
