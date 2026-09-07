@@ -597,6 +597,7 @@ function connect() {
       return { ...z, e, n };
     });
 
+    renderReportControls(Boolean(snapshot.report_enabled));
     renderPanels(snapshot);
     draw();
   };
@@ -655,6 +656,14 @@ async function loadScenarios() {
   try {
     const res = await fetch("/control/scenarios");
     const data = await res.json();
+    // A 503 still parses as JSON, so "no scenarios" and "nothing is
+    // listening" looked identical — the page said "none offered" when the
+    // simulator simply was not running.
+    if (!res.ok || !Array.isArray(data.scenarios)) {
+      box.innerHTML = '<span class="hint bad">' +
+        (data.hint || data.error || "simulator control not reachable") + '</span>';
+      return;
+    }
     box.innerHTML = "";
     for (const name of data.scenarios || []) {
       const b = document.createElement("button");
@@ -704,38 +713,62 @@ el("reset").addEventListener("click", async () => {
 });
 
 /* --- the written report -------------------------------------------------
- * Off by default. Turning it off and re-running the attack is the
- * demonstration: identical detection, no prose. It cannot affect a verdict
- * because it reads a file the detector has already finished with.
+ *
+ * Two buttons, not one. The switch turns the feature on and off; a separate
+ * action opens the report. Conflating them let the page and the server drift
+ * apart — the button read "off" while the feature was on, and the sheet
+ * opened empty because the fetch that fills it belonged to the other action.
+ *
+ * The server owns the state. The page reads it back from the stream every
+ * frame rather than tracking its own copy, so the two cannot disagree.
  */
-let reportOn = false;
 
-async function refreshReportButton() {
-  el("reporttoggle").textContent = `Written report: ${reportOn ? "on" : "off"}`;
-  el("reporttoggle").dataset.on = reportOn ? "1" : "0";
+function renderReportControls(enabled) {
+  el("reporttoggle").textContent = `Written report: ${enabled ? "on" : "off"}`;
+  el("reporttoggle").dataset.on = enabled ? "1" : "0";
+  el("reportopen").hidden = !enabled;
+  if (!enabled) el("reportsheet").hidden = true;
 }
 
 el("reporttoggle").addEventListener("click", async () => {
-  const res = await fetch("/report/toggle", { method: "POST" });
-  const data = await res.json().catch(() => ({}));
-  reportOn = Boolean(data.enabled);
-  await refreshReportButton();
-  if (!reportOn) { el("reportsheet").hidden = true; return; }
-
-  const r = await (await fetch("/report")).json();
-  if (!r.report) {
-    el("hint").className = "hint";
-    el("hint").textContent = r.note || "nothing recorded yet";
-    return;
+  try {
+    const res = await fetch("/report/toggle", { method: "POST" });
+    const data = await res.json();
+    renderReportControls(Boolean(data.enabled));
+    if (data.enabled) openReport();
+  } catch (err) {
+    el("hint").className = "hint bad";
+    el("hint").textContent = String(err);
   }
-  el("reporttitle").textContent = r.report.title;
-  el("reportbody").textContent = r.report.body;
-  el("reportsheet").hidden = false;
 });
 
+el("reportopen").addEventListener("click", openReport);
 el("reportclose").addEventListener("click", () => {
   el("reportsheet").hidden = true;
 });
+
+async function openReport() {
+  el("reporttitle").textContent = "Incident report";
+  el("reportbody").textContent = "Reading the record…";
+  el("reportsheet").hidden = false;
+  try {
+    const r = await (await fetch("/report")).json();
+    if (r.report) {
+      el("reporttitle").textContent = r.report.title;
+      el("reportbody").textContent = r.report.body;
+    } else {
+      // Say why there is nothing, rather than showing an empty box and
+      // leaving the reader to wonder whether it broke.
+      el("reporttitle").textContent = "Nothing to report yet";
+      el("reportbody").textContent =
+        r.note || "No run has been recorded on this vehicle yet. " +
+        "Start a scenario and let it reach a verdict.";
+    }
+  } catch (err) {
+    el("reporttitle").textContent = "Could not read the record";
+    el("reportbody").textContent = String(err);
+  }
+}
 
 resize();
 connect();

@@ -30,6 +30,12 @@
 
 * { box-sizing: border-box; }
 
+/* The browser's own `[hidden] { display: none }` is a user-agent rule, and
+   ANY author rule beats it. So every element here that sets display — the
+   banner, the report sheet — silently ignored its `hidden` attribute and
+   could never be closed. This puts that back. */
+[hidden] { display: none !important; }
+
 html, body {
   margin: 0;
   height: 100%;
@@ -489,3 +495,13 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   background: var(--panel-2);
 }
 .reportnote b { color: var(--ink-2); }
+
+/* The side column scrolls. Without a hint it reads as clipped text rather
+   than more content, which is how a verdict gets missed. */
+.side {
+  background:
+    linear-gradient(var(--panel) 30%, rgba(255,255,255,0)) top / 100% 28px no-repeat,
+    linear-gradient(rgba(255,255,255,0), var(--panel) 70%) bottom / 100% 28px no-repeat,
+    var(--panel);
+  background-attachment: local, local, scroll;
+}

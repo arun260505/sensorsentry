@@ -138,12 +138,21 @@ class PairScore:
     reason: str = ""
     """Why it could not — shown so a blank check never looks like a pass."""
 
+    stale: bool = False
+    """True when `value` is the last real reading rather than a fresh one.
+
+    GNSS arrives at 5 Hz against 20 Hz frames and the course check also needs
+    straight flight, so a check that is genuinely failing is unreadable most
+    instants. Reporting only "not evaluable this frame" made the evidence read
+    as though it contradicted the accusation it was supporting."""
+
     @property
     def key(self) -> str:
         return f"{self.a}-{self.b}:{self.kind}"
 
     def as_evidence(self) -> str:
-        return f"{self.label}: {self.value:.1f} {self.unit} ({self.ratio:.1f}x normal)"
+        line = f"{self.label}: {self.value:.1f} {self.unit} ({self.ratio:.1f}x normal)"
+        return line + " — last reading" if self.stale else line
 
 
 class CrossValidator:
@@ -162,6 +171,10 @@ class CrossValidator:
         self._turn_rates: deque[float] = deque(maxlen=200)
         self._gyro_heading_deg = 0.0
         self._gyro_seeded = False
+        self._last_good: dict[str, tuple[float, float, float, str]] = {}
+        """Last real reading per check, carried so a failing check can still
+        say what it read rather than only that it could not be read."""
+
         self.compass_trusted = True
         """Whether the compass may still correct the gyro heading.
 
@@ -196,7 +209,18 @@ class CrossValidator:
 
         scores: list[PairScore] = []
         for pair in self.profile.pairs:
-            scores.append(self._score(pair, frame, witness))
+            score = self._score(pair, frame, witness)
+            if score.valid:
+                self._last_good[score.kind] = (
+                    score.value, score.sigma, score.ratio, score.unit)
+            elif score.kind in self._last_good:
+                # Carry the last real reading forward. The check still says it
+                # could not be evaluated now; it no longer pretends it has
+                # never been read.
+                value, sigma, ratio, unit = self._last_good[score.kind]
+                score.value, score.sigma, score.ratio, score.unit = value, sigma, ratio, unit
+                score.stale = True
+            scores.append(score)
         return scores
 
     # --- bookkeeping --------------------------------------------------------

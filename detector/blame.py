@@ -291,15 +291,17 @@ def _within_domain(
     blame.guilty = top
     blame.confidence = min(1.0, (top_score - runner_up) / max(top_score, 1.0))
 
-    for pair in sorted(domain_failing, key=lambda p: p.ratio, reverse=True):
+    # Readable checks first. A failing check that could not be evaluated this
+    # instant still belongs in the list, but leading with "failing (no GNSS
+    # fix this frame)" reads as if the evidence contradicts the accusation.
+    ordered = sorted(domain_failing, key=lambda p: (p.valid, p.ratio), reverse=True)
+    for pair in ordered:
         if top not in (pair.a, pair.b):
             continue
-        if pair.valid:
+        if pair.valid or pair.stale:
             blame.evidence.append(pair.as_evidence())
         else:
-            # Still failing on settled state, but not evaluable this instant —
-            # printing its stale numbers would show "0.0x normal" beside an
-            # accusation, which reads as if the evidence contradicts itself.
+            # Failing on settled state and never yet read — nothing to quote.
             blame.evidence.append(f"{pair.label}: failing ({pair.reason})")
 
     report = health.get(top)
