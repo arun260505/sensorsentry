@@ -18,6 +18,7 @@ from detector import blame as blame_mod
 from detector import classify as classify_mod
 from detector import evidence as evidence_mod
 from detector import fusion as fusion_mod
+from detector import report as report_mod
 from detector.crossvalidate import CrossValidator, PairScore
 from detector.residual import ResidualTracker
 from fleet import advisory as adv_mod
@@ -789,6 +790,60 @@ def a_verdict_is_written_only_when_it_changes() -> None:
         _header, frames, incidents = evidence_mod.read(path)
         assert len(incidents) < 20, len(incidents)
         assert len(incidents) < len(frames) / 50
+
+
+# --- written report -------------------------------------------------------
+
+@test
+def the_report_switch_cannot_touch_detection() -> None:
+    """The claim the switch demonstrates, pinned as a test.
+
+    Turning it off must change nothing about what was detected — and it
+    cannot, because the report reads a file the detector has already finished
+    with. If this ever fails, the on-stage demonstration is a lie.
+    """
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmp:
+        path = _record_a_run(tmp)
+        _h, _f, before = evidence_mod.read(path)
+
+        off = report_mod.compose(path, enabled=False)
+        assert off is None
+
+        on = report_mod.compose(path, enabled=True)
+        assert on is not None and on.body
+
+        _h2, _f2, after = evidence_mod.read(path)
+        assert [(i.state, i.guilty, i.cause) for i in before] ==                [(i.state, i.guilty, i.cause) for i in after],                "writing a report changed the record"
+
+
+@test
+def the_report_says_what_wrote_it() -> None:
+    """A template is not a language model, and claiming otherwise unravels
+    under one follow-up question."""
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmp:
+        written = report_mod.compose(_record_a_run(tmp))
+        assert written.generated_by == "template"
+
+
+@test
+def the_report_names_the_sensor_and_the_cause() -> None:
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmp:
+        written = report_mod.compose(_record_a_run(tmp))
+        assert "GPS" in written.title or "GPS" in written.body
+        assert "attack" in written.title.lower() or "attack" in written.body.lower()
+        assert "next steps" in written.body.lower()
+
+
+@test
+def a_quiet_run_produces_a_quiet_report() -> None:
+    """No incident must not become an incident report."""
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmp:
+        written = report_mod.compose(_record_a_run(tmp, spoof_mps=0.0))
+        assert "no incident" in written.title.lower()
 
 
 # --- fleet ----------------------------------------------------------------

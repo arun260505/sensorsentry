@@ -12,7 +12,7 @@ measured rather than claimed (`python -m harness.sweep`).
 |---|---|
 | **Done** | 1-8 plus **9 fleet logic** — detect, blame, classify, keep flying, locate the attacker |
 | **In progress** | 4 attack injectors (Abishek, task 2) |
-| **Next** | phone view · report toggle · truck (Abishek) · **rehearsal** |
+| **Next** | truck (Abishek) · **rehearsal (phase 12)** · measurement tidy-up |
 | **Not started** | 8 truck · 9 fleet · 10 evidence · 12 rehearsal |
 | **Tests** | 22 passing |
 
@@ -222,9 +222,9 @@ circle** · one vehicle alone produces **no circle**.
 - [x] `evidence.py` — append-only, frames verbatim plus every verdict change
 - [x] Record includes the RNG seed, so the run can be re-created
 - [x] Replay: stored record back through a fresh detector, identical verdict
-- [ ] Responsive layout — same page works as the phone app
-- [ ] Push alert to the phone view
-- [ ] Optional written report behind a **visible on/off switch**
+- [x] Responsive layout — same page works as the phone app
+- [x] Alert banner sticks to the top of the phone view
+- [x] Written report behind a visible switch — template, not a model, and it says so
 
 **Done when:** replay reproduces an identical verdict, and the report switch
 changes nothing about detection.
@@ -274,7 +274,7 @@ playbook without asking a question.
 - [x] Attacked vehicles → one event, one zone
 - [x] Incident replays to an identical verdict
 - [x] Strength ladder filled with measured numbers, including the failure point
-- [ ] Report switch turns off with no effect on detection
+- [x] Report switch turns off with no effect on detection
 - [ ] Demo run end to end, out loud, five times
 
 ---

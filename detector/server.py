@@ -30,6 +30,7 @@ from fleet.advisory import VehicleState, advise
 from fleet.cluster import Incident, find_zones
 
 from .evidence import Recorder
+from .report import compose
 from .ingest import DEFAULT_PORT, SchemaViolation, UdpReceiver
 from .pipeline import Pipeline
 
@@ -89,6 +90,14 @@ class Shared:
 
         self.raw = None
         self.violation = None
+        self.records: dict[str, str] = {}
+        """Vehicle -> path of its evidence file, so a report can be written
+        from the record rather than from whatever is on screen."""
+
+        self.report_enabled = False
+        """The switch. Off by default, because the claim being demonstrated is
+        that detection does not depend on it."""
+
         self.incidents: list[Incident] = []
         self.zones: list = []
         self.advisories: list = []
@@ -178,6 +187,7 @@ class Shared:
                      "describe": z.describe()}
                     for z in self.zones
                 ],
+                "report_enabled": self.report_enabled,
                 "advisories": [
                     {"vehicle_id": a.vehicle_id, "distance_m": round(a.distance_m),
                      "seconds_away": (None if a.seconds_away is None
@@ -192,9 +202,14 @@ class Shared:
             self.violation = message
             self.version += 1
 
+    def note_record(self, vehicle_id: str, path: str) -> None:
+        with self.lock:
+            self.records[vehicle_id] = path
+
     def clear(self) -> None:
         with self.lock:
             self.vehicles.clear()
+            self.records.clear()
             self.focus = None
             self.raw = None
             self.violation = None
@@ -228,6 +243,8 @@ def detector_loop(shared: Shared, port: int, vehicle_type: Optional[str]) -> Non
                 recorder = recorders[vid]
                 if message.get("type") == "run_start":
                     recorder.note_run(message)
+                    if recorder.path is not None:
+                        shared.note_record(vid, str(recorder.path))
                 else:
                     recorder.note_frame(message)
                 try:
@@ -290,6 +307,8 @@ class Handler(BaseHTTPRequestHandler):
             self._static("index.html")
         elif path == "/snapshot":
             self._json(self.shared.snapshot())
+        elif path == "/report":
+            self._json(self._report())
         elif path.startswith("/control/"):
             # The console asks the simulator what scenarios it has rather than
             # carrying its own list. A judge picking from a list that came out
@@ -305,6 +324,26 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(payload)
         else:
             self._static(path.lstrip("/"))
+
+    def _report(self) -> dict[str, Any]:
+        """Write up the focused vehicle's incident from its stored record.
+
+        Reads a file the detector has already finished with. Nothing here can
+        affect a verdict, which is the whole point of the switch.
+        """
+        with self.shared.lock:
+            enabled = self.shared.report_enabled
+            path = self.shared.records.get(self.shared.focus or "")
+        if not enabled:
+            return {"enabled": False, "report": None}
+        if not path:
+            return {"enabled": True, "report": None, "note": "no run recorded yet"}
+        written = compose(Path(path), enabled=True)
+        if written is None:
+            return {"enabled": True, "report": None}
+        return {"enabled": True, "report": {
+            "title": written.title, "body": written.body,
+            "generated_by": written.generated_by}}
 
     def _stream(self) -> None:
         self.send_response(200)
@@ -355,6 +394,14 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/control/clear":
             self.shared.clear()
             self._json({"ok": True})
+            return
+
+        if path == "/report/toggle":
+            with self.shared.lock:
+                self.shared.report_enabled = not self.shared.report_enabled
+                self.shared.version += 1
+                enabled = self.shared.report_enabled
+            self._json({"enabled": enabled})
             return
 
         if path.startswith("/control/"):

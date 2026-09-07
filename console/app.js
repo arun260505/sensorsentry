@@ -703,6 +703,40 @@ el("reset").addEventListener("click", async () => {
   el("hint").textContent = "stopped";
 });
 
+/* --- the written report -------------------------------------------------
+ * Off by default. Turning it off and re-running the attack is the
+ * demonstration: identical detection, no prose. It cannot affect a verdict
+ * because it reads a file the detector has already finished with.
+ */
+let reportOn = false;
+
+async function refreshReportButton() {
+  el("reporttoggle").textContent = `Written report: ${reportOn ? "on" : "off"}`;
+  el("reporttoggle").dataset.on = reportOn ? "1" : "0";
+}
+
+el("reporttoggle").addEventListener("click", async () => {
+  const res = await fetch("/report/toggle", { method: "POST" });
+  const data = await res.json().catch(() => ({}));
+  reportOn = Boolean(data.enabled);
+  await refreshReportButton();
+  if (!reportOn) { el("reportsheet").hidden = true; return; }
+
+  const r = await (await fetch("/report")).json();
+  if (!r.report) {
+    el("hint").className = "hint";
+    el("hint").textContent = r.note || "nothing recorded yet";
+    return;
+  }
+  el("reporttitle").textContent = r.report.title;
+  el("reportbody").textContent = r.report.body;
+  el("reportsheet").hidden = false;
+});
+
+el("reportclose").addEventListener("click", () => {
+  el("reportsheet").hidden = true;
+});
+
 resize();
 connect();
 loadScenarios();

@@ -153,7 +153,7 @@ console, the truck profile, evidence, phone view.
 | Owner | Area | State |
 |---|---|---|
 | Abishek | Simulator | task 1 done (reviewed, fixed) · **task 2 in progress** — attack injectors |
-| — | Detector core | stages 1-9 done, 55 tests passing |
+| — | Detector core | stages 1-10 done, 59 tests passing |
 | — | Fleet | clustering, zone and advisories done — not yet on screen |
 | — | Console | live — canvas map, two paths, raw feed |
 | — | Blame (stage 5) | **done** — names the sensor, or says `cannot_isolate` |

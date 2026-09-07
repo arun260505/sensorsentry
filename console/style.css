@@ -255,6 +255,63 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .feedhead { border-right: 0; border-bottom: 1px solid var(--rule); }
 }
 
+/* --- the phone ----------------------------------------------------------
+ *
+ * Same page, same data — this is the fleet manager's pocket, not a separate
+ * app. What changes is the order of importance. On a wide screen there is
+ * room for the map and the detail together; on a phone the answer has to come
+ * first and everything else has to be reachable by scrolling.
+ *
+ * The raw feed goes away entirely. It exists to prove to a room that nothing
+ * is hardcoded, and nobody is making that argument from a phone.
+ */
+@media (max-width: 620px) {
+  html, body { overflow: auto; height: auto; }
+  body { display: block; }
+
+  .bar {
+    position: sticky; top: 0; z-index: 5;
+    gap: 10px; padding: 10px 14px; flex-wrap: wrap;
+  }
+  .name { font-size: .95rem; }
+  .runinfo { font-size: .72rem; width: 100%; order: 3; }
+  .runinfo .sep, .runinfo #runid { display: none; }
+  .statepill { font-size: .7rem; padding: 5px 11px; }
+
+  /* The answer, and it stays put while everything else scrolls under it. */
+  .banner { position: sticky; top: 46px; z-index: 4; padding: 12px 14px; gap: 6px; }
+  .banner-what { font-size: 1.05rem; }
+  .banner-who, .banner-do { font-size: .8rem; margin-left: 0; text-align: left; }
+
+  main { display: block; }
+  .mapwrap { height: 46vh; border-bottom: 1px solid var(--rule); }
+  .legend { font-size: .72rem; padding: 7px 9px; }
+  .scalebar { font-size: .68rem; }
+
+  .side { max-height: none; border-top: 0; }
+  .panel { padding: 14px 16px; }
+  .big { font-size: 2rem; }
+
+  /* Proof for a hall, not for a pocket. */
+  .feedwrap { display: none; }
+
+  .controls {
+    position: sticky; bottom: 0; z-index: 5;
+    flex-wrap: wrap; gap: 8px; padding: 10px 14px;
+  }
+  .ctrl-label { width: 100%; }
+  .scenarios { width: 100%; }
+  .scenarios button { flex: 1 1 46%; padding: 10px 8px; }
+  .spacer { display: none; }
+  #reset { flex: 1 1 100%; }
+  .hint { width: 100%; }
+}
+
+/* Touch targets on anything hand-held, not only the narrowest phones. */
+@media (pointer: coarse) {
+  button { min-height: 44px; }
+}
+
 /* --- verdict: which sensor, and why ------------------------------------- */
 
 .panel.verdict { background: rgba(179,53,42,.05); }
@@ -395,3 +452,40 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   border: 1px solid var(--rule);
 }
 .mode[data-mode="fleet"] { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+/* --- the written report, and its switch --------------------------------- */
+
+.toggle { font-size: .8rem; }
+.toggle[data-on="1"] {
+  background: var(--accent); border-color: var(--accent); color: #fff;
+}
+
+.reportsheet {
+  position: fixed; inset: 0; z-index: 20;
+  background: rgba(15,28,37,.45);
+  display: flex; align-items: center; justify-content: center;
+  padding: 24px;
+}
+.reportcard {
+  background: var(--panel); border: 1px solid var(--rule); border-radius: 4px;
+  max-width: 720px; width: 100%; max-height: 82vh;
+  display: flex; flex-direction: column;
+  box-shadow: 0 20px 60px -20px rgba(15,28,37,.45);
+}
+.reporthead {
+  display: flex; align-items: center; gap: 16px;
+  padding: 16px 20px; border-bottom: 1px solid var(--rule);
+}
+.reporthead h2 { margin: 0; font-size: .95rem; letter-spacing: 0; text-transform: none; color: var(--ink); }
+.reporthead button { margin-left: auto; }
+.reportcard pre {
+  margin: 0; padding: 20px; overflow: auto;
+  font-family: var(--sans); font-size: .9rem; line-height: 1.6;
+  white-space: pre-wrap; color: var(--ink-2);
+}
+.reportnote {
+  margin: 0; padding: 14px 20px; border-top: 1px solid var(--rule);
+  font-size: .78rem; line-height: 1.5; color: var(--ink-3);
+  background: var(--panel-2);
+}
+.reportnote b { color: var(--ink-2); }
