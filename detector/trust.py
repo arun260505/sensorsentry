@@ -1,0 +1,168 @@
+"""Stage 7 — require sustained evidence before changing state.
+
+The cross-checks in stage 4 are noisy by nature: they compare independent
+sensors, each with its own noise, over short windows. On an honest three-minute
+flight a handful of samples out of several thousand will cross any threshold
+worth setting — measured, four to ten of 3600. React to those and the operator
+sees an alarm every couple of minutes on a vehicle that is completely fine.
+
+Which is worse than useless. A detector that cries wolf gets switched off by
+the person it was bought to protect, usually within the week, and then it
+protects nobody at all. Rule 3 in CLAUDE.md exists for this reason: zero false
+alarms is a gate, not a goal.
+
+So a state change costs time, not a sample. The evidence has to persist before
+we escalate, and it has to stay away before we relax. Real attacks last tens of
+seconds and clear the bar easily; noise spikes last a fraction of one and never
+do.
+
+Deliberately asymmetric: quick to worry, slow to reassure. Coming down from an
+alert takes longer than going up, so a spoofer cannot get a free window by
+letting the attack breathe.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Optional
+
+OK, WATCH, ALERT = "OK", "WATCH", "ALERT"
+
+_RANK = {OK: 0, WATCH: 1, ALERT: 2}
+
+RISE_S = 2.0
+"""Seconds a worse reading must persist before the state escalates.
+
+Two seconds is 40 frames at 20 Hz, and roughly ten GNSS fixes. Long enough
+that no measured noise spike survives it; short enough that a real attack is
+still caught within seconds of becoming visible."""
+
+FALL_S = 6.0
+"""Seconds a better reading must persist before the state relaxes.
+
+Three times the rise, on purpose. An attacker who pauses briefly should not
+get the system back to OK, and an operator watching a borderline case should
+not see the badge flickering between states while they try to read it."""
+
+
+@dataclass
+class Hysteresis:
+    """Turns an instantaneous reading into a state that means something.
+
+    Feed it what the checks say right now; it returns what the system should
+    actually be telling the operator.
+    """
+
+    rise_s: float = RISE_S
+    fall_s: float = FALL_S
+    state: str = OK
+
+    _held_s: float = 0.0
+    """How long the instantaneous reading has disagreed with the current
+    state, in the direction it is currently disagreeing."""
+
+    def reset(self) -> None:
+        self.state = OK
+        self._held_s = 0.0
+
+    def update(self, dt: float, instant: Optional[str]) -> str:
+        """`instant` of None means the checks could not be evaluated at all.
+
+        That is not the same as "everything is fine", and treating it as such
+        was quietly fatal: the most sensitive check only applies while the
+        vehicle flies straight, so every turn reported OK, reset the evidence
+        timer, and an attack in progress could never accumulate the seconds it
+        needed to be believed. Detection went to zero while the numbers
+        underneath were screaming.
+
+        With no evidence we hold: neither escalate nor relax, and keep the
+        partial case intact for when the check becomes available again.
+        """
+        if dt <= 0.0 or instant is None:
+            return self.state
+
+        here, there = _RANK[self.state], _RANK[instant]
+
+        if there == here:
+            # Reading agrees with where we are. Any partial case for moving
+            # decays immediately — evidence has to be continuous, not merely
+            # frequent, or a sensor flickering on and off would eventually
+            # accumulate its way to an alarm.
+            self._held_s = 0.0
+            return self.state
+
+        self._held_s += dt
+        threshold = self.rise_s if there > here else self.fall_s
+        if self._held_s >= threshold:
+            self.state = instant
+            self._held_s = 0.0
+        return self.state
+
+    @property
+    def settling(self) -> bool:
+        """True while evidence is building but has not yet moved the state.
+        The console uses this to show something is being considered, rather
+        than looking frozen during the two seconds before an alert."""
+        return self._held_s > 0.0
+
+
+def classify(ratio: float, watch: float, alert: float) -> str:
+    """Turn one pair's ratio into an instantaneous level."""
+    if ratio >= alert:
+        return ALERT
+    if ratio >= watch:
+        return WATCH
+    return OK
+
+
+class PairTrust:
+    """Hysteresis kept independently for every cross-check.
+
+    One shared timer across all pairs does not work, and the reason is worth
+    recording. The pairs are not available at the same moments: the course
+    check needs a GNSS fix and straight flight, the compass check runs every
+    frame. Take the worst pair each frame and the answer flickers with
+    *availability* rather than with evidence — three frames in four have no
+    GNSS, the quiet pairs win, the timer resets, and an attack that is plainly
+    visible in the numbers can never accumulate the seconds it needs.
+
+    So each pair carries its own case. A pair that cannot be evaluated holds
+    what it had; a pair that can, builds or decays on its own schedule. The
+    reported state is the worst of them.
+
+    Stage 5 wants this shape anyway: to accuse a sensor you need to know which
+    checks have been failing and for how long, not merely which one is loudest
+    right now.
+    """
+
+    def __init__(self, watch_ratio: float, alert_ratio: float,
+                 rise_s: float = RISE_S, fall_s: float = FALL_S):
+        self.watch_ratio = watch_ratio
+        self.alert_ratio = alert_ratio
+        self.rise_s = rise_s
+        self.fall_s = fall_s
+        self._per_pair: dict[str, Hysteresis] = {}
+
+    def reset(self) -> None:
+        self._per_pair.clear()
+
+    def update(self, dt: float, pairs) -> tuple[str, dict[str, str]]:
+        """Returns the overall state and each pair's settled state."""
+        settled: dict[str, str] = {}
+        for pair in pairs:
+            key = f"{pair.a}-{pair.b}"
+            hyst = self._per_pair.get(key)
+            if hyst is None:
+                hyst = self._per_pair[key] = Hysteresis(self.rise_s, self.fall_s)
+            instant = classify(pair.ratio, self.watch_ratio, self.alert_ratio) if pair.valid else None
+            settled[key] = hyst.update(dt, instant)
+
+        worst = OK
+        for state in settled.values():
+            if _RANK[state] > _RANK[worst]:
+                worst = state
+        return worst, settled
+
+    def failing(self) -> list[str]:
+        """Pairs currently settled above OK — the evidence list for stage 5."""
+        return [k for k, h in self._per_pair.items() if h.state != OK]

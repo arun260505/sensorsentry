@@ -160,6 +160,23 @@ Two things about the console that are deliberate and easy to undo by accident:
 
 ### Engineering findings — these cost real time, don't rediscover them
 
+**0. Position integration cannot catch a slow walk-off, and no amount of
+filter tuning changes that.** A constant half-degree pitch error — well inside
+what a complementary filter leaves behind — leaks enough gravity to build a
+**6 m/s velocity error inside a minute**. That swamps a 2 m/s attack whatever
+you do to the uncertainty model. We tried position aiding, then alpha-beta
+position-and-velocity aiding; the clean-run noise always came out as large as
+the attack signal. This is a known limit of inertial-only spoofing detection.
+
+**What works instead is comparing *direction*, not accumulated position.**
+Pull a 12 m/s vehicle sideways at 2 m/s and its course over ground swings 9
+degrees while the airframe still points where it pointed. The compass is good
+to 1.5 degrees, and a radio attack cannot reach it. Measured: 2.4 degrees of
+disagreement on honest flights against 10.6 degrees under a 2 m/s walk-off.
+This is why the design has many sensor pairs and not one residual — see
+`crossvalidate.py`.
+
+
 **1. An accelerometer cannot tell tilting from accelerating, and getting the
 gate wrong is unrecoverable.** Correcting attitude from gravity during
 acceleration writes a false pitch, the gyro then faithfully preserves it,
@@ -183,16 +200,27 @@ uncertainty while the witness was 12 m off, hiding a live 2 m/s attack.
 
 ### Measured detection curve
 
-Free-running witness, test fixture, straight-line motion. Peak ratio of
-residual to claimed uncertainty:
+`python -m harness.sweep`, against the real simulator, whole pipeline, four
+seeds per point. These are the numbers to put on the results card.
 
-| walk-off | 0.0 | 0.2 | 0.5 | 1.0 | 2.0 | 5.0 m/s |
-|---|---|---|---|---|---|---|
-| ratio | 1.18 | 1.18 | 1.29 | 1.79 | 3.09 | 7.24 |
+| | result |
+|---|---|
+| **False alarms**, 8 honest flights incl. hard manoeuvres | **zero** |
+| GPS walk-off 5 m/s | caught 15-16 s after onset |
+| GPS walk-off 3 m/s | caught 16-17 s after onset |
+| GPS walk-off 2 m/s | caught in 2 of 3 runs |
+| GPS walk-off 1 m/s and below | **not detected** |
+| Magnet on compass, 25 deg or more | caught 2 s after onset |
+| Magnet on compass, 10 deg | not detected |
 
-This independently reproduces the failure boundary claimed in the demo
-playbook: **below about 0.2 m/s the attack hides inside our own drift.** Say
-that on stage — showing where we fail is the most credible thing we can do.
+**Say the floor out loud on stage.** Below about 2 m/s a walk-off is slower
+than our own inertial drift and we do not catch it. That is a property of the
+IMU, not a bug — and at that speed an attacker needs about eight minutes to
+move a vehicle a kilometre.
+
+The 15-17 s latency is honest too, and worth explaining rather than hiding:
+the course check only means anything while the vehicle is flying straight, so
+detection waits for the next straight segment after the attack starts.
 
 ### Open questions
 

@@ -15,19 +15,25 @@ from dataclasses import dataclass, field
 from typing import Any, Optional
 
 from . import health, profiles
+from .crossvalidate import CrossValidator, PairScore
 from .deadreckon import DeadReckoner, Witness
 from .geo import ENU, llh_from_enu
 from .ingest import Frame, FrameStream, RunHeader
 from .residual import Residual, ResidualTracker
+from .trust import PairTrust
 
 # --- PROVISIONAL ----------------------------------------------------------
-# A bare threshold on the residual ratio, standing in until phases 5-7 land.
+# A threshold on the worst cross-validation pair, standing in until phases 5-7
+# land. It is now driven by the pair scores rather than the position residual
+# alone, because the position residual cannot see a slow walk-off at all (see
+# crossvalidate.py). Measured against the simulator: honest flights sit at
+# 1.1-1.7x, a 2 m/s walk-off reaches 4.0x, a magnet 9.3x.
 # It is enough to make the console show something real, and it is deliberately
 # not called a verdict anywhere the operator can see. The actual decision needs
 # blame assignment (which sensor), classification (attack or fault) and
 # hysteresis (sustained, not instantaneous) — none of which exist yet.
 WATCH_RATIO = 2.0
-ALERT_RATIO = 3.0
+ALERT_RATIO = 2.5
 # --------------------------------------------------------------------------
 
 OK, WATCH, ALERT = "OK", "WATCH", "ALERT"
@@ -45,8 +51,20 @@ class State:
     witness: Witness
     residual: Optional[Residual]
     health: dict[str, health.SensorHealth]
+    pairs: list[PairScore] = field(default_factory=list)
 
     state: str = OK
+    """What the operator is told, after hysteresis."""
+
+    instant_state: str = OK
+    """Last usable reading from the checks, before hysteresis. Holds its
+    previous value on frames where nothing could be checked."""
+    """What the checks say this very frame, before hysteresis. Kept so the
+    console can show evidence building without the badge flickering."""
+
+    pair_states: dict[str, str] = field(default_factory=dict)
+    """Each cross-check's settled state, after its own hysteresis."""
+
     anchored: bool = False
 
     gnss_enu: Optional[ENU] = None
@@ -66,6 +84,8 @@ class State:
             "seq": self.seq,
             "anchored": self.anchored,
             "state": self.state,
+            "instant_state": self.instant_state,
+            "pair_states": dict(self.pair_states),
             "residual": None if residual is None else {
                 "horizontal_m": round(residual.horizontal_m, 2),
                 "vertical_m": round(residual.vertical_m, 2),
@@ -88,6 +108,15 @@ class State:
                 "n": round(self.gnss_enu.n, 2),
                 "u": round(self.gnss_enu.u, 2),
             },
+            "pairs": [
+                {
+                    "a": p.a, "b": p.b, "label": p.label,
+                    "value": round(p.value, 2), "unit": p.unit,
+                    "sigma": round(p.sigma, 2), "ratio": round(p.ratio, 2),
+                    "valid": p.valid, "reason": p.reason,
+                }
+                for p in self.pairs
+            ],
             "health": {
                 name: {"healthy": h.healthy, "flags": list(h.flags)}
                 for name, h in self.health.items()
@@ -106,6 +135,8 @@ class Pipeline:
         self.monitor: Optional[health.HealthMonitor] = None
         self.reckoner: Optional[DeadReckoner] = None
         self.tracker: Optional[ResidualTracker] = None
+        self.crossvalidator: Optional[CrossValidator] = None
+        self.trust = PairTrust(WATCH_RATIO, ALERT_RATIO)
         self.last_state: Optional[State] = None
         self.started = False
 
@@ -131,6 +162,10 @@ class Pipeline:
         if residual is None:
             residual = self.tracker.last
 
+        pairs: list[PairScore] = []
+        if self.crossvalidator is not None:
+            pairs = self.crossvalidator.update(frame, witness, self.tracker.origin)
+
         state = State(
             header=self.stream.header,          # type: ignore[arg-type]
             profile_name=self.profile.name,     # type: ignore[union-attr]
@@ -139,6 +174,7 @@ class Pipeline:
             witness=witness,
             residual=residual,
             health=report,
+            pairs=pairs,
             anchored=self.tracker.anchored,
             frames_seen=self.stream.frames_seen,
             frames_dropped=self.stream.frames_dropped,
@@ -147,7 +183,10 @@ class Pipeline:
         if self.tracker.anchored and residual is not None:
             state.gnss_enu = residual.gnss_pos
             state.witness_enu = residual.witness_pos
-            state.state = self._provisional_state(residual)
+            instant = self._instant_state(pairs)
+            if instant is not None:
+                state.instant_state = instant
+            state.state, state.pair_states = self.trust.update(frame.dt, pairs)
 
         self.last_state = state
         return state
@@ -166,13 +205,28 @@ class Pipeline:
         self.monitor = health.HealthMonitor(self.profile)
         self.reckoner = DeadReckoner(self.profile)
         self.tracker = ResidualTracker(self.profile.accel_bias_sigma)
+        self.crossvalidator = CrossValidator(self.profile)
+        self.trust.reset()
         self.last_state = None
         self.started = True
 
     @staticmethod
-    def _provisional_state(residual: Residual) -> str:
-        if residual.ratio >= ALERT_RATIO:
+    def _instant_state(pairs: list[PairScore]) -> Optional[str]:
+        """Worst valid pair decides, for now.
+
+        Deliberately crude: it takes the loudest disagreement and thresholds
+        it. It does not know *which* sensor is at fault, cannot tell an attack
+        from a failure, and reacts to a single sample. Those are stages 5, 6
+        and 7 — the parts that make this a diagnosis rather than an alarm.
+        """
+        usable = [p.ratio for p in pairs if p.valid]
+        if not usable:
+            # Nothing could be checked this frame. Say so rather than
+            # reporting OK — see Hysteresis.update.
+            return None
+        worst = max(usable)
+        if worst >= ALERT_RATIO:
             return ALERT
-        if residual.ratio >= WATCH_RATIO:
+        if worst >= WATCH_RATIO:
             return WATCH
         return OK

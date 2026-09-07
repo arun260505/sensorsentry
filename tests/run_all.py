@@ -14,6 +14,7 @@ from detector import health, profiles
 from detector.deadreckon import DeadReckoner
 from detector.geo import ENU, Origin, enu_from_llh, heading_from_yaw, llh_from_enu, wrap_pi, yaw_from_heading
 from detector.ingest import FrameStream, SchemaViolation, validate_frame
+from detector.crossvalidate import CrossValidator
 from detector.residual import ResidualTracker
 from harness import fixtures
 
@@ -328,6 +329,26 @@ def _run_residual(duration_s: float, track, spoof, seed: int = 5):
     return peak_ratio, last
 
 
+def _peak_pair_ratios(duration_s: float, spoof) -> dict[str, float]:
+    """Highest ratio each cross-check reached over a run."""
+    stream = FrameStream()
+    reckoner = DeadReckoner(profiles.DRONE)
+    tracker = ResidualTracker(profiles.DRONE.accel_bias_sigma)
+    validator = CrossValidator(profiles.DRONE)
+    peaks: dict[str, float] = {}
+    for raw in fixtures.frames(duration_s=duration_s, spoof=spoof, seed=5):
+        frame = stream.accept(raw)
+        if frame is None:
+            continue
+        witness = reckoner.update(frame)
+        tracker.update(frame, witness)
+        for score in validator.update(frame, witness, tracker.origin):
+            if score.valid:
+                key = f"{score.a}-{score.b}"
+                peaks[key] = max(peaks.get(key, 0.0), score.ratio)
+    return peaks
+
+
 @test
 def clean_run_keeps_residual_small() -> None:
     peak, last = _run_residual(60.0, fixtures.Track(), None)
@@ -337,11 +358,27 @@ def clean_run_keeps_residual_small() -> None:
 
 @test
 def walkoff_spoof_separates_the_paths() -> None:
+    """A walk-off must show up in the cross-checks.
+
+    Asserted on the pair scores, not on the position residual. Since GNSS aids
+    the witness, a spoof drags the inertial estimate part-way along with it and
+    the absolute gap between the two stops being a reliable measure — which is
+    the whole reason detection moved to crossvalidate.py.
+    """
     spoof = fixtures.Spoof(start_t=20.0, speed_mps=2.0, bearing_deg=135.0)
-    _peak, last = _run_residual(60.0, fixtures.Track(), spoof)
-    assert last is not None
-    # 2 m/s for 40 s drags GNSS 80 m off. Allow for witness drift either way.
-    assert last.horizontal_m > 40.0, f"only {last.horizontal_m:.1f} m apart"
+    clean = _peak_pair_ratios(60.0, None)
+    attacked = _peak_pair_ratios(60.0, spoof)
+
+    worst_clean = max(clean.values(), default=0.0)
+    worst_attacked = max(attacked.values(), default=0.0)
+    assert worst_attacked > worst_clean * 1.5, (
+        f"attack barely moved the pairs: clean {worst_clean:.2f} "
+        f"vs attacked {worst_attacked:.2f}"
+    )
+    # The course check is the one that should carry it.
+    assert attacked.get("gnss-mag", 0.0) > clean.get("gnss-mag", 0.0), (
+        "the course-vs-compass check did not react to a sideways pull"
+    )
 
 
 @test

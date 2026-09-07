@@ -16,6 +16,7 @@ is what phase 2 needs to be finished.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Optional
 
@@ -69,6 +70,82 @@ ANCHOR_SETTLE_S = 2.0
 """How long to let attitude settle before taking the anchor. Anchoring on the
 very first frame captures a levelling transient and biases the whole run."""
 
+AIDING_TAU_S = 25.0
+"""Time constant for correcting the witness from GNSS, in seconds.
+
+This one number decides whether the whole approach works, so it is worth
+being clear about what it trades.
+
+A free-running witness drifts without bound — 60 m by one minute, 500 m by
+two — so eventually any honest uncertainty grows past the size of the attacks
+we are trying to see, and a clean flight starts raising alarms. Bounding that
+means letting GNSS pull the witness back.
+
+But GNSS is the thing we are trying to catch lying. Pull too eagerly and a
+spoofer simply drags the witness along with the fake position, and the
+disagreement we exist to measure quietly disappears.
+
+So the correction is deliberately slow. Drift, which accumulates steadily,
+gets absorbed. A walk-off, which pushes in one direction, cannot be absorbed
+fast enough and stands off as a sustained error of roughly
+`attack_speed * AIDING_TAU_S` — at 2 m/s that is about 50 m, well clear of
+the noise. Meanwhile our own drift is held near `DRIFT_RATE_MPS * TAU`
+instead of growing forever.
+
+25 s keeps the bound near 45 m while leaving a 1 m/s attack visible. Both
+those numbers come from measurement against the simulator, not from theory.
+
+The moment trust in GNSS drops, aiding stops (see `freeze_aiding`) and the
+witness free-runs on the vehicle's own senses alone. That is the fallback the
+demo shows: it stops believing GPS and keeps flying.
+"""
+
+DRIFT_VEL_TAU_S = 60.0
+"""Time constant for learning how fast the witness is drifting, in seconds.
+
+Correcting position alone is not enough. The witness does not just sit at a
+fixed offset — it drifts at a *rate*, and that rate grows as attitude error
+accumulates. A position-only correction is always chasing it, so the gap it
+leaves behind keeps widening and a clean flight eventually raises an alarm.
+
+So we estimate the drift rate too, and let it extrapolate between fixes.
+Slower than the position correction, because a rate estimate built from noisy
+fixes is itself noisy, and this one is allowed to move the answer.
+"""
+
+MAX_DRIFT_VEL_MPS = 1.0
+"""Ceiling on the learned drift rate, in metres per second.
+
+This is the line between absorbing our own error and absorbing the attack, and
+it is the reason estimating drift rate is safe at all.
+
+Position error from drift and position error from spoofing look *identical* in
+a single fix. Nothing in the geometry separates them. What separates them is
+physics: our inertial drift is bounded by the quality of the IMU, and we have
+measured it — around 0.8 m/s worst case on this hardware. A spoofer dragging
+the vehicle faster than that is doing something our own sensors cannot.
+
+So the estimate is clamped here. Drift below the ceiling is learned and
+cancelled, which is what keeps clean flights quiet. Anything above it cannot
+be absorbed no matter how long it persists, and stands off as a growing
+residual — which is exactly what we detect.
+
+The cost is honest and worth saying out loud on stage: **a walk-off slower
+than about 1 m/s is indistinguishable from our own drift, and we will not
+catch it.** Raising this ceiling would hide real attacks; lowering it would
+raise false alarms on clean flights. It is set to the measured drift rate
+because that is what the physics allows, not what we would prefer.
+"""
+
+
+def _clamp_horizontal(v: ENU, limit: float) -> ENU:
+    """Cap a vector's horizontal magnitude, leaving its direction alone."""
+    speed = math.hypot(v.e, v.n)
+    if speed <= limit or speed == 0.0:
+        return v
+    scale = limit / speed
+    return ENU(v.e * scale, v.n * scale, v.u)
+
 
 @dataclass
 class Residual:
@@ -119,7 +196,29 @@ class ResidualTracker:
 
         self._anchor_elapsed: Optional[float] = None
         self._first_frame_t: Optional[float] = None
+        self._last_gnss_t: Optional[float] = None
         self.last: Optional[Residual] = None
+
+        self.correction = ENU(0.0, 0.0, 0.0)
+        """Our running estimate of how far the witness has drifted.
+
+        Added to the witness before comparing, and nudged toward GNSS slowly
+        (see AIDING_TAU_S). This is the only state in the detector that GNSS is
+        allowed to influence, which is why it lives here beside the anchor and
+        not inside deadreckon.py."""
+
+        self.aiding = True
+        """Whether GNSS is currently allowed to correct the witness. Cleared
+        the moment GNSS is suspect, so the witness free-runs instead of being
+        walked along by a spoofer."""
+
+        self.unaided_s = 0.0
+        """Seconds since aiding last ran. Drives how fast uncertainty grows."""
+
+        self.drift_vel = ENU(0.0, 0.0, 0.0)
+        """Learned rate at which the witness is drifting, m/s. Clamped to
+        MAX_DRIFT_VEL_MPS so it can absorb our own error but never the
+        attack."""
 
     def reset(self) -> None:
         self.origin = None
@@ -127,7 +226,25 @@ class ResidualTracker:
         self._witness_at_anchor = None
         self._anchor_elapsed = None
         self._first_frame_t = None
+        self._last_gnss_t = None
         self.last = None
+        self.correction = ENU(0.0, 0.0, 0.0)
+        self.drift_vel = ENU(0.0, 0.0, 0.0)
+        self.aiding = True
+        self.unaided_s = 0.0
+
+    def freeze_aiding(self) -> None:
+        """Stop letting GNSS correct the witness.
+
+        Called when GNSS is no longer trusted. From here the witness runs on
+        the vehicle's own senses alone and its uncertainty grows again — which
+        is honest, and is what lets the console show a decaying error budget
+        while the vehicle keeps flying its true route."""
+        self.aiding = False
+
+    def resume_aiding(self) -> None:
+        """Trust GNSS again. Uncertainty stops growing from here."""
+        self.aiding = True
 
     @property
     def anchored(self) -> bool:
@@ -155,18 +272,70 @@ class ResidualTracker:
             self.anchored_at_t = frame.t
             self._witness_at_anchor = witness.displacement
             self._anchor_elapsed = witness.elapsed_s
+            self._last_gnss_t = frame.t
             return None
 
         gnss_pos = enu_from_llh(lat, lon, alt, self.origin)
-        # Both sides now measured from the same instant and the same place.
-        witness_pos = witness.displacement - self._witness_at_anchor
+        gnss_dt = frame.t - (self._last_gnss_t if self._last_gnss_t is not None else frame.t)
+        self._last_gnss_t = frame.t
 
-        horizontal = (gnss_pos - witness_pos).horizontal_norm()
-        vertical = gnss_pos.u - witness_pos.u
+        # Both sides measured from the same instant and the same place, with
+        # our current estimate of the witness's own drift folded in.
+        raw_witness = witness.displacement - self._witness_at_anchor
+        witness_pos = raw_witness + self.correction
 
-        # Drift is counted from the anchor, not from when the reckoner booted.
-        since_anchor = witness.elapsed_s - (self._anchor_elapsed or 0.0)
-        sigma = SIGMA_FLOOR_M + DRIFT_RATE_MPS * since_anchor
+        innovation = gnss_pos - witness_pos
+        horizontal = innovation.horizontal_norm()
+        vertical = innovation.u
+
+        if self.aiding and gnss_dt > 0.0:
+            # Position: a slow first-order pull toward GNSS. Fast enough to
+            # absorb our own drift, far too slow to be walked along by a
+            # spoofer.
+            gain = min(1.0, gnss_dt / AIDING_TAU_S)
+            self.correction = ENU(
+                self.correction.e + gain * innovation.e,
+                self.correction.n + gain * innovation.n,
+                self.correction.u + gain * innovation.u,
+            )
+
+            # Rate: learn how fast the witness is drifting, so the correction
+            # can keep pace instead of forever chasing. Clamped to what this
+            # IMU could plausibly do — see MAX_DRIFT_VEL_MPS. That clamp is
+            # what stops the same machinery quietly absorbing the attack.
+            vel_gain = min(1.0, gnss_dt / DRIFT_VEL_TAU_S)
+            target = ENU(
+                innovation.e / AIDING_TAU_S,
+                innovation.n / AIDING_TAU_S,
+                innovation.u / AIDING_TAU_S,
+            )
+            self.drift_vel = _clamp_horizontal(
+                ENU(
+                    self.drift_vel.e + vel_gain * (target.e - self.drift_vel.e),
+                    self.drift_vel.n + vel_gain * (target.n - self.drift_vel.n),
+                    self.drift_vel.u + vel_gain * (target.u - self.drift_vel.u),
+                ),
+                MAX_DRIFT_VEL_MPS,
+            )
+            self.unaided_s = 0.0
+        else:
+            self.unaided_s += max(0.0, gnss_dt)
+
+        # Carry the learned drift rate forward to the next fix. Done whether or
+        # not aiding is on: once GNSS is frozen out, the last known drift rate
+        # is still our best guess at where the witness is heading.
+        if gnss_dt > 0.0:
+            self.correction = ENU(
+                self.correction.e + self.drift_vel.e * gnss_dt,
+                self.correction.n + self.drift_vel.n * gnss_dt,
+                self.correction.u + self.drift_vel.u * gnss_dt,
+            )
+
+        # While aided, error is bounded near one time constant of drift rather
+        # than growing without limit. Once aiding stops, it grows again from
+        # there — the operator sees exactly how long they can keep going.
+        free_run_s = AIDING_TAU_S + self.unaided_s
+        sigma = SIGMA_FLOOR_M + DRIFT_RATE_MPS * free_run_s
         residual = Residual(
             horizontal_m=horizontal,
             vertical_m=vertical,

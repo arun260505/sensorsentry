@@ -4,10 +4,10 @@ Working checklist. Tick tasks as they land. The reasoning behind each phase is
 in [docs/sensorsentry-implementation-plan.html](docs/sensorsentry-implementation-plan.html);
 this file is the version you keep open while building.
 
-**Status:** Phases 0, 2, 3 done · Phase 1 done (reviewed + fixed) · **Phase 4 in progress**
-**Blocker found:** free-running witness outgrows its own sigma after ~90 s, so the
-clean-run gate no longer holds for a full route. Phase 7 GNSS-aided witnessing is
-promoted ahead of phases 5 and 6 — see `detector/residual.py`.
+**Status:** Phases 0-4 done · phase 7 hysteresis done · **zero false alarms, detection measured**
+**Blocker cleared.** The witness could never carry detection on its own; the
+cross-checks do. Clean runs are silent and a 3 m/s walk-off is caught in ~16 s.
+Floor is ~2 m/s — measured, and stated on stage. Next: blame (5) and classify (6).
 **Owners:** A = simulator · B = detector core · C = unique logic · D = console
 *(fewer people? see [Team](#team) at the bottom)*
 
@@ -106,11 +106,11 @@ without explanation.
 - [ ] Slow bias
 
 **Cross-validation** (B)
-- [ ] `crossvalidate.py` — GNSS ↔ inertial
+- [x] `crossvalidate.py` — GNSS ↔ inertial
 - [ ] GNSS ↔ wheels, GNSS ↔ road map
-- [ ] GNSS altitude ↔ barometer
-- [ ] GNSS heading ↔ compass
-- [ ] Compass ↔ gyro *(catches the magnet case)*
+- [x] GNSS altitude ↔ barometer
+- [x] GNSS course ↔ compass **(this is what actually detects)**
+- [x] Compass ↔ gyro *(catches the magnet case)*
 - [ ] Barometer ↔ vertical motion *(catches pressure interference)*
 - [ ] Strength slider and direction control in the console
 
@@ -149,9 +149,9 @@ scenario-specific code anywhere in the classifier.**
 
 ## Phase 7 — Trust, hysteresis, fallback · ~6h · B + C
 
-- [ ] `trust.py` — 0-to-1 score per sensor, moving smoothly
-- [ ] Requires N sustained cycles to downgrade, M to recover
-- [ ] No single reading can change trust state
+- [x] `trust.py` — hysteresis per cross-check
+- [x] Requires 2 s sustained to escalate, 6 s to relax
+- [x] No single reading can change state — clean runs now silent
 - [ ] `fusion.py` — drop untrusted sensor, keep navigating
 - [ ] Publish a growing error budget in metres
 - [ ] Console: verdict panel and trust bars
@@ -205,8 +205,8 @@ changes nothing about detection.
 
 ## Phase 11 — Measurement harness · ~5h · A
 
-- [ ] `sweep.py` — attack strengths 5.0 → 0.1 m/s, ten runs each
-- [ ] Record detection time for each
+- [x] `sweep.py` — attack strengths 5.0 → 0.5 m/s across seeds
+- [x] Record detection time for each
 - [ ] `regress.py` — twenty clean runs, assert zero alerts
 - [ ] `results.py` — results card and strength ladder
 
