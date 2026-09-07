@@ -13,7 +13,8 @@ Options
   --scenario NAME     Which scenario to run (default: drone_clean)
   --vehicle-id ID     Override the vehicle ID in frames (default: from scenario)
   --seed INT          Fix the random seed for exact replay (default: random)
-  --realtime          Throttle output to 20 Hz wall time (default: as-fast-as)
+  --fast              Send as fast as possible (offline analysis only —
+                      floods UDP and the detector will drop frames)
   --list              Print available scenarios and exit
   --truth-log FILE    Write truth position to FILE (never to the socket)
   --quiet             Suppress per-frame console output
@@ -161,8 +162,9 @@ def main():
                         help="Override vehicle ID in frames")
     parser.add_argument("--seed", type=int, default=None,
                         help="RNG seed for exact replay (default: random)")
-    parser.add_argument("--realtime", action="store_true",
-                        help="Throttle to 20 Hz wall time")
+    parser.add_argument("--fast", action="store_true",
+                        help="send as fast as possible; floods UDP and the "
+                             "detector will drop frames. Offline use only.")
     parser.add_argument("--list", action="store_true",
                         help="List available scenarios and exit")
     parser.add_argument("--truth-log", default=None, metavar="FILE",
@@ -183,7 +185,7 @@ def main():
         scenario_name=args.scenario,
         vehicle_id=args.vehicle_id,
         seed=seed,
-        realtime=args.realtime,
+        realtime=not args.fast,
         truth_log_path=args.truth_log,
         quiet=args.quiet,
     )

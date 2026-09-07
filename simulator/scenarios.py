@@ -77,52 +77,62 @@ def drone_clean():
 # ---------------------------------------------------------------------------
 def drone_manoeuvre():
     """
-    Aggressive aerobatic route — hard banks, rapid vertical changes,
-    sharp accelerations.  Must not trigger detector false alarms.
+    Hard flying, at the limit of what a commercial drone actually does — hard
+    banks, rapid climbs and descents, sharp braking and acceleration. Must not
+    trigger detector false alarms.
 
-    Turn rates up to 1.2 rad/s (≈ 70 deg/s); acceleration up to 8 m/s².
+    Turn rate up to 0.6 rad/s (~34 deg/s) at up to 20 m/s, which is about 1.2 g
+    of lateral acceleration, plus 4 m/s^2 along track.
+
+    These were 1.2 rad/s at 30 m/s, which is 3.7 g — aerobatic racing, not a
+    delivery drone, and it demands a 75-degree bank that the 30-degree limit in
+    vehicle.py cannot produce, so the accelerometer and the attitude disagreed
+    by construction. The point of this scenario is to prove we stay quiet
+    through hard *legitimate* flying, so it has to be flying a real vehicle
+    would do. Violent enough to break dead reckoning does not test the
+    detector, it only tests arithmetic.
     """
     waypoints = [
         # Start at origin, 20 m AGL
-        _wp(   0,    0,   20, speed= 5.0, max_acc=8.0, turn_rate=1.2, max_climb=8.0),
+        _wp(   0,    0,   20, speed= 5.0, max_acc=4.0, turn_rate=0.6, max_climb=4.0),
 
         # Rapid acceleration east
-        _wp( 200,    0,   20, speed=28.0, max_acc=8.0, turn_rate=1.2, max_climb=8.0),
+        _wp( 200,    0,   20, speed=18.0, max_acc=4.0, turn_rate=0.6, max_climb=4.0),
 
         # Hard left bank — tight turn north
-        _wp( 210,  150,   20, speed=28.0, max_acc=8.0, turn_rate=1.2, max_climb=8.0),
+        _wp( 210,  150,   20, speed=18.0, max_acc=4.0, turn_rate=0.6, max_climb=4.0),
 
         # Rapid climb to 120 m AGL
-        _wp( 300,  200,  120, speed=22.0, max_acc=7.0, turn_rate=0.8, max_climb=8.0),
+        _wp( 300,  200,  120, speed=16.0, max_acc=3.5, turn_rate=0.5, max_climb=4.0),
 
         # Hard right bank east
-        _wp( 500,  150,  120, speed=25.0, max_acc=8.0, turn_rate=1.2, max_climb=8.0),
+        _wp( 500,  150,  120, speed=18.0, max_acc=4.0, turn_rate=0.6, max_climb=4.0),
 
         # Rapid descent to 15 m
-        _wp( 650,   80,   15, speed=20.0, max_acc=8.0, turn_rate=0.8, max_climb=8.0),
+        _wp( 650,   80,   15, speed=16.0, max_acc=4.0, turn_rate=0.5, max_climb=4.0),
 
         # Sharp braking + left turn north
-        _wp( 660,  200,   15, speed=30.0, max_acc=8.0, turn_rate=1.2, max_climb=8.0),
+        _wp( 660,  200,   15, speed=20.0, max_acc=4.0, turn_rate=0.6, max_climb=4.0),
 
         # Sprint north
-        _wp( 600,  600,   25, speed=30.0, max_acc=8.0, turn_rate=0.8, max_climb=8.0),
+        _wp( 600,  600,   25, speed=20.0, max_acc=4.0, turn_rate=0.5, max_climb=4.0),
 
         # Hard right bank, rapid climb
-        _wp( 800,  550,  100, speed=25.0, max_acc=8.0, turn_rate=1.2, max_climb=8.0),
+        _wp( 800,  550,  100, speed=18.0, max_acc=4.0, turn_rate=0.6, max_climb=4.0),
 
         # Hard left, rapid descent
-        _wp( 750,  350,   10, speed=28.0, max_acc=8.0, turn_rate=1.2, max_climb=8.0),
+        _wp( 750,  350,   10, speed=18.0, max_acc=4.0, turn_rate=0.6, max_climb=4.0),
 
         # Full-throttle east sprint
-        _wp(1100,  300,   10, speed=30.0, max_acc=8.0, turn_rate=0.8, max_climb=8.0),
+        _wp(1100,  300,   10, speed=20.0, max_acc=4.0, turn_rate=0.5, max_climb=4.0),
 
         # Hard stop + climb + U-turn
-        _wp(1120,  350,   80, speed=10.0, max_acc=8.0, turn_rate=1.2, max_climb=8.0),
-        _wp(1000,  400,   80, speed=28.0, max_acc=8.0, turn_rate=1.2, max_climb=8.0),
+        _wp(1120,  350,   80, speed= 8.0, max_acc=4.0, turn_rate=0.6, max_climb=4.0),
+        _wp(1000,  400,   80, speed=18.0, max_acc=4.0, turn_rate=0.6, max_climb=4.0),
 
         # Final aggressive descent home
-        _wp( 400,  100,   20, speed=30.0, max_acc=8.0, turn_rate=0.8, max_climb=8.0),
-        _wp(   0,    0,   20, speed=10.0, max_acc=8.0, turn_rate=1.2, max_climb=8.0),
+        _wp( 400,  100,   20, speed=20.0, max_acc=4.0, turn_rate=0.5, max_climb=4.0),
+        _wp(   0,    0,   20, speed= 8.0, max_acc=4.0, turn_rate=0.6, max_climb=4.0),
     ]
     return waypoints, "drone"
 

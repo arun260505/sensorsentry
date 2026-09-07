@@ -27,6 +27,15 @@ R_EARTH = 6_371_000.0  # metres
 
 GRAVITY = 9.79  # m/s²  (local Coimbatore value, close enough)
 
+# Airframe limits. These are not cosmetic: every one of them bounds a rate the
+# IMU has to report honestly, and a vehicle model that changes state faster
+# than its own sensors could measure hands the detector a physically
+# impossible history to integrate.
+MAX_BANK_RAD = math.radians(30.0)    # steepest coordinated turn
+MAX_ROLL_RATE = math.radians(120.0)  # rad/s, brisk but flyable
+MAX_PITCH_RATE = math.radians(60.0)  # rad/s
+MAX_CLIMB_ACC = 3.0                  # m/s^2 change in vertical speed
+
 DT = 1.0 / 20.0  # 0.05 s — simulation timestep (20 Hz)
 
 
@@ -88,6 +97,7 @@ class Vehicle:
         self._roll = 0.0                           # rad
         self._pitch = 0.0                          # rad
         self._yaw = 0.0                            # rad — 0 = East
+        self._climb_rate = 0.0                     # m/s, rate-limited
         self._t = 0.0
 
     # ------------------------------------------------------------------
@@ -183,7 +193,14 @@ class Vehicle:
         # gravity-projection errors in the dead-reckoning integrator.
         alt_err = wp.up - self._pos[2]
         max_climb = getattr(wp, 'max_climb', 3.0)
-        climb_rate = float(np.clip(alt_err * 1.0, -max_climb, max_climb))
+        wanted_climb = float(np.clip(alt_err * 1.0, -max_climb, max_climb))
+        # Rate-limited, not assigned: reaching a waypoint steps alt_err, and a
+        # step in vertical velocity is an infinite acceleration the IMU would
+        # have to report.
+        self._climb_rate += float(
+            np.clip(wanted_climb - self._climb_rate, -MAX_CLIMB_ACC * DT, MAX_CLIMB_ACC * DT)
+        )
+        climb_rate = self._climb_rate
 
         horiz_speed = new_speed * math.cos(math.atan2(abs(climb_rate), max(new_speed, 0.1)))
 
@@ -191,10 +208,26 @@ class Vehicle:
         self._vel[1] = horiz_dir_n * horiz_speed
         self._vel[2] = climb_rate
 
-        # Attitude — roll proportional to yaw rate (coordinated turn).
-        # Cap at ±30° so gravity projection errors stay manageable.
-        self._roll = float(np.clip(-yaw_err * 1.0, -math.radians(30), math.radians(30)))
-        self._pitch = math.atan2(-self._vel[2], max(horiz_speed, 0.1))
+        # Attitude — roll proportional to yaw error (coordinated turn), pitch
+        # from the flight path angle. Both move toward the demand at a rate a
+        # real airframe could achieve.
+        #
+        # Assigning these directly is what broke dead reckoning: arriving at a
+        # waypoint steps the desired heading, so roll snapped from 0 to 30
+        # degrees inside one 50 ms frame — 600 deg/s. No airframe rolls like
+        # that and no gyro can report it, so the accelerometer showed a vehicle
+        # steeply banked while the gyro showed one that never moved. The
+        # detector believed the gyro, held its attitude level, and read the
+        # tilted gravity vector as forward thrust that was never applied.
+        wanted_roll = float(np.clip(-yaw_err, -MAX_BANK_RAD, MAX_BANK_RAD))
+        self._roll += float(
+            np.clip(wanted_roll - self._roll, -MAX_ROLL_RATE * DT, MAX_ROLL_RATE * DT)
+        )
+
+        wanted_pitch = math.atan2(-self._vel[2], max(horiz_speed, 0.1))
+        self._pitch += float(
+            np.clip(wanted_pitch - self._pitch, -MAX_PITCH_RATE * DT, MAX_PITCH_RATE * DT)
+        )
 
         # Integrate position
         self._pos += self._vel * DT

@@ -20,6 +20,36 @@ GNSS_RATIO = 4  # one GNSS sample every 4 IMU samples (20 Hz / 5 Hz)
 # Clips finite-difference spikes caused by waypoint transitions.
 MAX_LINEAR_ACC_MPS2 = 10.0
 
+# Saturation limit of the gyroscope itself (rad/s, ~230 deg/s), not a limit on
+# the airframe — vehicle.py already bounds how fast the vehicle may rotate.
+#
+# It must stay comfortably above every rate the vehicle can actually produce.
+# Set below them, it silently truncates real rotation: the detector integrates
+# a turn smaller than the one that happened, its attitude estimate drifts, and
+# gravity leaks into the horizontal axes. At 2.0 rad/s, just under the 2.09
+# rad/s the airframe rolls at, that alone cost 45 degrees of attitude error
+# across a manoeuvre.
+MAX_BODY_RATE_RADS = 4.0
+
+
+def _body_from_enu(roll: float, pitch: float, yaw: float) -> np.ndarray:
+    """Rotation matrix taking an ENU vector into body axes (x fwd, y left, z up).
+
+    The transpose of the body-to-ENU ZYX matrix the detector builds in
+    deadreckon.py. These two must stay exact inverses of each other — if they
+    drift apart, the detector sees acceleration the vehicle never had, and no
+    amount of filtering downstream will recover it.
+    """
+    cr, sr = math.cos(roll), math.sin(roll)
+    cp, sp = math.cos(pitch), math.sin(pitch)
+    cy, sy = math.cos(yaw), math.sin(yaw)
+    body_to_enu = np.array([
+        [cy * cp, cy * sp * sr - sy * cr, cy * sp * cr + sy * sr],
+        [sy * cp, sy * sp * sr + cy * cr, sy * sp * cr - cy * sr],
+        [-sp,     cp * sr,                cp * cr],
+    ])
+    return body_to_enu.T
+
 
 # ---------------------------------------------------------------------------
 # Standard barometric formula: altitude → pressure (hPa)
@@ -77,7 +107,7 @@ class SensorSuite:
 
         # --- Previous state for finite differences ---
         self._prev_vel = None   # initialised on first update
-        self._prev_yaw = None
+        self._prev_att = None   # (roll, pitch, yaw) from the previous step
 
     # ------------------------------------------------------------------
     def update(self, vehicle) -> dict:
@@ -109,23 +139,17 @@ class SensorSuite:
             lin_acc_enu = lin_acc_enu * (MAX_LINEAR_ACC_MPS2 / acc_mag)
         self._prev_vel = v_vel.copy()
 
-        # ----- Rotate ENU linear accel into body frame -----
-        # Simple yaw-only rotation (roll/pitch are small for a drone)
-        cy, sy = math.cos(y), math.sin(y)
-        lin_acc_body_x =  lin_acc_enu[0] * cy + lin_acc_enu[1] * sy
-        lin_acc_body_y = -lin_acc_enu[0] * sy + lin_acc_enu[1] * cy
-        lin_acc_body_z =  lin_acc_enu[2]
-
-        # ----- Gravity component in body frame -----
-        # Small-angle approximation: gravity appears as pitch and roll offsets
-        # az ≈ +g at rest (body z points up for level flight)
-        grav_body_x = -math.sin(p) * GRAVITY          # pitch tilts body x
-        grav_body_y =  math.sin(r) * GRAVITY           # roll tilts body y
-        grav_body_z =  math.cos(r) * math.cos(p) * GRAVITY  # az ≈ g at rest
-
-        true_ax = lin_acc_body_x + grav_body_x
-        true_ay = lin_acc_body_y + grav_body_y
-        true_az = lin_acc_body_z + grav_body_z
+        # ----- Specific force in the body frame -----
+        # An accelerometer measures f = a - g, expressed in body axes. Doing it
+        # exactly, with the full rotation matrix, rather than rotating by yaw
+        # alone and adding a small-angle gravity term: this vehicle banks to
+        # 30 degrees, where "small angle" is off by a metre per second squared
+        # and every bit of that error lands in the detector's position estimate.
+        #
+        # At rest and level this gives (0, 0, +g), which is the convention in
+        # docs/schema.md.
+        a_plus_g = np.array([lin_acc_enu[0], lin_acc_enu[1], lin_acc_enu[2] + GRAVITY])
+        true_ax, true_ay, true_az = _body_from_enu(r, p, y) @ a_plus_g
 
         # Add bias + white noise
         ax = true_ax + self._acc_bias[0] + rng.normal(0, 0.02)
@@ -133,16 +157,35 @@ class SensorSuite:
         az = true_az + self._acc_bias[2] + rng.normal(0, 0.02)
 
         # ----- Angular rates in body frame -----
-        if self._prev_yaw is None:
-            self._prev_yaw = y
-        yaw_rate = _wrap_pi(y - self._prev_yaw) / DT
-        # Clamp yaw rate to physical limit (max turn_rate in scenarios = 1.2 rad/s)
-        yaw_rate = float(np.clip(yaw_rate, -2.0, 2.0))
-        self._prev_yaw = y
+        # A real gyroscope measures every rotation the airframe makes, and the
+        # accelerometer above already reports gravity tilted by roll and pitch.
+        # Reporting zero roll and pitch rate while the vehicle is banked makes
+        # the IMU contradict itself: a detector integrating the gyro holds the
+        # attitude level, then reads the tilted gravity vector as real forward
+        # acceleration. At 16 degrees of bank that is 2.8 m/s^2 of thrust that
+        # never happened, and dead reckoning runs away by kilometres.
+        #
+        # So: differentiate the true attitude, then convert Euler rates into
+        # body rates (ZYX), which is exactly what a strapdown filter inverts.
+        if self._prev_att is None:
+            self._prev_att = (r, p, y)
+        prev_r, prev_p, prev_y = self._prev_att
+        roll_dot = _wrap_pi(r - prev_r) / DT
+        pitch_dot = _wrap_pi(p - prev_p) / DT
+        yaw_dot = _wrap_pi(y - prev_y) / DT
+        self._prev_att = (r, p, y)
 
-        # For a drone in near-level flight, gz dominates; gx, gy are small
-        pitch_rate = 0.0
-        roll_rate  = 0.0
+        sin_r, cos_r = math.sin(r), math.cos(r)
+        sin_p, cos_p = math.sin(p), math.cos(p)
+        roll_rate = roll_dot - yaw_dot * sin_p
+        pitch_rate = pitch_dot * cos_r + yaw_dot * cos_p * sin_r
+        yaw_rate = -pitch_dot * sin_r + yaw_dot * cos_p * cos_r
+
+        # Physical ceiling for the airframe, so a waypoint transition cannot
+        # emit a rate no real gyro would ever output.
+        roll_rate = float(np.clip(roll_rate, -MAX_BODY_RATE_RADS, MAX_BODY_RATE_RADS))
+        pitch_rate = float(np.clip(pitch_rate, -MAX_BODY_RATE_RADS, MAX_BODY_RATE_RADS))
+        yaw_rate = float(np.clip(yaw_rate, -MAX_BODY_RATE_RADS, MAX_BODY_RATE_RADS))
 
         gx = roll_rate  + self._gyr_bias[0] + rng.normal(0, 0.002)
         gy = pitch_rate + self._gyr_bias[1] + rng.normal(0, 0.002)
