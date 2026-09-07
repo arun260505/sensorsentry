@@ -10,9 +10,9 @@ measured rather than claimed (`python -m harness.sweep`).
 
 | | |
 |---|---|
-| **Done** | 1 simulator · 2 witness · 3 console · 4 cross-validation · **5 blame** · **6 classify** · 7 hysteresis |
+| **Done** | 1-7 plus **8 fallback** — detect, blame, classify, and keep flying |
 | **In progress** | 4 attack injectors (Abishek, task 2) |
-| **Next** | 7 — fusion and fallback · 8 truck · 9 fleet |
+| **Next** | truck (Abishek, task 3) · fleet attack-zone · evidence |
 | **Not started** | 8 truck · 9 fleet · 10 evidence · 12 rehearsal |
 | **Tests** | 22 passing |
 
@@ -26,8 +26,15 @@ Verified against the real simulator: 8 of 8 blame cases
 (`python -m harness.blame_check`), 8 of 8 cause cases
 (`python -m harness.classify_check`), zero false alarms (`python -m harness.sweep`).
 
-What is left is plumbing rather than invention: act on the verdict (7), the
-truck profile (8), the fleet map (9), evidence and the phone view (10).
+**It now acts on the verdict.** When GPS is distrusted the vehicle drops it and
+navigates on its own sensors, holding the true route while the reported fix
+walks away — measured 34 m from truth against GPS's 91 m
+(`python -m harness.fallback_check`). The error budget grows while free-running
+and is calibrated so it never claims to be better than it is; when it runs out
+the answer is "stop", not a prettier number.
+
+What is left: the truck profile, the fleet attack-zone map, the evidence record
+and the phone view.
 
 **Owners:** A = simulator · B = detector core · C = unique logic · D = console
 *(fewer people? see [Team](#team) at the bottom)*
@@ -173,9 +180,9 @@ scenario-specific code anywhere in the classifier.**
 - [x] `trust.py` — hysteresis per cross-check
 - [x] Requires 2 s sustained to escalate, 6 s to relax
 - [x] No single reading can change state — clean runs now silent
-- [ ] `fusion.py` — drop untrusted sensor, keep navigating
-- [ ] Publish a growing error budget in metres
-- [ ] Console: verdict panel and trust bars
+- [x] `fusion.py` — drop untrusted sensor, keep navigating
+- [x] Publish a growing error budget, measured so it never under-states
+- [x] Console: verdict panel, navigation source, scenario buttons
 
 **Done when:** the hard-manoeuvre clean run finishes with **zero alerts**, and
 the spoofing run keeps the vehicle on its true route after detection.

@@ -255,6 +255,22 @@ function renderPanels(snapshot) {
     box.appendChild(row);
   }
 
+  // --- what the vehicle is actually steering by ------------------------
+  const nav = s.navigation;
+  el("navpanel").hidden = !nav;
+  if (nav) {
+    const dr = nav.source === "dead_reckoning";
+    el("navpanel").dataset.source = nav.source;
+    el("navsource").textContent = dr
+      ? "The vehicle's own sensors"
+      : "GPS + own sensors";
+    el("navbudget").textContent = `± ${nav.error_budget_m.toFixed(0)} m`;
+    el("navremaining").textContent = dr
+      ? (nav.seconds_remaining > 0 ? `${nav.seconds_remaining} s` : "past the limit")
+      : "not counting down";
+    el("navnote").textContent = nav.note || "";
+  }
+
   // --- verdict: which sensor is lying, and why -------------------------
   const blame = s.blame || {};
   const cause = s.cause || {};

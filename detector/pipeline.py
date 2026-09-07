@@ -18,6 +18,7 @@ from . import health, profiles
 from . import blame as blame_mod
 from .classify import Classifier, Cause
 from .crossvalidate import CrossValidator, PairScore
+from .fusion import Fusion, Navigation
 from .deadreckon import DeadReckoner, Witness
 from .geo import ENU, llh_from_enu
 from .ingest import Frame, FrameStream, RunHeader
@@ -70,6 +71,9 @@ class State:
 
     cause: Cause = field(default_factory=Cause)
     """Why it is lying — stage 6."""
+
+    navigation: Optional[Navigation] = None
+    """Where we believe we are, having dropped the liar — stage 8."""
     """Each cross-check's settled state, after its own hysteresis."""
 
     anchored: bool = False
@@ -100,6 +104,19 @@ class State:
                 "evidence": list(self.blame.evidence),
                 "cleared": list(self.blame.cleared),
                 "suspects": list(self.blame.suspects),
+            },
+            "navigation": None if self.navigation is None else {
+                "lat": round(self.navigation.lat, 7),
+                "lon": round(self.navigation.lon, 7),
+                "alt": round(self.navigation.alt, 1),
+                "source": self.navigation.source,
+                "error_budget_m": round(self.navigation.error_budget_m, 1),
+                "seconds_remaining": (
+                    None if self.navigation.seconds_remaining is None
+                    else round(self.navigation.seconds_remaining)
+                ),
+                "dropped": list(self.navigation.dropped),
+                "note": self.navigation.note,
             },
             "cause": {
                 "label": self.cause.label,
@@ -159,6 +176,7 @@ class Pipeline:
         self.tracker: Optional[ResidualTracker] = None
         self.crossvalidator: Optional[CrossValidator] = None
         self.classifier = Classifier()
+        self.fusion: Optional[Fusion] = None
         self.trust = PairTrust(WATCH_RATIO, ALERT_RATIO)
         self.last_state: Optional[State] = None
         self.started = False
@@ -219,6 +237,10 @@ class Pipeline:
                 )
             state.blame = blame_mod.assign(pairs, state.pair_states, report)
             state.cause = self.classifier.update(pairs, state.blame, report)
+            if self.fusion is not None:
+                state.navigation = self.fusion.update(
+                    state.blame, state.state, witness, self.reckoner, self.tracker
+                )
 
         self.last_state = state
         return state
@@ -239,6 +261,7 @@ class Pipeline:
         self.tracker = ResidualTracker(self.profile.accel_bias_sigma)
         self.crossvalidator = CrossValidator(self.profile)
         self.classifier.reset()
+        self.fusion = Fusion(self.profile)
         self.trust.reset()
         self.last_state = None
         self.started = True

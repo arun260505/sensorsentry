@@ -16,6 +16,7 @@ from detector.geo import ENU, Origin, enu_from_llh, heading_from_yaw, llh_from_e
 from detector.ingest import FrameStream, SchemaViolation, validate_frame
 from detector import blame as blame_mod
 from detector import classify as classify_mod
+from detector import fusion as fusion_mod
 from detector.crossvalidate import CrossValidator, PairScore
 from detector.residual import ResidualTracker
 from harness import fixtures
@@ -608,6 +609,81 @@ def nothing_wrong_means_no_cause() -> None:
     cause = classify_mod.Classifier().update([], blame_mod.Blame(), {})
     assert cause.label == classify_mod.UNCLASSIFIED
     assert cause.reason == ""
+
+
+# --- fusion ---------------------------------------------------------------
+
+def _nav_after(guilty, free_s=0.0, state="ALERT"):
+    """Drive Fusion with a stubbed witness and tracker."""
+    class _Tracker:
+        origin = Origin(11.0, 76.9, 400.0)
+        correction = ENU(0.0, 0.0, 0.0)
+        aiding = guilty != "gnss"
+        unaided_s = free_s
+        _witness_at_anchor = ENU(0.0, 0.0, 0.0)
+        def freeze_aiding(self): self.aiding = False
+        def resume_aiding(self): self.aiding = True
+
+    witness = DeadReckoner(profiles.DRONE)._witness()
+    tracker = _Tracker()
+    blame = blame_mod.Blame(guilty=guilty, domain="heading", confidence=1.0)
+    engine = fusion_mod.Fusion(profiles.DRONE)
+    reckoner = DeadReckoner(profiles.DRONE)
+    nav = engine.update(blame, state, witness, reckoner, tracker)
+    return nav, reckoner, tracker
+
+
+@test
+def spoofed_gps_stops_correcting_the_witness() -> None:
+    """The whole fallback rests on this. Left aiding, the spoofed fix keeps
+    dragging the estimate along and the fallback is decoration."""
+    nav, _reckoner, tracker = _nav_after("gnss")
+    assert nav is not None
+    assert tracker.aiding is False
+    assert nav.source == fusion_mod.DEAD_RECKONING
+    assert "gnss" in nav.dropped
+
+
+@test
+def a_lying_compass_is_dropped_from_the_witness() -> None:
+    """Otherwise the witness steers by a magnetised compass and follows the
+    very error it exists to expose."""
+    _nav, reckoner, _t = _nav_after("mag")
+    assert reckoner.use_compass is False
+    assert reckoner.use_baro is True
+
+
+@test
+def a_stuck_barometer_is_dropped_but_the_compass_is_not() -> None:
+    _nav, reckoner, _t = _nav_after("baro")
+    assert reckoner.use_baro is False
+    assert reckoner.use_compass is True
+
+
+@test
+def nothing_is_dropped_while_the_state_is_ok() -> None:
+    nav, reckoner, tracker = _nav_after("gnss", state="OK")
+    assert nav is not None and nav.source == fusion_mod.GNSS_FUSED
+    assert nav.dropped == []
+    assert tracker.aiding is True
+    assert reckoner.use_compass and reckoner.use_baro
+
+
+@test
+def the_error_budget_only_grows_while_free_running() -> None:
+    """And it must never promise better than it delivers — an operator
+    deciding whether to press on is entitled to a pessimistic number."""
+    early, _r, _t = _nav_after("gnss", free_s=10.0)
+    late, _r2, _t2 = _nav_after("gnss", free_s=60.0)
+    assert late.error_budget_m > early.error_budget_m * 3
+    assert late.seconds_remaining < early.seconds_remaining
+
+
+@test
+def the_operator_is_told_to_stop_once_the_budget_runs_out() -> None:
+    nav, _r, _t = _nav_after("gnss", free_s=600.0)
+    assert nav.seconds_remaining == 0
+    assert "stop" in nav.note.lower() or "land" in nav.note.lower()
 
 
 # --- runner ---------------------------------------------------------------

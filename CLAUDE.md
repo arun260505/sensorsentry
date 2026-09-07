@@ -126,7 +126,7 @@ short.**
 
 ## Status
 
-**Current phase:** 7 — fusion and fallback. Phases 1-6 are done; 7's hysteresis is done.
+**Current phase:** 8 — truck (Abishek). Detection, blame, classification and fallback all done.
 **Last updated:** 7 September 2026
 
 **Both starred stages are built.** The detector catches a spoof, a magnet or
@@ -138,13 +138,18 @@ or interference, and gives a different instruction for each. It says
     harness/blame_check.py     8 of 8 - which sensor
     harness/classify_check.py  8 of 8 - attack / fault / interference
 
-What remains is plumbing rather than invention: act on the verdict (7), truck
-profile (8), fleet map (9), evidence and phone view (10).
+It now **acts** on the verdict: the lying sensor is dropped and the vehicle
+keeps navigating on the rest, with an error budget that grows honestly and
+tells the operator when to stop.
+
+    harness/fallback_check.py  34 m from truth vs GPS's 91 m, budget honest
+
+What remains: truck profile, fleet map, evidence, phone view.
 
 | Owner | Area | State |
 |---|---|---|
 | Abishek | Simulator | task 1 done (reviewed, fixed) · **task 2 in progress** — attack injectors |
-| — | Detector core | stages 1-7 (bar fusion) done, 35 tests passing |
+| — | Detector core | stages 1-8 done, 43 tests passing |
 | — | Console | live — canvas map, two paths, raw feed |
 | — | Blame (stage 5) | **done** — names the sensor, or says `cannot_isolate` |
 | — | Classify (stage 6) | **done** - attack / fault / interference, or `unclassified` |
@@ -173,6 +178,19 @@ Two things about the console that are deliberate and easy to undo by accident:
   that tells it an attack is happening."*
 
 ### Engineering findings — these cost real time, don't rediscover them
+
+**-3. An error budget must be measured from the moment it starts counting, and
+must never flatter itself.** The free-running budget was first fitted to drift
+from the start of the run and started from zero, so it claimed 190 m while the
+witness was 729 m out. An operator deciding whether to press on was being
+handed a figure four times better than the truth. Fixed by measuring growth
+from the freeze (quadratic, ~0.18 m/s^2) and starting from the error already
+present when aiding stopped (~25 m).
+
+**Dead reckoning buys about 40 seconds, not minutes.** Past that our own drift
+overtakes even a 3 m/s spoof. That is not a defect to hide — it is why the
+console counts down and then says "stop or land" rather than showing a number.
+
 
 **-2. A reference must stop following a sensor the moment it becomes suspect.**
 The gyro heading is slowly re-seeded from the compass so it cannot drift

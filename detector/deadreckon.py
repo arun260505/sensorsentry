@@ -124,6 +124,18 @@ class DeadReckoner:
     def __init__(self, profile: profiles.Profile):
         self.profile = profile
         self.accel_bias_sigma = profile.accel_bias_sigma
+
+        self.use_compass = True
+        """Whether the compass may still correct heading.
+
+        Cleared when the compass is the sensor under suspicion. Without this
+        the witness keeps steering by a magnetised compass and quietly follows
+        the very error it was built to expose — the estimate that is supposed
+        to be independent stops being independent at the worst moment."""
+
+        self.use_baro = True
+        """Whether the barometer may still supply altitude. Same reasoning."""
+
         self._reset_state()
 
     def _reset_state(self) -> None:
@@ -210,7 +222,7 @@ class DeadReckoner:
         ax, ay, az = (float(frame.imu[k]) for k in ("ax", "ay", "az"))
         self.roll = math.atan2(ay, az)
         self.pitch = math.atan2(-ax, math.hypot(ay, az))
-        if frame.mag is not None and "heading_deg" in frame.mag:
+        if self.use_compass and frame.mag is not None and "heading_deg" in frame.mag:
             self.yaw = yaw_from_heading(float(frame.mag["heading_deg"]))
         self._initialised = True
 
@@ -243,8 +255,9 @@ class DeadReckoner:
             self.roll += ACCEL_TILT_GAIN * wrap_pi(roll_obs - self.roll)
             self.pitch += ACCEL_TILT_GAIN * wrap_pi(pitch_obs - self.pitch)
 
-        # The compass is the only thing that bounds yaw drift.
-        if frame.mag is not None and "heading_deg" in frame.mag:
+        # The compass is the only thing that bounds yaw drift — so losing it
+        # costs real accuracy, and the error budget must say so.
+        if self.use_compass and frame.mag is not None and "heading_deg" in frame.mag:
             yaw_obs = yaw_from_heading(float(frame.mag["heading_deg"]))
             self.yaw += MAG_YAW_GAIN * wrap_pi(yaw_obs - self.yaw)
 
@@ -286,7 +299,7 @@ class DeadReckoner:
         not reach it, so this belongs in the witness. Only the *change* is
         used, which cancels the slow drift and the unknown sea-level offset.
         """
-        if frame.baro is None or "pressure_hpa" not in frame.baro:
+        if not self.use_baro or frame.baro is None or "pressure_hpa" not in frame.baro:
             return
         hpa = float(frame.baro["pressure_hpa"])
         if self._baro_ref_hpa is None:
