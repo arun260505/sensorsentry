@@ -126,22 +126,70 @@ short.**
 
 ## Status
 
-**Current phase:** 0–1 (foundations and simulator)
+**Current phase:** 1 (simulator) · phases 0 and 2 done
 **Last updated:** 7 September 2026
 
 | Owner | Area | Current task |
 |---|---|---|
 | Abishek | Simulator | Task 1 — clean flight ([handover](docs/handover/01-abishek-simulator.md)) |
-| — | Detector core | not started |
-| — | Unique logic (blame, classify) | not started |
-| — | Console | not started |
+| — | Detector core | **stages 1–3 + residual done**, 22 tests passing |
+| — | Unique logic (blame, classify) | not started — phases 5, 6 |
+| — | Console | not started — phase 3, the next gate |
 
 Full checklist: **[PLAN.md](PLAN.md)**
 
+Run what exists:
+
+```bash
+python -m tests.run_all                                  # 22 tests
+python -m detector.run                                   # terminal 1
+python -m harness.send_fixture --spoof 2.0 --spoof-at 20 # terminal 2
+```
+
+### Engineering findings — these cost real time, don't rediscover them
+
+**1. An accelerometer cannot tell tilting from accelerating, and getting the
+gate wrong is unrecoverable.** Correcting attitude from gravity during
+acceleration writes a false pitch, the gyro then faithfully preserves it,
+gravity leaks into the forward axis, and the witness silently under-reads
+speed forever after — it read 7.1 m/s on a 12 m/s vehicle. The gate must close
+on the *worst* sample in the last second, not the average: an averaged gate
+still opens at the start of a manoeuvre while the window is half full of the
+stationary samples before it, which is enough to do the damage.
+
+**2. Health checks must measure sample-to-sample noise, not raw spread, and
+use a median.** Real motion is smooth so it barely shows between adjacent
+samples; a failing sensor is not. And one genuine jump — a vehicle moving off
+— makes a standard deviation declare the sensor faulty for two seconds. Median
+absolute deviation ignores outliers by construction.
+
+**3. Steady horizontal accelerometer bias is *rejected*, not integrated.** The
+complementary filter absorbs it into a small pitch offset that cancels it. So
+the textbook b·t²/2 drift bound does not apply to us — our uncertainty grows
+roughly **linearly**, and the quadratic model was unusable: it claimed 80 m of
+uncertainty while the witness was 12 m off, hiding a live 2 m/s attack.
+
+### Measured detection curve
+
+Free-running witness, test fixture, straight-line motion. Peak ratio of
+residual to claimed uncertainty:
+
+| walk-off | 0.0 | 0.2 | 0.5 | 1.0 | 2.0 | 5.0 m/s |
+|---|---|---|---|---|---|---|
+| ratio | 1.18 | 1.18 | 1.29 | 1.79 | 3.09 | 7.24 |
+
+This independently reproduces the failure boundary claimed in the demo
+playbook: **below about 0.2 m/s the attack hides inside our own drift.** Say
+that on stage — showing where we fail is the most credible thing we can do.
+
 ### Open questions
 
-- IMU dead-reckoning drift after 60 s — waiting on Abishek's measurement.
-  Target band 20–120 m. **This number sets the whole system's detection floor.**
+- **Recalibrate `DRIFT_RATE_MPS` in phase 11** against the real simulator. The
+  0.5 m/s figure comes from straight-line fixture motion and will be
+  optimistic; turns are where dead reckoning actually suffers.
+- Abishek's raw-integration drift check (target 20–120 m at 60 s) measures
+  *unfiltered* integration, so it is not the same quantity as our filtered
+  witness error (~12 m). Both are useful; don't confuse them.
 
 ---
 

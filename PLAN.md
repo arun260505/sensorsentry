@@ -4,7 +4,7 @@ Working checklist. Tick tasks as they land. The reasoning behind each phase is
 in [docs/sensorsentry-implementation-plan.html](docs/sensorsentry-implementation-plan.html);
 this file is the version you keep open while building.
 
-**Status:** Phase 0 not started
+**Status:** Phase 0 done · Phase 1 with Abishek · Phase 2 done (22 tests passing) · **Phase 3 is the next gate**
 **Owners:** A = simulator · B = detector core · C = unique logic · D = console
 *(fewer people? see [Team](#team) at the bottom)*
 
@@ -24,12 +24,12 @@ this file is the version you keep open while building.
 
 ## Phase 0 — Foundations · ~2h · everyone
 
-- [ ] Python env, NumPy only, no other dependencies
-- [ ] **Freeze the sensor-frame schema** — write it to `docs/schema.md`
-- [ ] Freeze the verdict-frame schema
+- [x] Python env, NumPy only, no other dependencies
+- [x] **Freeze the sensor-frame schema** — write it to `docs/schema.md`
+- [x] Freeze the verdict-frame schema
 - [ ] `simulator/publisher.py` sends a dummy frame over UDP :5005
-- [ ] `detector/ingest.py` receives and prints it
-- [ ] Agree coordinate frame: **local metres (ENU)**, lat/lon for display only
+- [x] `detector/ingest.py` receives and prints it
+- [x] Agree coordinate frame: **local metres (ENU)**, lat/lon for display only
 
 **Done when:** two processes are running and one receives frames from the other.
 
@@ -56,13 +56,13 @@ this file is the version you keep open while building.
 
 ## Phase 2 — Detector: witness and residual · ~8h · B
 
-- [ ] `ingest.py` — buffer and time-align frames, detect dropped `seq`
-- [ ] `health.py` — stuck value check
-- [ ] `health.py` — out-of-range, dropout, excess-noise checks
-- [ ] `health.py` — every flag carries a reason code, never a bare boolean
-- [ ] `deadreckon.py` — integrate IMU into an independent position
-- [ ] `deadreckon.py` — growing uncertainty value
-- [ ] Compute and print the GNSS-vs-dead-reckoning residual
+- [x] `ingest.py` — buffer and time-align frames, detect dropped `seq`
+- [x] `health.py` — stuck value check
+- [x] `health.py` — out-of-range, dropout, excess-noise checks
+- [x] `health.py` — every flag carries a reason code, never a bare boolean
+- [x] `deadreckon.py` — integrate IMU into an independent position
+- [x] `deadreckon.py` — growing uncertainty value
+- [x] Compute and print the GNSS-vs-dead-reckoning residual
 
 **Done when:** residual stays small and bounded on a clean run, and code review
 confirms **GNSS is never read in the dead-reckoning path**.
