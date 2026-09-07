@@ -41,7 +41,8 @@ html, body {
 
 body {
   display: grid;
-  grid-template-rows: auto auto 1fr auto auto;
+  /* bar · violation · banner · map+panels · raw feed · controls */
+  grid-template-rows: auto auto auto 1fr auto auto;
   height: 100vh;
 }
 
@@ -352,3 +353,34 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 /* Give the side column its own scrollbar rather than hiding what will not
    fit — the verdict must never be below an invisible fold. */
 .side { scrollbar-gutter: stable; }
+
+/* --- the banner ---------------------------------------------------------
+   A demo hall is wide and the audience is far back. The side panels carry
+   the detail; this carries the answer, and it is sized to be read from the
+   back row rather than from the operator's chair. */
+
+.banner {
+  display: flex; align-items: baseline; gap: 18px; flex-wrap: wrap;
+  padding: 14px 22px;
+  background: var(--alert); color: #fff;
+  border-bottom: 1px solid rgba(0,0,0,.15);
+}
+.banner[data-cause="fault"]        { background: var(--watch); }
+.banner[data-cause="interference"] { background: var(--accent); }
+.banner[data-cause="unclassified"] { background: var(--ink-2); }
+
+.banner-what {
+  font-size: 1.35rem; font-weight: 800; letter-spacing: -.01em;
+  text-transform: uppercase;
+}
+.banner-who {
+  font-family: var(--mono); font-size: .9rem; opacity: .9;
+}
+.banner-do {
+  margin-left: auto; font-size: .92rem; font-weight: 600;
+  opacity: .95; text-align: right;
+}
+@media (max-width: 900px) {
+  .banner-what { font-size: 1.1rem; }
+  .banner-do { margin-left: 0; text-align: left; }
+}

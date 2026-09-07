@@ -97,22 +97,49 @@ function gridStep(scale) {
   return pow * 10;
 }
 
-/* --- drawing ------------------------------------------------------------ */
+/* --- drawing ------------------------------------------------------------
+ *
+ * This is an operations display, not a plot. Someone standing three metres
+ * back has to be able to answer three questions without being told: where are
+ * my vehicles, is anything wrong, and where is the attacker. Everything drawn
+ * here earns its place against one of those.
+ */
+
+let tick = 0;                       // drives the slow pulse on live elements
+let lastDraw = 0;
 
 function draw() {
   const rect = canvas.getBoundingClientRect();
   const w = rect.width, h = rect.height;
-  ctx.clearRect(0, 0, w, h);
+
+  ctx.fillStyle = CANVAS_BG;
+  ctx.fillRect(0, 0, w, h);
 
   const view = computeView(w, h);
   drawGrid(w, h, view);
+  drawRangeRings(w, h, view);
   drawZones(view, w, h);
   drawFleet(view, w, h);
-  drawPath(trails.gnss, COLOR.claimed, view, w, h);
-  drawPath(trails.witness, COLOR.witness, view, w, h);
+
+  // The claimed track sits under the real one: when they overlap, what the
+  // vehicle actually did should be the line you see.
+  drawTrail(trails.gnss, COLOR.claimed, view, w, h, 3);
+  drawTrail(trails.witness, COLOR.witness, view, w, h, 3.5);
+
   drawSeparation(view, w, h);
   drawHeads(view, w, h);
+  drawCompass(w, h);
   updateScaleBar(view);
+}
+
+/* A steady repaint keeps the pulse smooth even when frames arrive at 10 Hz. */
+function animate(now) {
+  if (now - lastDraw > 40) { tick += 1; lastDraw = now; draw(); }
+  requestAnimationFrame(animate);
+}
+
+function pulse(period) {
+  return 0.5 + 0.5 * Math.sin((tick * 0.04 * Math.PI * 2) / period);
 }
 
 function drawGrid(w, h, view) {
@@ -140,74 +167,112 @@ function drawGrid(w, h, view) {
   }
 }
 
-/* The other vehicles, drawn thin and pale so the focused one stays readable.
- * Under attack they take the alert colour, because on this screen the answer
- * to "how many are being hit" has to be countable at a glance. */
+/* Range rings around the focused vehicle. A grid tells you a metre is a
+ * metre; rings tell you how far away something is at a glance, which is the
+ * question actually being asked of this screen. */
+function drawRangeRings(w, h, view) {
+  const here = trails.witness[trails.witness.length - 1];
+  if (!here) return;
+  const [cx, cy] = project(here[0], here[1], view, w, h);
+  const step = gridStep(view.scale) * 2;
+  ctx.strokeStyle = COLOR.grid;
+  ctx.lineWidth = 1;
+  for (let i = 1; i <= 4; i++) {
+    const r = step * i * view.scale;
+    if (r < 30 || r > Math.max(w, h)) continue;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+}
+
+/* Trails fade with age, so the eye reads direction of travel without an
+ * arrow cluttering every segment. */
+function drawTrail(points, color, view, w, h, width) {
+  if (!points || points.length < 2) return;
+  ctx.lineJoin = "round";
+  ctx.lineCap = "round";
+  const n = points.length;
+  const tailStart = Math.max(0, n - 400);
+  for (let i = Math.max(1, tailStart); i < n; i++) {
+    const age = (i - tailStart) / Math.max(1, n - tailStart);
+    ctx.globalAlpha = 0.15 + 0.85 * age;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = width * (0.5 + 0.5 * age);
+    const [x1, y1] = project(points[i - 1][0], points[i - 1][1], view, w, h);
+    const [x2, y2] = project(points[i][0], points[i][1], view, w, h);
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawPath(points, color, view, w, h, width) {
+  drawTrail(points, color, view, w, h, width || 2.5);
+}
+
 function drawFleet(view, w, h) {
   for (const [id, v] of Object.entries(fleet)) {
     if (id === focus || !v.trails) continue;
     const attacked = v.state && v.state.state === "ALERT";
     ctx.save();
-    ctx.globalAlpha = 0.55;
-    drawPath(v.trails.witness, attacked ? COLOR.link : COLOR.witness, view, w, h, 1.5);
+    ctx.globalAlpha = 0.5;
+    drawTrail(v.trails.witness, attacked ? COLOR.link : COLOR.witness, view, w, h, 2);
     ctx.restore();
 
     const last = v.trails.witness[v.trails.witness.length - 1];
     if (!last) continue;
     const [x, y] = project(last[0], last[1], view, w, h);
-    ctx.fillStyle = attacked ? COLOR.link : COLOR.witness;
-    ctx.beginPath();
-    ctx.arc(x, y, 4.5, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = COLOR.text;
-    ctx.font = "500 11px system-ui, sans-serif";
-    ctx.textAlign = "left";
-    ctx.fillText(id, x + 8, y + 3);
+    drawVehicle(x, y, headingOf(v.trails.witness),
+                attacked ? COLOR.link : COLOR.witness, attacked, 7);
+    label(x + 13, y + 4, id, attacked ? COLOR.link : COLOR.text, attacked);
   }
 }
 
-/* Where the attacker probably is. Drawn soft on purpose — a hard-edged circle
- * looks like a measurement, and this is an estimate from three witnesses. */
+/* Where the attacker probably is.
+ *
+ * Soft-edged and slowly breathing on purpose: a hard circle reads as a
+ * measurement, and this is an estimate from a handful of witnesses. */
 function drawZones(view, w, h) {
   for (const z of zones) {
     if (z.e === undefined) continue;
     const [x, y] = project(z.e, z.n, view, w, h);
-    const r = z.radius_m * view.scale;
+    const r = Math.max(12, z.radius_m * view.scale);
+
+    const glow = ctx.createRadialGradient(x, y, 0, x, y, r);
+    glow.addColorStop(0, "rgba(179,53,42,.22)");
+    glow.addColorStop(0.6, "rgba(179,53,42,.10)");
+    glow.addColorStop(1, "rgba(179,53,42,0)");
+    ctx.fillStyle = glow;
     ctx.beginPath();
     ctx.arc(x, y, r, 0, Math.PI * 2);
-    ctx.fillStyle = "rgba(179,53,42,.10)";
     ctx.fill();
+
     ctx.strokeStyle = COLOR.link;
-    ctx.lineWidth = 1.5;
-    ctx.setLineDash([7, 5]);
+    ctx.globalAlpha = 0.5 + 0.35 * pulse(2.5);
+    ctx.lineWidth = 2;
+    ctx.setLineDash([8, 6]);
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
     ctx.stroke();
     ctx.setLineDash([]);
+    ctx.globalAlpha = 1;
 
-    ctx.fillStyle = COLOR.link;
-    ctx.font = "600 12px system-ui, sans-serif";
-    ctx.textAlign = "center";
-    ctx.fillText(`likely transmitter · ${z.vehicles.length} vehicles hit`,
-                 x, y - r - 8);
+    // A cross at the estimated centre — the thing you would send someone to.
+    ctx.strokeStyle = COLOR.link;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x - 7, y); ctx.lineTo(x + 7, y);
+    ctx.moveTo(x, y - 7); ctx.lineTo(x, y + 7);
+    ctx.stroke();
+
+    label(x, y - r - 14, `LIKELY TRANSMITTER · ${z.vehicles.length} HIT`,
+          COLOR.link, true, "center");
   }
 }
 
-function drawPath(points, color, view, w, h, width) {
-  if (points.length < 2) return;
-  ctx.strokeStyle = color;
-  ctx.lineWidth = width || 2.5;
-  ctx.lineJoin = "round";
-  ctx.lineCap = "round";
-  ctx.beginPath();
-  points.forEach(([e, n], i) => {
-    const [x, y] = project(e, n, view, w, h);
-    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-  });
-  ctx.stroke();
-}
-
-/* The line between where GPS claims the vehicle is and where its own senses
- * put it. This gap is the entire product, so it is drawn explicitly rather
- * than left for the viewer to estimate between two curves. */
 function drawSeparation(view, w, h) {
   const g = trails.gnss[trails.gnss.length - 1];
   const wit = trails.witness[trails.witness.length - 1];
@@ -219,41 +284,104 @@ function drawSeparation(view, w, h) {
   const [x2, y2] = project(wit[0], wit[1], view, w, h);
 
   ctx.strokeStyle = COLOR.link;
-  ctx.lineWidth = 1.5;
-  ctx.setLineDash([5, 4]);
+  ctx.globalAlpha = 0.55 + 0.35 * pulse(1.6);
+  ctx.lineWidth = 2;
+  ctx.setLineDash([6, 5]);
   ctx.beginPath();
   ctx.moveTo(x1, y1);
   ctx.lineTo(x2, y2);
   ctx.stroke();
   ctx.setLineDash([]);
+  ctx.globalAlpha = 1;
 
-  ctx.fillStyle = COLOR.link;
-  ctx.font = "600 13px ui-monospace, Consolas, monospace";
-  ctx.textAlign = "center";
-  ctx.fillText(`${gap.toFixed(0)} m apart`, (x1 + x2) / 2, (y1 + y2) / 2 - 9);
+  const text = gap >= 1000 ? `${(gap / 1000).toFixed(1)} km apart`
+                           : `${gap.toFixed(0)} m apart`;
+  label((x1 + x2) / 2, (y1 + y2) / 2 - 10, text, COLOR.link, true, "center");
+}
+
+function headingOf(points) {
+  if (!points || points.length < 2) return 0;
+  const n = points.length;
+  const a = points[Math.max(0, n - 6)], b = points[n - 1];
+  return Math.atan2(b[1] - a[1], b[0] - a[0]);
+}
+
+/* A triangle pointing where the vehicle is going. A dot says "something is
+ * here"; this says "and it is heading that way", which is what the operator
+ * is actually judging. */
+function drawVehicle(x, y, heading, color, alert, size) {
+  const r = size || 9;
+  if (alert) {
+    ctx.fillStyle = "rgba(179,53,42,.20)";
+    ctx.beginPath();
+    ctx.arc(x, y, r * (2.2 + 0.8 * pulse(1.2)), 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(-heading);          // canvas y is down; headings are maths-style
+  ctx.beginPath();
+  ctx.moveTo(r * 1.4, 0);
+  ctx.lineTo(-r * 0.8, r * 0.8);
+  ctx.lineTo(-r * 0.35, 0);
+  ctx.lineTo(-r * 0.8, -r * 0.8);
+  ctx.closePath();
+  ctx.fillStyle = color;
+  ctx.fill();
+  ctx.strokeStyle = CANVAS_BG;
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  ctx.restore();
 }
 
 function drawHeads(view, w, h) {
   const g = trails.gnss[trails.gnss.length - 1];
   const wit = trails.witness[trails.witness.length - 1];
-  if (g) head(g[0], g[1], COLOR.claimed, "GPS says", view, w, h);
-  if (wit) head(wit[0], wit[1], COLOR.witness, "actually here", view, w, h);
+  const alert = latest && latest.state === "ALERT";
+
+  if (g) {
+    const [x, y] = project(g[0], g[1], view, w, h);
+    drawVehicle(x, y, headingOf(trails.gnss), COLOR.claimed, false, 8);
+    label(x + 15, y + 4, "GPS SAYS", COLOR.claimed, true);
+  }
+  if (wit) {
+    const [x, y] = project(wit[0], wit[1], view, w, h);
+    drawVehicle(x, y, headingOf(trails.witness), COLOR.witness, alert, 10);
+    label(x + 17, y + 4, "ACTUALLY HERE", COLOR.witness, true);
+  }
 }
 
-function head(e, n, color, label, view, w, h) {
-  const [x, y] = project(e, n, view, w, h);
+/* Labels sit on a chip so they stay readable over a trail or a zone. */
+function label(x, y, text, color, strong, align) {
+  ctx.font = strong ? "700 11px system-ui, sans-serif"
+                    : "500 11px system-ui, sans-serif";
+  ctx.textAlign = align || "left";
+  const pad = 5;
+  const w = ctx.measureText(text).width;
+  const left = align === "center" ? x - w / 2 - pad : x - pad;
+  ctx.fillStyle = "rgba(255,255,255,.82)";
+  ctx.fillRect(left, y - 11, w + pad * 2, 15);
   ctx.fillStyle = color;
-  ctx.beginPath();
-  ctx.arc(x, y, 6, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.strokeStyle = CANVAS_BG;
-  ctx.lineWidth = 2;
-  ctx.stroke();
-
-  ctx.fillStyle = color;
-  ctx.font = "600 12px system-ui, sans-serif";
+  ctx.fillText(text, x, y);
   ctx.textAlign = "left";
-  ctx.fillText(label, x + 11, y + 4);
+}
+
+function drawCompass(w, h) {
+  const x = w - 44, y = 44, r = 17;
+  ctx.strokeStyle = COLOR.gridMajor;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(x, y + r - 3);
+  ctx.lineTo(x, y - r + 3);
+  ctx.stroke();
+  ctx.fillStyle = COLOR.text;
+  ctx.font = "700 10px system-ui, sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText("N", x, y - r - 4);
+  ctx.textAlign = "left";
 }
 
 function updateScaleBar(view) {
@@ -321,6 +449,27 @@ function renderPanels(snapshot) {
       `<i class="dot"></i><span class="who">${SENSOR_LABEL[name] || name}</span>` +
       `<span class="why">${why}</span>`;
     box.appendChild(row);
+  }
+
+  // --- the banner: the answer, in words, at the top of the screen ------
+  const b = s.blame || {};
+  const c = s.cause || {};
+  const showBanner = s.state === "ALERT" && Boolean(b.guilty);
+  el("banner").hidden = !showBanner;
+  if (showBanner) {
+    const who = b.guilty === "cannot_isolate"
+      ? "A sensor" : (SENSOR_LABEL[b.guilty] || b.guilty);
+    const headline = {
+      attack: `${who} IS BEING SPOOFED`,
+      fault: `${who} HAS FAILED`,
+      interference: `${who} IS BEING INTERFERED WITH`,
+    }[c.label] || `${who} CANNOT BE TRUSTED`;
+    el("banner").dataset.cause = c.label || "";
+    el("bannerwhat").textContent = headline;
+    el("bannerwho").textContent = zones.length
+      ? `${zones[0].vehicles.length} vehicles affected`
+      : (s.vehicle_id || "");
+    el("bannerdo").textContent = c.action || "";
   }
 
   // --- the fleet: how many are hit, and where the attacker is ----------
@@ -553,3 +702,4 @@ el("reset").addEventListener("click", async () => {
 resize();
 connect();
 loadScenarios();
+requestAnimationFrame(animate);
