@@ -723,3 +723,6 @@ button.target.mine.on::after { content: " ●"; font-size: .6em; vertical-align:
 }
 .actions button:hover:not(:disabled) { background: var(--panel-2); color: var(--ink); }
 .actions button:disabled { opacity: .4; cursor: not-allowed; }
+
+/* a target this vehicle does not carry: visibly absent, not merely off */
+button.target.absent { text-decoration: line-through; opacity: .35; }

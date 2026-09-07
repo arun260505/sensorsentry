@@ -1022,6 +1022,20 @@ const VERDICT = {
   interference: ["INTERFERENCE", "something physical is affecting it"],
 };
 
+/* Which sensors each vehicle actually carries. A lorry has no barometer and a
+ * drone has no wheels, so offering those targets on the wrong vehicle gives a
+ * judge a button that does nothing — which reads as broken, not as absent. */
+const FITTED = {
+  drone: ["gnss", "mag", "baro"],
+  truck: ["gnss", "mag", "odom"],
+};
+
+function fitted(sensor) {
+  const type = latest && latest.vehicle_type;
+  if (!type || !FITTED[type]) return true;      // unknown vehicle: offer all
+  return FITTED[type].includes(sensor);
+}
+
 let target = "gps";       // which one the arrows drive
 let held = {};            // sensor -> true, everything taken over
 let hunting = null;
@@ -1037,10 +1051,25 @@ function setAttackEnabled() {
     node.disabled = !live;
   }
   if (!live && Object.keys(held).length) { held = {}; renderHeld(); }
-  for (const button of el("actions").querySelectorAll("button")) button.disabled = !live;
-  el("atkhint").textContent = live
-    ? TARGETS[target].hint
-    : "Press Start below, then take a sensor.";
+
+  // A target the running vehicle does not carry is disabled and says so,
+  // rather than accepting a press and doing nothing.
+  for (const button of document.querySelectorAll(".target")) {
+    const has = fitted(TARGETS[button.dataset.target].sensor);
+    button.disabled = !live || !has;
+    button.classList.toggle("absent", live && !has);
+  }
+  const here = fitted(TARGETS[target].sensor);
+  for (const button of el("actions").querySelectorAll("button")) {
+    button.disabled = !live || !here;
+  }
+  el("taketarget").disabled = !live || !here;
+  const type = latest && latest.vehicle_type;
+  el("atkhint").textContent = !live
+    ? "Press Start below, then take a sensor."
+    : !fitted(TARGETS[target].sensor)
+      ? `This ${type} has no ${target}. Try one of the others.`
+      : TARGETS[target].hint;
 }
 
 function selectTarget(name) {

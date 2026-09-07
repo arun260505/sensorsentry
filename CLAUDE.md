@@ -239,6 +239,18 @@ health check can no longer be cleared: a frozen GPS stops on the carriageway,
 keeps passing the road check, and the blame landed on a perfectly good
 odometer, which sends a mechanic to the wrong part of the lorry.
 
+**5. An alibi could come from a check that had not caught up yet.** A check
+averaging over a window is still describing the past for the length of that
+window, so it cannot vouch for a sensor that has just started lying. The
+instant a magnet touches the compass, the course check is comparing GPS course
+against four seconds of mostly pre-magnet heading — it passes, and it cleared
+the compass. The only suspect left was the motion sensor, which is working
+perfectly, and it was named **with confidence 1.0 for six seconds on a truck
+and fourteen on a drone.** A confidence threshold would not have saved it: the
+wrong answer scored 1.0 and the right one 0.5. `PairScore.window_s` now marks
+the averaging checks and blame refuses their alibis, so those seconds read
+`cannot_isolate` instead — which is the truth.
+
 Blame also now accepts **stale** passes as alibis. GNSS is 5 Hz against 20 Hz
 frames, so on three frames in four every check involving it is unevaluable —
 the horizontal domain was left holding one check, which can never clear
@@ -365,6 +377,7 @@ Use these words consistently; they end up in the UI and the pitch.
 |---|---|
 | **[docs/schema.md](docs/schema.md)** | The frozen data contract. Read before writing code. |
 | **[docs/SCENARIOS.md](docs/SCENARIOS.md)** | Every case a judge can produce, how to press it, what it says. Checked by `harness/usecases.py`. |
+| **[docs/MANUAL-TESTS.md](docs/MANUAL-TESTS.md)** | The same 17 as a by-hand checklist: which vehicle, how long to wait, measured timings, what counts as a fail. |
 | **[PLAN.md](PLAN.md)** | Tickable build checklist, 12 phases |
 | [docs/sensorsentry.html](docs/sensorsentry.html) | The main brief — problem, workflow, novelty, business |
 | [docs/sensorsentry-explained.html](docs/sensorsentry-explained.html) | Plain-language version, no background needed |

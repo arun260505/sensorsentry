@@ -269,11 +269,30 @@ def _within_domain(
     }
 
     # --- who has an alibi? -------------------------------------------------
+    #
+    # An alibi has to be about *now*. A check that averages over a window is
+    # still describing the past for the length of that window, so it cannot
+    # vouch for a sensor that has just started lying.
+    #
+    # The magnet showed this plainly. The instant it goes near the compass the
+    # compass-vs-gyro check fails, but the course check is comparing GPS
+    # course against four seconds of mostly pre-magnet compass readings, so it
+    # passes — and that pass cleared the compass. The only suspect left was
+    # the motion sensor, which is working perfectly, and it was named with
+    # full confidence for six seconds on a truck and fourteen on a drone
+    # before the window filled and the verdict corrected itself.
+    #
+    # Confidently wrong is the one thing rule 5 exists to prevent, and a
+    # confidence threshold would not have helped: the wrong answer scored 1.0
+    # and the right one 0.5. Refusing the unearned alibi gives
+    # `cannot_isolate` for those few seconds instead, which is the truth.
+    instant_passing = [p for p in domain_passing if p.window_s <= 0.0]
+
     cleared: dict[str, str] = {}
     for sensor in suspects:
         if sensor in convicted:
             continue
-        for pair in domain_passing:
+        for pair in instant_passing:
             other = pair.b if pair.a == sensor else pair.a if pair.b == sensor else None
             if other is None or other in suspects:
                 # A pass shared with another suspect clears nobody: two liars

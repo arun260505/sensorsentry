@@ -175,6 +175,17 @@ class PairScore:
     valid: bool = False
     """False when the check could not be evaluated this cycle."""
 
+    window_s: float = 0.0
+    """Seconds of history this check averages over. Zero means it describes
+    this instant.
+
+    Stage 5 needs it. A check that averages cannot vouch for a sensor *now*,
+    because for its whole window it is still describing the past — right after
+    a magnet arrives, the course check is comparing GPS course against four
+    seconds of mostly pre-magnet compass readings, so it passes, and it hands
+    the compass an alibi it has not earned. Blame then landed on the innocent
+    motion sensor, confidently, for six seconds."""
+
     reason: str = ""
     """Why it could not — shown so a blank check never looks like a pass."""
 
@@ -413,6 +424,7 @@ class CrossValidator:
         failed reads zero or nonsense, not five percent low.
         """
         score.unit = "m"
+        score.window_s = DISTANCE_WINDOW_S
 
         if frame.odom is None or frame.odom.get("wheel_speed_mps") is None:
             score.reason = "no wheel reading"
@@ -475,6 +487,7 @@ class CrossValidator:
         """
         score.unit = "deg"
         score.sigma = COURSE_SIGMA_DEG
+        score.window_s = COURSE_WINDOW_S
 
         if not frame.has_gnss() or self._origin is None:
             score.reason = "no GNSS fix this frame"
