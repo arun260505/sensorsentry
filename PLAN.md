@@ -4,7 +4,10 @@ Working checklist. Tick tasks as they land. The reasoning behind each phase is
 in [docs/sensorsentry-implementation-plan.html](docs/sensorsentry-implementation-plan.html);
 this file is the version you keep open while building.
 
-**Status:** Phases 0, 2, 3 done (22 tests passing, console live) · Phase 1 with Abishek · **Phase 4 next**
+**Status:** Phases 0, 2, 3 done · Phase 1 done (reviewed + fixed) · **Phase 4 in progress**
+**Blocker found:** free-running witness outgrows its own sigma after ~90 s, so the
+clean-run gate no longer holds for a full route. Phase 7 GNSS-aided witnessing is
+promoted ahead of phases 5 and 6 — see `detector/residual.py`.
 **Owners:** A = simulator · B = detector core · C = unique logic · D = console
 *(fewer people? see [Team](#team) at the bottom)*
 
@@ -40,12 +43,12 @@ this file is the version you keep open while building.
 
 ## Phase 1 — Simulator, clean flight · ~6h · A
 
-- [ ] `vehicle.py` — motion along a scripted route with turns, climbs, braking
-- [ ] `sensors.py` — GNSS jitter
-- [ ] `sensors.py` — IMU with bias random-walk (**realistic drift — don't make it too good**)
-- [ ] `sensors.py` — barometer, magnetometer, wheel odometry
-- [ ] Publish at 20 Hz, GNSS updating at 5 Hz
-- [ ] New RNG seed per run, recorded in the stream header
+- [x] `vehicle.py` — motion along a scripted route, attitude rate-limited
+- [x] `sensors.py` — GNSS jitter
+- [x] `sensors.py` — IMU, gyro reports real body rates (was zero — see review)
+- [x] `sensors.py` — barometer, magnetometer, wheel odometry
+- [x] Publish at 20 Hz, GNSS at 5 Hz, realtime by default
+- [x] New RNG seed per run, recorded in the stream header
 
 **Done when:** a three-minute clean flight produces plausible frames.
 
@@ -87,6 +90,8 @@ without explanation.
 ---
 
 ## Phase 4 — Attacks and cross-validation · ~8h · A + B
+
+> A's half is handed off: [docs/handover/02-abishek-attacks.md](docs/handover/02-abishek-attacks.md)
 
 **Attacks** (A)
 - [ ] Walk-off, with adjustable speed and direction
