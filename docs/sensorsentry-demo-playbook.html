@@ -367,7 +367,7 @@ wheel_speed      13.8</pre>
 
       <!-- SCENE 6 -->
       <div class="scene">
-        <div class="head"><span class="clock">4:05 – 5:05</span><h3>Scene 6 · Four vehicles at once</h3><span class="goal">The finale — nobody else will show this</span></div>
+        <div class="head"><span class="clock">4:05 – 5:05</span><h3>Scene 7 · Four vehicles at once</h3><span class="goal">The finale — nobody else will show this</span></div>
         <div class="body">
           <div class="beat do"><span class="lbl">Do</span><p>Run the fleet scenario. Four trucks in one area, hit together. Wait for the attack-zone circle to appear on the map.</p></div>
           <div class="beat say"><span class="lbl">Say</span><div>
@@ -384,7 +384,7 @@ wheel_speed      13.8</pre>
         <div class="body">
           <div class="beat do"><span class="lbl">Do</span><p>Bring up the results card.</p></div>
           <div class="beat say"><span class="lbl">Say</span><div>
-            <p class="quote">"Six scenarios, one engine, nothing special-cased for any of them. Six attacks out of six caught, average detection fourteen seconds, and zero false alarms across the clean runs."</p>
+            <p class="quote">"Eight scenarios, one engine, nothing special-cased for any of them. Nine attacks out of nine caught, average sixteen seconds from the moment the attack starts, and zero false alarms across nine honest flights and drives — including hard manoeuvring."</p>
             <p class="quote">"Everyone else solves this by fitting a special antenna to every vehicle, which is why almost nobody has it. Ours is software. It installs into the vehicles that are already on the road today."</p>
           </div></div>
         </div>
@@ -454,17 +454,18 @@ wheel_speed      13.8</pre>
       <table>
         <thead><tr><th>Attack strength</th><th>Result</th><th>What it means</th></tr></thead>
         <tbody>
-          <tr><td class="mono">5 m/s drift</td><td><strong>Caught in ~3 s</strong></td><td>Aggressive attack, immediately obvious</td></tr>
-          <tr><td class="mono">2 m/s</td><td><strong>Caught in ~9 s</strong></td><td>Still comfortably inside our band</td></tr>
-          <tr><td class="mono">1 m/s</td><td><strong>Caught in ~18 s</strong></td><td>Slow, but the error accumulates faster than sensor drift</td></tr>
-          <tr><td class="mono">0.5 m/s</td><td><strong>Caught in ~40 s</strong></td><td>Approaching our limit</td></tr>
-          <tr><td class="mono">0.2 m/s</td><td class="fail">Not reliably caught</td><td>Slower than our own sensors drift — we cannot separate the two</td></tr>
+          <tr><td class="mono">5 m/s</td><td><strong>caught ~15 s after onset</strong></td><td>Aggressive, and obvious to us</td></tr>
+          <tr><td class="mono">3 m/s</td><td><strong>caught ~16 s after onset</strong></td><td>A thief in a hurry</td></tr>
+          <tr><td class="mono">2 m/s</td><td><strong>caught ~17 s after onset</strong></td><td>Our limit on a drone</td></tr>
+          <tr><td class="mono">1 m/s</td><td class="fail">not caught on a drone</td><td>Slower than our own inertial drift</td></tr>
+          <tr><td class="mono">1 m/s, truck</td><td><strong>caught</strong></td><td>Wheels and the road network see what a drone cannot</td></tr>
+          <tr><td class="mono">0.5 m/s</td><td class="fail">not caught</td><td>Below the floor on either vehicle</td></tr>
         </tbody>
       </table>
     </div>
     <div class="big" style="margin-top:24px">
       <span class="eyebrow">Say this out loud</span>
-      <p>"Below about 0.2 metres per second, the attack is slower than our own sensors drift, and we genuinely cannot separate the two. That is our limit, and it is the physical limit of this approach — not a bug we will fix later."</p>
+      <p>"Below about 2 metres per second on a drone, the attack is slower than our own inertial drift and we genuinely cannot separate the two. That is our floor, and it is a property of the accelerometer rather than a bug we will fix later. On a truck it is about 1, because wheels measure real distance and a lorry has to be on a road — neither of which a transmitter can reach."</p>
       <p>"It's also worth saying what that limit costs an attacker: at that speed, he needs about three hours to move the vehicle one kilometre."</p>
     </div>
     <div class="plainbox" style="margin-top:22px">
@@ -490,7 +491,7 @@ wheel_speed      13.8</pre>
 
       <div class="q">
         <p class="ask">But you wrote the simulator. You could have made this easy.</p>
-        <p class="ans">"Yes — which is why let me show you where we fail." <b>Then run the strength ladder above.</b> "Below 0.2 metres per second we can't catch it, because that's slower than our own sensors drift. That's the physical limit of the method."</p>
+        <p class="ans">"Yes — which is why let me show you where we fail." <b>Then run the strength ladder above.</b> "Below about 2 metres per second on a drone we don't catch it, because that's slower than our own drift. On a truck we get to about 1, because the wheels and the road network see things the drone can't. Those numbers come out of a script, not a slide — I can run it now."</p>
       </div>
 
       <div class="q">
@@ -569,7 +570,7 @@ wheel_speed      13.8</pre>
 </main>
 
 <footer>
-  <div class="wrap">SensorSentry · PS 18 — Spoofing Detection &amp; Sensor Fusion · demo playbook, 7 September 2026. Timings in the strength ladder are targets to measure and replace with your own results.</div>
+  <div class="wrap">SensorSentry · PS 18 — Spoofing Detection &amp; Sensor Fusion · demo playbook, 7 September 2026. Every figure here is measured — <code>python -m harness.results</code> prints this card, and fails if a false alarm ever appears.</div>
 </footer>
 
 </body>

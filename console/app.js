@@ -756,6 +756,22 @@ async function loadScenarios() {
       b.addEventListener("click", () => startScenario(name, b));
       box.appendChild(b);
     }
+    // The fleet finale is not a simulator scenario — it needs four vehicles
+    // at once — but on stage it should be one more button, not a terminal.
+    const fleetBtn = document.createElement("button");
+    fleetBtn.textContent = "fleet";
+    fleetBtn.dataset.note = "4 vehicles, 3 attacked";
+    fleetBtn.addEventListener("click", async () => {
+      await post("/control/reset");
+      await post("/control/fleet");
+      reference = null;
+      for (const b of box.children) if (b.classList) b.classList.remove("running");
+      fleetBtn.classList.add("running");
+      el("hint").className = "hint";
+      el("hint").textContent = "running fleet — 4 vehicles";
+    });
+    box.appendChild(fleetBtn);
+
     if (!box.children.length) box.innerHTML = '<span class="hint">none offered</span>';
   } catch (err) {
     box.innerHTML = '<span class="hint bad">simulator control not running — ' +
@@ -766,6 +782,7 @@ async function loadScenarios() {
 async function startScenario(name, button) {
   // Stop whatever is running first, so switching mid-flight cannot leave two
   // vehicles talking over each other on the same port.
+  await post("/control/stopfleet");
   await post("/control/reset");
   await post("/control/clear");
   latest = null;
@@ -783,6 +800,7 @@ async function startScenario(name, button) {
 }
 
 el("reset").addEventListener("click", async () => {
+  await post("/control/stopfleet");
   await post("/control/reset");
   await post("/control/clear");
   running = null;

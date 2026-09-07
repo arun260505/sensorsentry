@@ -17,6 +17,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import subprocess
+import sys
 import mimetypes
 import threading
 import time
@@ -315,6 +317,11 @@ def forward_to_simulator(path: str, body: bytes | None = None,
         }).encode()
 
 
+_FLEET: Optional[subprocess.Popen] = None
+"""The fleet sender, when one is running. Held so a second start replaces it
+rather than putting two fleets on the same port."""
+
+
 class Handler(BaseHTTPRequestHandler):
     shared: Shared = Shared()
     protocol_version = "HTTP/1.1"
@@ -462,11 +469,37 @@ class Handler(BaseHTTPRequestHandler):
     # --- POST --------------------------------------------------------------
 
     def do_POST(self) -> None:
+        global _FLEET
         path = self.path.split("?", 1)[0]
         length = int(self.headers.get("Content-Length") or 0)
         body = self.rfile.read(length) if length else b""
 
         if path == "/control/clear":
+            self.shared.clear()
+            self._json({"ok": True})
+            return
+
+        if path == "/control/fleet":
+            # The fleet finale needs several vehicles at once, and the
+            # simulator flies one per process from a fixed origin. Launching
+            # the sender from here means the demo is one button rather than a
+            # second terminal at the worst possible moment.
+            if _FLEET is not None and _FLEET.poll() is None:
+                _FLEET.terminate()
+            self.shared.clear()
+            _FLEET = subprocess.Popen(
+                [sys.executable, "-m", "harness.send_fleet",
+                 "--spoof", "3.0", "--spoof-at", "25", "--duration", "600"],
+                cwd=str(CONSOLE_DIR.parent),
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
+            self._json({"ok": True, "vehicles": 4})
+            return
+
+        if path == "/control/stopfleet":
+            if _FLEET is not None and _FLEET.poll() is None:
+                _FLEET.terminate()
+            _FLEET = None
             self.shared.clear()
             self._json({"ok": True})
             return

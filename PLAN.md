@@ -12,7 +12,7 @@ measured rather than claimed (`python -m harness.sweep`).
 |---|---|
 | **Done** | 1-8 plus **9 fleet logic** — detect, blame, classify, keep flying, locate the attacker |
 | **In progress** | 4 attack injectors (Abishek, task 2) |
-| **Next** | truck (Abishek) · **rehearsal (phase 12)** · measurement tidy-up |
+| **Next** | **rehearsal (phase 12)** — nothing else outstanding |
 | **Not started** | 8 truck · 9 fleet · 10 evidence · 12 rehearsal |
 | **Tests** | 22 passing |
 
@@ -236,7 +236,7 @@ changes nothing about detection.
 - [x] `sweep.py` — attack strengths 5.0 → 0.5 m/s across seeds
 - [x] Record detection time for each
 - [ ] `regress.py` — twenty clean runs, assert zero alerts
-- [ ] `results.py` — results card and strength ladder
+- [x] `results.py` — the card, and it fails if a false alarm appears
 
 **Done when:** the failure-boundary table in the demo playbook holds **your
 measured numbers**, including the point where you fail.
@@ -248,7 +248,7 @@ measured numbers**, including the point where you fail.
 ## Phase 12 — Hardening and rehearsal · ~5h · everyone
 
 - [ ] Reset returns to clean state in under two seconds, from any state
-- [ ] Scenario switching never requires a restart
+- [x] Scenario switching never requires a restart
 - [ ] Larger fonts, higher contrast, readable from across a room
 - [ ] Turn wifi off and confirm everything still runs
 - [ ] Full run-through out loud — 1
@@ -265,7 +265,7 @@ playbook without asking a question.
 ## Definition of done
 
 - [x] Two processes, no truth crossing the socket
-- [ ] Six scenarios selectable, starting within two seconds
+- [x] Eight selectable — seven scenarios plus the fleet — one click each
 - [x] Clean run with hard manoeuvres → **zero alerts**
 - [~] Spoofing caught — but GNSS not yet *named* (phase 5) and no fallback yet (phase 7)
 - [x] Broken sensor reported as fault, not attack

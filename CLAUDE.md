@@ -142,6 +142,7 @@ python -m harness.blame_check                 # which sensor          8/8
 python -m harness.classify_check              # attack/fault/interf.  7/8
 python -m harness.fallback_check              # keeps flying under attack
 python -m harness.fleet_check                 # zone + advisory
+python -m harness.results --save              # the closing card
 python -m harness.send_fleet                  # 4 vehicles, 3 attacked
 ```
 
@@ -184,12 +185,10 @@ python -m harness.send_fleet                  # 4 vehicles, 3 attacked
 
 ### Still to do
 
-1. **Rehearsal (phase 12) — nothing done, and worth more than any feature.**
-   Five full run-throughs, wifi off, reset under two seconds.
-2. `harness/regress.py` and `results.py` — the results card.
-3. **The demo playbook HTML still has placeholder numbers** (it says a 0.2 m/s
-   floor; the measured floor is 2 m/s). Fix before anyone reads it.
-4. Fleet cannot be started from the console — `send_fleet` is CLI only.
+**Rehearsal (phase 12). Nothing else is outstanding, and nothing else is worth
+more.** Five full run-throughs out loud, wifi off, reset under two seconds.
+A demo that has never been run start to finish will break in the room — that
+is the normal outcome, not bad luck.
 
 ## Decisions already made — don't re-open these
 

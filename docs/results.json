@@ -1,0 +1,11 @@
+{
+  "honest_runs": 9,
+  "false_alarms": 0,
+  "attacks_run": 9,
+  "attacks_caught": 9,
+  "mean_latency_s": 16.1,
+  "floor_mps": 2.0,
+  "truck_floor_mps": 1.0,
+  "blame_correct": "8 of 8",
+  "cause_correct": "7 of 8"
+}
