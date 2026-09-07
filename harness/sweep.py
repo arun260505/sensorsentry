@@ -23,7 +23,7 @@ import numpy as np
 from detector.pipeline import Pipeline
 from simulator.scenarios import get_scenario
 from simulator.sensors import SensorSuite
-from simulator.vehicle import Vehicle, enu_to_geodetic
+from simulator.vehicle import enu_to_geodetic, make_vehicle
 
 DT = 1.0 / 20.0
 ONSET_S = 40.0
@@ -38,7 +38,7 @@ def run(scenario: str, seed: int, *, spoof_mps: float = 0.0, magnet_deg: float =
     """
     rng = np.random.default_rng(seed)
     waypoints, vehicle_type = get_scenario(scenario)[:2]
-    vehicle = Vehicle(waypoints, rng)
+    vehicle = make_vehicle(vehicle_type, waypoints, rng)
     sensors = SensorSuite(rng, vehicle_type=vehicle_type)
     pipeline = Pipeline()
     pipeline.accept({
@@ -93,7 +93,7 @@ def main(argv: list[str] | None = None) -> int:
 
     print("FALSE ALARMS — honest flights, no attack")
     bad = 0
-    for scenario in ("drone_clean", "drone_manoeuvre"):
+    for scenario in ("drone_clean", "drone_manoeuvre", "truck_clean"):
         for seed in seeds:
             alerts, _ = run(scenario, seed, secs=args.secs)
             bad += 1 if alerts else 0
@@ -128,6 +128,23 @@ def main(argv: list[str] | None = None) -> int:
                   f"caught in only {len(found)} of {len(seeds)} runs" if found else
                   "NOT DETECTED")
         print(f"  {offset:4.0f} deg     {result}")
+
+    print()
+    print("TRUCK — walk-off drags the reported position east along the road")
+    print("  strength     result")
+    for speed in (1.0, 2.0, 3.0, 5.0):
+        found = [f for _a, f in
+                 (run("truck_clean", s, spoof_mps=speed, secs=args.secs, bearing_deg=90.0)
+                  for s in seeds)
+                 if f is not None]
+        if len(found) == len(seeds):
+            lo, hi = min(found) - ONSET_S, max(found) - ONSET_S
+            result = f"caught {lo:.0f}-{hi:.0f} s after onset"
+        elif found:
+            result = f"caught in only {len(found)} of {len(seeds)} runs"
+        else:
+            result = "NOT DETECTED — below our floor"
+        print(f"  {speed:4.1f} m/s     {result}")
     return 0
 
 

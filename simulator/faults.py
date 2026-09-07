@@ -176,22 +176,34 @@ class Dropout:
 
 
 # ---------------------------------------------------------------------------
-# Bias — slowly growing ramp
+# Bias — slowly growing ramp on ONE axis
 # ---------------------------------------------------------------------------
 class Bias:
     """
-    Add a slowly growing ramp to every numeric field of the sensor.
+    Add a slowly growing ramp to one axis of the sensor.
 
-    ramp(t) = rate_per_s * t_since_start, applied to each field.
+    ramp(t) = rate_per_s * t_since_start, applied to `axis` only.
+
+    The Task 2 lesson that this fixes: ramping every numeric field at once is
+    not how a real sensor fails. A bias hits one axis — the x accelerometer,
+    the yaw gyro, the barometer's pressure reading — and the other outputs
+    keep behaving. Ramping all six IMU axes together made the fault look like
+    six independent failures and was much harder to diagnose than it should
+    have been.
+
+    `axis` is a field name inside the sensor's dict (e.g. 'ax' or 'gz'). It
+    defaults to 'ax', the forward accelerometer, which is the classic
+    accelerometer-bias failure.
 
     A bias fault is subtler than Noisy or Stuck — it takes time to show up
     and initially looks like a sensor that's just a bit off. The detector
     should catch it through cross-validation rather than health checks alone.
     """
 
-    def __init__(self, sensor: str, rate_per_s: float):
+    def __init__(self, sensor: str, rate_per_s: float, axis: str = "ax"):
         self._sensor      = sensor
         self._rate_per_s  = float(rate_per_s)
+        self._axis        = axis
 
     def apply(self, sensor_data: dict, t_since_start: float,
               rng: np.random.Generator) -> dict:
@@ -203,8 +215,8 @@ class Bias:
 
         ramp = self._rate_per_s * t_since_start
         reading = copy.deepcopy(sensor_data[s])
-        for k in _all_numeric_keys(reading):
-            reading[k] = round(reading[k] + ramp, 4)
+        if self._axis in reading and isinstance(reading[self._axis], (int, float)):
+            reading[self._axis] = round(reading[self._axis] + ramp, 4)
         out[s] = reading
         return out
 
@@ -220,6 +232,7 @@ def make_fault(fault_type: str, sensor: str, strength: float = 1.0,
     fault_type : 'stuck', 'noisy', 'dropout', 'bias'
     sensor     : 'gnss', 'imu', 'baro', 'mag', 'odom'
     strength   : multiplier for Noisy; rate_per_s for Bias; ignored for others
+    axis       : single field for Bias (e.g. 'ax'); optional
     """
     t = fault_type.lower()
     if t == "stuck":
@@ -229,6 +242,6 @@ def make_fault(fault_type: str, sensor: str, strength: float = 1.0,
     elif t == "dropout":
         return Dropout(sensor=sensor)
     elif t == "bias":
-        return Bias(sensor=sensor, rate_per_s=strength)
+        return Bias(sensor=sensor, rate_per_s=strength, axis=kwargs.get("axis", "ax"))
     else:
         raise ValueError(f"Unknown fault type: {fault_type!r}")

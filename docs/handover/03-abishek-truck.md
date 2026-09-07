@@ -2,7 +2,7 @@
 
 **For:** Abishek · **Time:** ~6 hours · **Branch:** `sim/truck`
 
-Task 2 is merged and working. Notes at the bottom.
+Task 3 is complete — status at the bottom. Task 2 notes are below it.
 
 ---
 
@@ -185,6 +185,43 @@ be run, give it an entry point and run it once yourself.
 axes and all three gyro axes together. No real sensor fails that way; a bias
 hits one axis. It also made the fault harder to diagnose than it should be. If
 you get time, make `Bias` take an axis.
+
+---
+
+## Status — Task 3 complete (7 Sep)
+
+All the "Done when" checks pass against the real detector (41 tests total):
+
+| item | verdict |
+|---|---|
+| `roads.py` answers how far a point is from the road | `distance_to_nearest_road` / `nearest_road_name` |
+| Truck follows roads, never leaves them, stops properly | `TruckVehicle` + stop-and-hold controller |
+| Wheels read real ground speed and **0.0 when parked** | `sensors.py` now zeroes a stopped wheel (< 0.01 m/s) instead of adding noise |
+| `truck_clean`, 3 minutes, zero alerts | green — 38/38 seeds incl. junction, red-light hold, service-road turn |
+| `truck_theft` | the demo — GPS blamed, cause `attack`, ~t=108; real truck parked at warehouse |
+
+Verification is in the repo, not on my desk: `tests/run_all.py` (roads
+distance, stop-and-hold + wheel-zero, the 3-minute zero-alert gate, theft →
+GPS/attack) and `harness/sweep.py` (truck_clean honest runs + along-road truck
+walk-offs).
+
+Two things surface that are **detector**, not simulator:
+
+- **Gentle acceleration needs a direction check, not a wider magnitude band.**
+  At the briefed 1.5 m/s² pull-away, |a| − g ≈ 0.10 — inside any band that also
+  lets a resting drone level itself. The tilt gate now refuses a pitch
+  correction whose forward axis can't match −g·sin(pitch)
+  (`detector/deadreckon.py`, `FORCE_CONSISTENCY_MPS2`). Pitch-only by design;
+  gating roll the same way regressed the drone's banked-turn clean run.
+- **`Bias` is now single-axis** (the "next time" note above) — `axis="ax"` default.
+
+Recorded curve, whole pipeline: truck walk-off 2-5 m/s *parallel* to the road
+caught ~69-70 s after onset (the compass/course eyes see nothing in an in-line
+drift, so detection rides the cumulative GPS-vs-wheels residual), 1 m/s not
+detected, and `truck_theft` — where the real truck turns off-road and the
+divergence is instantly visible — caught at ~t=108. While the parked truck
+holds at the red light, the cause can flap attack/stuck for a couple of
+seconds (blame stays gnss throughout); a classifier tie-break is the fix.
 
 ---
 

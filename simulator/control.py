@@ -245,7 +245,7 @@ def _make_run_fn(vehicle_id_fn, truth_log_path, quiet):
     """
     import os, datetime
     import numpy as np
-    from .vehicle import Vehicle
+    from .vehicle import make_vehicle
     from .sensors import SensorSuite
     from .publisher import Publisher
 
@@ -257,7 +257,7 @@ def _make_run_fn(vehicle_id_fn, truth_log_path, quiet):
         rng = np.random.default_rng(seed)
         waypoints, vehicle_type, schedule = get_scenario(scenario_name)
         vehicle_id = vehicle_id_fn(vehicle_type, seed)
-        vehicle = Vehicle(waypoints, rng)
+        vehicle = make_vehicle(vehicle_type, waypoints, rng)
         sensors = SensorSuite(rng, vehicle_type=vehicle_type)
 
         # Build schedule-based injectors (same logic as run.py)

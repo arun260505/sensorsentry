@@ -28,7 +28,7 @@ import datetime
 import numpy as np
 
 from .scenarios import get_scenario, list_scenarios
-from .vehicle import Vehicle
+from .vehicle import make_vehicle
 from .sensors import SensorSuite
 from .publisher import Publisher
 from .attacks import WalkOff, Teleport, AltitudeOnly, Replay
@@ -71,7 +71,7 @@ def run(scenario_name, vehicle_id, seed, realtime, truth_log_path, quiet):
         pfx = "DRONE" if vehicle_type == "drone" else "TRUCK"
         vehicle_id = "%s-%02d" % (pfx, seed % 100)
 
-    vehicle = Vehicle(waypoints, rng)
+    vehicle = make_vehicle(vehicle_type, waypoints, rng)
     sensors = SensorSuite(rng, vehicle_type=vehicle_type)
     run_id  = make_run_id()
     t0      = float(int(time.time()))
