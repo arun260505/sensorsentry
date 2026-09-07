@@ -471,6 +471,20 @@ class Handler(BaseHTTPRequestHandler):
         body = self.rfile.read(length) if length else b""
 
         if path == "/control/clear":
+            # Stop the run *before* wiping the screen, not just the screen.
+            #
+            # Clearing only the display looks broken: the simulator keeps
+            # streaming, and an alert the operator just dismissed is back
+            # inside a tenth of a second. On stage that reads as a button that
+            # does not work, which is worse than no button.
+            #
+            # Best-effort on purpose. Frames can also arrive from
+            # harness.send_fixture or a fleet sender, with nothing listening on
+            # 5010 at all — in that case there is no run to stop and clearing
+            # the display is the whole job.
+            if _FLEET is not None and _FLEET.poll() is None:
+                _FLEET.terminate()
+            forward_to_simulator("/reset", method="POST")
             self.shared.clear()
             self._json({"ok": True})
             return

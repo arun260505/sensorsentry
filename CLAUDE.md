@@ -182,6 +182,31 @@ can say the truck was handed more time.
 | — | Detector | stages 1-10 done |
 | — | Console | map, banner, verdict, fleet, phone view, report |
 
+### Two things that only fail live — the test suite cannot see either
+
+The tests drive `Pipeline` directly. Everything between the UDP socket and the
+browser is untested by them, and both of these were found by actually running
+the demo rather than by running the tests.
+
+**1. Kill every stale process before a run.** Two `detector.server` instances
+from different sessions can both hold :8080, and the older one answers — so the
+console served the *previous* road network while the source on disk was
+correct. Nothing errors. The map just quietly looks right and is wrong.
+Before any rehearsal or demo:
+
+```powershell
+Get-CimInstance Win32_Process -Filter "Name='python.exe'" |
+  Where-Object { $_.CommandLine -match 'detector\.server|simulator\.control' } |
+  ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
+```
+
+**2. "Clear" has to stop the run, not the screen.** It used to clear the
+display only, while the simulator kept streaming — so an alert the operator
+had just dismissed came back within a tenth of a second and the button looked
+broken. `/control/clear` now resets the simulator and kills any fleet sender
+first. Measured at 0.06 s, which is the phase-12 "reset under two seconds"
+requirement met with room to spare.
+
 ### Known weaknesses — say these out loud, do not hide them
 
 - **Walk-off below 2 m/s is not detected on a drone**, and below 1 m/s on a
