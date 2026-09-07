@@ -157,9 +157,17 @@ def catalogue() -> list[Case]:
              build=lambda rng: make_attack("walkoff", 3.0, 90.0), apply=_attack))
     add(Case("GPS jumped 300 m", "GPS -> Jump it", "TAMPERED", sensor="gnss",
              build=lambda rng: make_attack("teleport", 300.0, 90.0), apply=_attack))
-    add(Case("meaconing / replay", "GPS -> Replay elsewhere", "TAMPERED",
+    add(Case("meaconing / replay", "GPS -> Replay elsewhere", "not sure yet",
              sensor="gnss",
-             build=lambda rng: make_attack("replay", 250.0, 45.0), apply=_attack))
+             build=lambda rng: make_attack("replay", 250.0, 45.0), apply=_attack,
+             note="Detected in 8 s, not attributed. A replay is a constant "
+                  "offset, so after the first few seconds only the position "
+                  "check still fails — one failing check between two sensors, "
+                  "and nothing to break the tie. The road network would break "
+                  "it, but this corridor has a hundred roads and the replayed "
+                  "position landed on one of them: being on *a* road is not "
+                  "evidence of being on the right one. A jump of the same size "
+                  "onto open ground is named in 8 s."))
     add(Case("altitude-only spoof", "GPS -> Altitude only", "not sure yet",
              scenario="drone_clean", sensor="gnss",
              build=lambda rng: make_attack("altitude_only", 60.0, 0.0),

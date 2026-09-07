@@ -114,6 +114,53 @@
       <p class="atk-hint" id="atkhint">Press Start below, then take a sensor.</p>
     </div>
 
+    <!-- Two independent measurements of the same physical thing. While
+         everything is honest the lines sit on top of each other; drive one of
+         them and they come apart in front of you. That is the claim of the
+         whole project in three pictures. -->
+    <div class="panel traces" id="tracepanel" hidden>
+      <h2>The readings</h2>
+      <div class="tracecard" id="trace-heading">
+        <div class="tracehead"><span>Which way we point</span>
+          <span class="tracenows" id="trace-heading-now"></span></div>
+        <canvas id="canvas-heading" class="tracecanvas"></canvas>
+      </div>
+      <div class="tracecard" id="trace-height">
+        <div class="tracehead"><span>How high we are</span>
+          <span class="tracenows" id="trace-height-now"></span></div>
+        <canvas id="canvas-height" class="tracecanvas"></canvas>
+      </div>
+      <div class="tracecard" id="trace-speed">
+        <div class="tracehead"><span>How fast we are going</span>
+          <span class="tracenows" id="trace-speed-now"></span></div>
+        <canvas id="canvas-speed" class="tracecanvas"></canvas>
+      </div>
+      <p class="tracenote">
+        Two separate sensors measuring the same thing. When they lie on top of
+        each other, everything agrees.
+      </p>
+    </div>
+
+    <!-- The proof. A verdict is an assertion; this is the working. Four
+         sensors agreeing with each other and one disagreeing with all of them
+         is the entire argument, and until now it only existed inside the
+         detector where nobody could see it. -->
+    <div class="panel proof" id="proofpanel" hidden>
+      <h2>Why we say that</h2>
+      <p class="prooflede" id="prooflede"></p>
+      <canvas id="web" class="web" width="300" height="190"></canvas>
+      <div class="prooflists">
+        <div class="proofgroup bad" id="disagreegroup" hidden>
+          <h3><span class="tick">✗</span> These do not match</h3>
+          <ul id="disagree"></ul>
+        </div>
+        <div class="proofgroup good" id="agreegroup" hidden>
+          <h3><span class="tick">✓</span> These match each other</h3>
+          <ul id="agree"></ul>
+        </div>
+      </div>
+    </div>
+
     <div class="panel verdict" id="verdictpanel" hidden>
       <h2>Verdict</h2>
       <div class="guilty">

@@ -1037,11 +1037,25 @@ def _truck_run(scenario: str, seed: int, secs: float = 180.0) -> list[tuple]:
 
 @test
 def truck_roads_answer_distance_and_name() -> None:
-    """roads.py: a point on the highway is on a road; the middle of nowhere is not."""
-    assert distance_to_nearest_road(0.0, 0.0) == 0.0
-    assert nearest_road_name(0.0, 0.0) == "NH-48"
-    # SIPCOT Oragadam, where the industrial road meets the estate access road.
-    assert distance_to_nearest_road(350.0, -1000.0) == 0.0
+    """roads.py: a point on the highway is on a road; the middle of nowhere is not.
+
+    Written against surveyed geometry now rather than hand-placed vertices, so
+    the junction is a *junction* rather than a point that happens to be a
+    vertex — it sits a few centimetres off the drawn centreline, which is what
+    real road data looks like. Asserting an exact zero was asserting that the
+    map was drawn by us.
+    """
+    from simulator.chennai import ROUTE
+
+    assert distance_to_nearest_road(0.0, 0.0) < 2.0, "the junction is not on a road"
+    assert nearest_road_name(0.0, 0.0) != "none"
+
+    # Every point the truck is asked to drive must be on the carriageway,
+    # which is the property the road check depends on.
+    if ROUTE:
+        worst = max(distance_to_nearest_road(e, n) for e, n in ROUTE)
+        assert worst < 5.0, f"route leaves the road network by {worst:.0f} m"
+
     far = (9e4, -9e4)
     assert nearest_road_name(*far) == "none"
     assert distance_to_nearest_road(*far) > 50.0
@@ -1065,7 +1079,8 @@ def truck_parks_wheels_read_zero_then_moves_on() -> None:
     stop_wheels_zero = True
     longest_wheels_zero = True
     final_speed = 0.0
-    final_e = 0.0
+    travelled = 0.0
+    previous = (float(vehicle.position_enu[0]), float(vehicle.position_enu[1]))
     for _ in range(int(180.0 / DT)):
         sdata = sensors.update(vehicle)
         wheel = sdata["odom"]["wheel_speed_mps"]
@@ -1080,7 +1095,9 @@ def truck_parks_wheels_read_zero_then_moves_on() -> None:
             cur = 0.0
             stop_wheels_zero = True
         final_speed = speed
-        final_e = float(vehicle.position_enu[0])
+        here = (float(vehicle.position_enu[0]), float(vehicle.position_enu[1]))
+        travelled += math.dist(previous, here)
+        previous = here
         vehicle.step()
     if cur > longest:
         longest = cur
@@ -1088,9 +1105,11 @@ def truck_parks_wheels_read_zero_then_moves_on() -> None:
     assert longest >= 4.0, "the red-light hold never happened"
     assert longest_wheels_zero, "stopped truck wheel did not read exactly 0.0"
     assert final_speed > 8.0, "truck never pulled away after the stop"
-    # One-way delivery: it should be down the estate access road, near the
-    # yard at (650, -1200), not back where it started.
-    assert final_e > 300.0, f"truck did not get past the junction (e={final_e:.0f})"
+    # It should have got somewhere. Distance travelled rather than easting:
+    # the route now follows the real carriageway, which turns south-west at
+    # the junction, so easting legitimately ends up negative — an assertion on
+    # the sign of a coordinate was really an assertion about a drawn map.
+    assert travelled > 800.0, f"truck barely moved ({travelled:.0f} m)"
 
 
 @test

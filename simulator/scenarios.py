@@ -44,6 +44,57 @@ def _twp(e, n, speed=18.0, max_acc=1.5, turn_rate=0.3):
                     turn_rate=turn_rate, max_climb=0.0)
 
 
+def _along_route(*, stop_at: float | None = None) -> list:
+    """Waypoints that follow the real carriageway.
+
+    The route comes out of `chennai.py`, which reads it from the baked
+    OpenStreetMap geometry — so the lorry drives the actual centreline of
+    NH-48 and the actual road it turns onto, rather than a drawn
+    approximation. That matters beyond looks: the detector's road check
+    measures against those same roads, and a truck driving a line the map does
+    not have would fail a check it should pass.
+
+    Points are thinned to roughly one per forty-five metres. Every surveyed
+    vertex would have the lorry steering constantly around noise that a real
+    driver would not follow.
+
+    `stop_at` puts a signal stop that far along the route, because a run with
+    no stop in it never tests a stationary vehicle — and a stationary vehicle
+    is where several checks are hardest.
+    """
+    import math
+
+    from .chennai import ROUTE
+
+    if not ROUTE:
+        return []
+
+    kept, run, since_stop = [ROUTE[0]], 0.0, 0.0
+    for previous, point in zip(ROUTE, ROUTE[1:]):
+        step = math.dist(previous, point)
+        run += step
+        since_stop += step
+        if since_stop >= 45.0:
+            kept.append(point)
+            since_stop = 0.0
+    if kept[-1] != ROUTE[-1]:
+        kept.append(ROUTE[-1])
+
+    total = 0.0
+    waypoints = [_twp(kept[0][0], kept[0][1], speed=0.0)]
+    for previous, point in zip(kept, kept[1:]):
+        total += math.dist(previous, point)
+        # Slow through the junction, which sits at the origin, the way any
+        # lorry does — and it is the moment the story turns on.
+        near_junction = math.hypot(*point) < 220.0
+        speed = 9.0 if near_junction else 19.0
+        if stop_at is not None and abs(total - stop_at) < 60.0:
+            speed = 0.0
+        waypoints.append(_twp(point[0], point[1], speed=speed))
+    return waypoints
+
+
+
 # ---------------------------------------------------------------------------
 # drone_clean — 3-minute, gentle flight
 # ---------------------------------------------------------------------------
@@ -237,58 +288,38 @@ def drone_magnet():
 # ---------------------------------------------------------------------------
 def truck_clean():
     """
-    A container delivery from Sriperumbudur into the Oragadam estate, and
-    nothing goes wrong.
+    A container run down NH-48, and nothing goes wrong.
 
-    Comes in on NH-48 from Chennai, slows for the junction, turns south onto
-    Oragadam Road, holds at a signal, runs down to the SIPCOT estate and
-    delivers at the yard.
+    Real geometry: in along the highway from the Chennai side, slowing for the
+    Sriperumbudur junction where NH-48 meets the old Chennai-Bangalore road,
+    turning off, and running south-west to the estates. One signal stop on the
+    way.
 
-    A junction, a signal stop, a turn off the highway and a delivery — a
-    working afternoon. No attack, and it must pass without a single alarm.
-    This is the gate an operator will judge us on: a system that cries wolf on
-    an honest delivery gets switched off inside a week.
+    No attack. Three minutes must pass without a single alarm. This is the
+    zero-false-alarm gate for trucks, and it is also the run an operator will
+    judge us on: a system that cries wolf on an honest delivery gets switched
+    off in a week.
     """
-    waypoints = [
-        _twp(  -700,    250, speed=0.0),    # inbound from Chennai, at rest
-        _twp(  -350,    125, speed=22.0),   # NH-48, up to speed
-        _twp(     0,      0, speed=9.0),    # Sriperumbudur junction — slow to turn
-        _twp(   100,   -350, speed=18.0),   # onto Oragadam Road
-        _twp(   225,   -700, speed=0.0),    # STOP at the signal
-        _twp(   350,  -1000, speed=16.0),   # pull away into SIPCOT
-        _twp(   525,  -1125, speed=12.0),    # estate access road
-        _twp(   650,  -1200, speed=0.0),    # deliver at the yard
-    ]
-    return waypoints, "truck"
+    return _along_route(stop_at=1500.0), "truck"
 
 
 def truck_theft():
     """
-    The same delivery, and somebody is spoofing the tracker.
+    The same run, and somebody is spoofing the tracker.
 
-    The lorry really does turn off at Sriperumbudur and park in the yard,
-    where it is unloaded. The reported position carries on down NH-48 toward
-    Bangalore at road speed, so the control room watches a container making
-    ordinary progress toward a delivery that is not happening.
+    The lorry really does turn off at Sriperumbudur and carry on toward the
+    estates. The reported position keeps running down NH-48 at road speed, so
+    the control room watches a container making normal progress toward a
+    delivery that is not happening.
 
-    This is how the theft works, and it is why the tracking system is no help:
+    This is how the theft works, and why the tracking system is no help:
     nothing in it is broken. The receiver is lied to before the position is
     ever transmitted, and everything downstream is a very reliable pipe for
     the lie.
 
     3.5 m/s of drift — a lorry's difference in speed, not a teleport. The
-    whole point is that the screen looks ordinary.
+    point is that the screen looks ordinary.
     """
-    waypoints = [
-        _twp(  -700,    250, speed=0.0),
-        _twp(  -350,    125, speed=22.0),
-        _twp(     0,      0, speed=9.0),    # turns off at the junction
-        _twp(   100,   -350, speed=18.0),
-        _twp(   225,   -700, speed=16.0),
-        _twp(   350,  -1000, speed=12.0),
-        _twp(   525,  -1125, speed=9.0),
-        _twp(   650,  -1200, speed=0.0),    # parked in the yard, unloading
-    ]
     schedule = [
         {
             "t_start": 35.0,
@@ -297,7 +328,7 @@ def truck_theft():
             "kwargs":  {"speed_mps": 3.5, "bearing_deg": 115.0},
         }
     ]
-    return waypoints, "truck", schedule
+    return _along_route(), "truck", schedule
 
 
 # ---------------------------------------------------------------------------

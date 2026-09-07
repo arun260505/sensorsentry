@@ -69,6 +69,14 @@ class State:
     blame: "blame_mod.Blame" = field(default_factory=lambda: blame_mod.Blame())
     """Which sensor is lying — stage 5."""
 
+    gyro_heading_deg: Optional[float] = None
+    """Where the gyro alone thinks we are pointing, integrated from turn rate.
+
+    Sent to the console so the operator can watch it against the compass. A
+    magnet moves one line and not the other, and seeing those two traces come
+    apart is the whole of the interference case — without it, taking over the
+    compass changes a number nobody can see and the demo looks broken."""
+
     cause: Cause = field(default_factory=Cause)
     """Why it is lying — stage 6."""
 
@@ -147,6 +155,8 @@ class State:
                 "sigma_m": round(residual.sigma_m, 2),
                 "ratio": round(residual.ratio, 3),
             },
+            "gyro_heading_deg": (None if self.gyro_heading_deg is None
+                                 else round(self.gyro_heading_deg % 360.0, 1)),
             "witness": {
                 "e": round(self.witness_enu.e, 2) if self.witness_enu else None,
                 "n": round(self.witness_enu.n, 2) if self.witness_enu else None,
@@ -167,10 +177,16 @@ class State:
             },
             "pairs": [
                 {
+                    # `key` and `domain` so the console can line each check up
+                    # with its settled state and show the operator which
+                    # readings back each other up and which one stands alone.
+                    # That agreement is the entire argument, and until now it
+                    # only existed inside the detector.
+                    "key": p.key, "domain": p.domain,
                     "a": p.a, "b": p.b, "label": p.label,
                     "value": round(p.value, 2), "unit": p.unit,
                     "sigma": round(p.sigma, 2), "ratio": round(p.ratio, 2),
-                    "valid": p.valid, "reason": p.reason,
+                    "valid": p.valid, "stale": p.stale, "reason": p.reason,
                 }
                 for p in self.pairs
             ],
@@ -254,6 +270,8 @@ class Pipeline:
                     v == "OK" for k, v in state.pair_states.items()
                     if k.endswith(":heading_offset")
                 )
+            if self.crossvalidator is not None:
+                state.gyro_heading_deg = self.crossvalidator.gyro_heading_deg
             state.blame = blame_mod.assign(pairs, state.pair_states, report)
             state.cause = self.classifier.update(pairs, state.blame, report, frame.t)
             if self.fusion is not None:

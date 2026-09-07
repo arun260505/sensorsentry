@@ -21,12 +21,12 @@ const COLOR = {
   witness: "#0b5c7a",
   link: "#b3352a",
   text: "#788894",
-  road: "#e8e2d6",        /* carriageway */
-  roadCase: "#cfc7b6",    /* its casing, so trails stay readable over it */
+  road: "#ffffff",        /* carriageway */
+  roadCase: "#ddd6c6",    /* its casing, so trails stay readable over it */
   roadText: "#8a8272",
   building: "#ded6c6",
 };
-const CANVAS_BG = "#ffffff";
+const CANVAS_BG = "#f4f1ea";
 
 let latest = null;
 let trails = { gnss: [], witness: [] };
@@ -59,11 +59,10 @@ function computeView(w, h) {
   for (const v of Object.values(fleet)) {
     if (v.trails) pts.push(...v.trails.gnss, ...v.trails.witness);
   }
-  // The roads frame the view as well, so a stationary vehicle is shown in
-  // its surroundings rather than filling the screen on its own.
-  for (const road of basemap.roads) {
-    for (const [lat, lon] of road.points) pts.push(toLocal(lat, lon));
-  }
+  // The route frames the view, not the whole extract. Fitting eight hundred
+  // roads zooms out to five kilometres of countryside and the vehicle becomes
+  // a speck; the roads are background, and background does not get a vote.
+  for (const [lat, lon] of basemap.route || []) pts.push(toLocal(lat, lon));
   // Keep the whole zone in view, not just its centre.
   for (const z of zones) {
     if (z.e === undefined) continue;
@@ -188,52 +187,121 @@ function drawGrid(w, h, view) {
  * instead of being narrated — and a spoofed position that wanders into a
  * field is visibly in a field.
  */
-function drawRoads(view, w, h) {
-  for (const road of basemap.roads) {
-    const pts = road.points.map(([lat, lon]) => toLocal(lat, lon));
-    if (pts.length < 2) continue;
+/* Real surveyed geometry, drawn the way a map is drawn.
+ *
+ * Eight hundred roads with a casing under each one, widths by class, and
+ * labels only where there is room. The previous version drew three
+ * hand-placed polylines, which is a diagram — and it looked like a diagram,
+ * which made the whole thing look like a drawing of a demo rather than a
+ * demo.
+ *
+ * Everything comes from simulator/chennai_map.json, baked once from
+ * OpenStreetMap and read off disk. The demo never goes online: a tile server
+ * fails silently, and a grey rectangle in front of judges is the worst
+ * possible failure mode.
+ */
 
-    // Casing under colour, the way roads are drawn on real maps: it keeps
-    // them readable where a vehicle trail crosses them.
-    for (const [width, colour] of [[road.major ? 13 : 8, COLOR.roadCase],
-                                   [road.major ? 9 : 5, COLOR.road]]) {
-      ctx.strokeStyle = colour;
-      ctx.lineWidth = width;
+/* Width on screen for each class, as [casing, carriageway]. Scaled with zoom
+ * so a road looks like a road at any scale rather than a hairline. */
+const ROAD_WIDTH = {
+  4: [11, 7.5],   // trunk / motorway
+  3: [8, 5],      // primary / secondary
+  2: [6, 3.6],    // tertiary
+  1: [4.4, 2.6],  // residential / unclassified
+  0: [3, 1.7],    // service
+};
+
+function roadScale(view) {
+  // Below a certain zoom the small roads are noise, so they thin out rather
+  // than crowding the picture.
+  return Math.max(0.55, Math.min(1.5, view.scale * 3.2));
+}
+
+function drawRoads(view, w, h) {
+  if (!basemap.roads.length) return;
+  const k = roadScale(view);
+  const margin = 60;
+
+  // Two passes over the classes, casing first then carriageway, so junctions
+  // join cleanly instead of every road drawing its own outline on top of its
+  // neighbour.
+  const byRank = [0, 1, 2, 3, 4];
+  for (const layer of [0, 1]) {
+    for (const rank of byRank) {
+      ctx.strokeStyle = layer === 0 ? COLOR.roadCase : COLOR.road;
       ctx.lineJoin = "round";
       ctx.lineCap = "round";
+      ctx.lineWidth = (ROAD_WIDTH[rank] || ROAD_WIDTH[1])[layer] * k;
       ctx.beginPath();
-      pts.forEach(([e, n], i) => {
-        const [x, y] = project(e, n, view, w, h);
-        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-      });
+      for (const road of basemap.roads) {
+        if ((road.rank || 1) !== rank) continue;
+        if (rank === 0 && k < 0.85) continue;      // hide lanes when zoomed out
+        let on = false;
+        for (const [lat, lon] of road.points) {
+          const [e, n] = toLocal(lat, lon);
+          const [x, y] = project(e, n, view, w, h);
+          const visible = x > -margin && x < w + margin && y > -margin && y < h + margin;
+          if (!visible && !on) continue;
+          if (!on) { ctx.moveTo(x, y); on = true; } else { ctx.lineTo(x, y); }
+        }
+      }
       ctx.stroke();
     }
+  }
 
-    // Name it along its longest straight, the way a road label sits.
+  drawRoadLabels(view, w, h, k);
+  drawPlaces(view, w, h);
+}
+
+/* Names, on the bigger roads only, and only one per road. A map that labels
+ * every service lane is unreadable at a glance, and a glance is all an
+ * operator gets. */
+function drawRoadLabels(view, w, h, k) {
+  if (k < 0.7) return;
+  const placed = [];
+  for (const road of basemap.roads) {
+    if (!road.name || (road.rank || 1) < 2) continue;
+    const pts = road.points.map(([lat, lon]) => toLocal(lat, lon));
     let best = 0, bi = 0;
     for (let i = 1; i < pts.length; i++) {
       const d = Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
       if (d > best) { best = d; bi = i; }
     }
+    if (!bi) continue;
     const [ax, ay] = project(pts[bi - 1][0], pts[bi - 1][1], view, w, h);
     const [bx, by] = project(pts[bi][0], pts[bi][1], view, w, h);
-    if (Math.hypot(bx - ax, by - ay) > 70) {
-      ctx.save();
-      ctx.translate((ax + bx) / 2, (ay + by) / 2);
-      let angle = Math.atan2(by - ay, bx - ax);
-      if (angle > Math.PI / 2 || angle < -Math.PI / 2) angle += Math.PI;
-      ctx.rotate(angle);
-      ctx.fillStyle = COLOR.roadText;
-      ctx.font = "600 10px system-ui, sans-serif";
-      ctx.textAlign = "center";
-      ctx.fillText(road.name.toUpperCase(), 0, -road.major ? -8 : -6);
-      ctx.restore();
-    }
-  }
+    if (Math.hypot(bx - ax, by - ay) < 90) continue;
 
+    const mx = (ax + bx) / 2, my = (ay + by) / 2;
+    if (mx < 40 || mx > w - 40 || my < 20 || my > h - 20) continue;
+    if (placed.some(([px, py]) => Math.hypot(px - mx, py - my) < 110)) continue;
+    placed.push([mx, my]);
+
+    let angle = Math.atan2(by - ay, bx - ax);
+    if (angle > Math.PI / 2 || angle < -Math.PI / 2) angle += Math.PI;
+
+    const name = road.name.length > 22 ? road.name.slice(0, 20) + "…" : road.name;
+    ctx.save();
+    ctx.translate(mx, my);
+    ctx.rotate(angle);
+    ctx.font = "600 10px system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    // Halo, so a name stays readable where it crosses a vehicle trail.
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = CANVAS_BG;
+    ctx.strokeText(name, 0, 0);
+    ctx.fillStyle = COLOR.roadText;
+    ctx.fillText(name, 0, 0);
+    ctx.restore();
+  }
+}
+
+function drawPlaces(view, w, h) {
   for (const place of basemap.places) {
     const [e, n] = toLocal(place.at[0], place.at[1]);
     const [x, y] = project(e, n, view, w, h);
+    if (x < 0 || x > w || y < 0 || y > h) continue;
     if (place.kind === "building") {
       ctx.fillStyle = COLOR.building;
       ctx.strokeStyle = COLOR.roadText;
@@ -246,9 +314,12 @@ function drawRoads(view, w, h) {
       ctx.arc(x, y, 3, 0, Math.PI * 2);
       ctx.fill();
     }
-    ctx.fillStyle = COLOR.roadText;
     ctx.font = "600 10px system-ui, sans-serif";
     ctx.textAlign = "center";
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = CANVAS_BG;
+    ctx.strokeText(place.name, x, y + 20);
+    ctx.fillStyle = COLOR.roadText;
     ctx.fillText(place.name, x, y + 20);
     ctx.textAlign = "left";
   }
@@ -683,6 +754,9 @@ function connect() {
 
     renderReportControls(Boolean(snapshot.report_enabled));
     renderPanels(snapshot);
+    pushTrace(snapshot);
+    renderTraces(snapshot);
+    renderProof(snapshot);
     attackWatch(latest);
     setAttackEnabled();
     draw();
@@ -911,6 +985,378 @@ connect();
 loadScenarios();
 loadBasemap();
 requestAnimationFrame(animate);
+
+/* --- the readings themselves ---------------------------------------------
+ *
+ * Until this existed, only the GPS had anything to look at: two tracks on the
+ * map that visibly came apart. Taking over the compass changed a number
+ * nobody could see, so the demo appeared to do nothing at all for three of
+ * the four sensors.
+ *
+ * Each chart draws two independent measurements of the same physical
+ * quantity. While everything is honest the two lines sit on top of each
+ * other. That is the claim of the whole project in one picture — and when a
+ * judge drives one of them, the lines come apart in front of them, which is
+ * the proof.
+ *
+ * Nothing here is computed for display. Every value is a reading off the
+ * ordinary stream.
+ */
+
+const TRACE_SECONDS = 45;
+
+const TRACES = [
+  {
+    id: "heading",
+    title: "Which way we point",
+    unit: "°",
+    wrap: true,                    // degrees, so 359 -> 1 is a small change
+    lines: [
+      { key: "compass", name: "compass", colour: "#a35d07" },
+      { key: "gyro", name: "gyro", colour: "#0b5c7a" },
+    ],
+    read: (snap) => {
+      const st = snap.state, raw = snap.raw;
+      return {
+        compass: raw && raw.mag ? raw.mag.heading_deg : null,
+        gyro: st ? st.gyro_heading_deg : null,
+      };
+    },
+  },
+  {
+    id: "height",
+    title: "How high we are",
+    unit: " m",
+    lines: [
+      { key: "gps", name: "GPS", colour: "#a35d07" },
+      { key: "own", name: "barometer", colour: "#0b5c7a" },
+    ],
+    // Both sides straight off the state, in the same frame and the same
+    // units. Reading the GPS height out of the raw frame instead meant three
+    // frames in four had no fix and the line vanished.
+    read: (snap) => {
+      const st = snap.state;
+      return {
+        gps: st && st.gnss ? st.gnss.u : null,
+        own: st && st.witness ? st.witness.u : null,
+      };
+    },
+  },
+  {
+    id: "speed",
+    title: "How fast we are going",
+    unit: " m/s",
+    lines: [
+      { key: "own", name: "own sensors", colour: "#0b5c7a" },
+      { key: "wheels", name: "wheels", colour: "#a35d07" },
+    ],
+    read: (snap) => {
+      const st = snap.state, raw = snap.raw;
+      return {
+        own: st && st.witness ? st.witness.speed_mps : null,
+        wheels: raw && raw.odom ? raw.odom.wheel_speed_mps : null,
+      };
+    },
+  },
+];
+
+const traceData = {};      // id -> { t: [], <lineKey>: [] }
+
+function pushTrace(snapshot) {
+  const t = snapshot.state ? snapshot.state.t : null;
+  if (t == null) return;
+  for (const spec of TRACES) {
+    const store = traceData[spec.id] || (traceData[spec.id] = { t: [] });
+    const values = spec.read(snapshot);
+    // Only record when at least one side has something, so a chart never
+    // draws a flat line out of missing data and calls it agreement.
+    if (Object.values(values).every((v) => v == null)) continue;
+    store.t.push(t);
+    for (const line of spec.lines) {
+      (store[line.key] || (store[line.key] = [])).push(values[line.key]);
+    }
+    while (store.t.length && t - store.t[0] > TRACE_SECONDS) {
+      store.t.shift();
+      for (const line of spec.lines) store[line.key].shift();
+    }
+  }
+}
+
+function clearTraces() {
+  for (const key of Object.keys(traceData)) delete traceData[key];
+}
+
+/* Degrees wrap, so a heading crossing north jumps 360 and the chart shows a
+ * cliff that is not there. Unwrap into a continuous line before drawing. */
+function unwrap(series) {
+  const out = [];
+  let offset = 0;
+  for (let i = 0; i < series.length; i++) {
+    const value = series[i];
+    if (value == null) { out.push(null); continue; }
+    const previous = out[out.length - 1];
+    if (previous != null) {
+      const raw = value + offset;
+      if (raw - previous > 180) offset -= 360;
+      else if (previous - raw > 180) offset += 360;
+    }
+    out.push(value + offset);
+  }
+  return out;
+}
+
+function renderTraces(snapshot) {
+  const panel = el("tracepanel");
+  if (!snapshot.state) { panel.hidden = true; return; }
+  panel.hidden = false;
+
+  for (const spec of TRACES) {
+    const store = traceData[spec.id];
+    const card = el(`trace-${spec.id}`);
+    if (!store || store.t.length < 2) { if (card) card.hidden = true; continue; }
+
+    // A chart whose second sensor this vehicle does not carry is hidden
+    // rather than drawn half-empty: a drone has no wheels, a lorry no
+    // barometer, and an empty chart reads as a broken one.
+    const usable = spec.lines.filter(
+      (line) => store[line.key] && store[line.key].some((v) => v != null));
+    if (usable.length < 2) { card.hidden = true; continue; }
+    card.hidden = false;
+
+    const series = {};
+    for (const line of spec.lines) {
+      series[line.key] = spec.wrap ? unwrap(store[line.key]) : store[line.key];
+    }
+    drawTrace(spec, store, series);
+
+    // Current values, so there is a number to read as well as a shape.
+    const readout = el(`trace-${spec.id}-now`);
+    readout.innerHTML = "";
+    for (const line of usable) {
+      const values = store[line.key].filter((v) => v != null);
+      if (!values.length) continue;
+      const span = document.createElement("span");
+      span.className = "tracenow";
+      span.style.color = line.colour;
+      span.textContent =
+        `${line.name} ${values[values.length - 1].toFixed(spec.unit === "°" ? 0 : 1)}${spec.unit}`;
+      readout.appendChild(span);
+    }
+  }
+}
+
+function drawTrace(spec, store, series) {
+  const canvas = el(`canvas-${spec.id}`);
+  const c = canvas.getContext("2d");
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  const w = rect.width || 280, h = 58;
+  canvas.width = Math.round(w * dpr);
+  canvas.height = Math.round(h * dpr);
+  c.setTransform(dpr, 0, 0, dpr, 0, 0);
+  c.clearRect(0, 0, w, h);
+
+  let low = Infinity, high = -Infinity;
+  for (const line of spec.lines) {
+    for (const value of series[line.key] || []) {
+      if (value == null) continue;
+      if (value < low) low = value;
+      if (value > high) high = value;
+    }
+  }
+  if (!isFinite(low)) return;
+  // A minimum span, or two identical honest readings fill the chart with
+  // noise and look like violent disagreement.
+  const span = Math.max(high - low, spec.unit === "°" ? 8 : 2);
+  const mid = (high + low) / 2;
+  low = mid - span * 0.62;
+  high = mid + span * 0.62;
+
+  const t0 = store.t[0], t1 = store.t[store.t.length - 1] || t0 + 1;
+  const x = (t) => 4 + ((t - t0) / Math.max(t1 - t0, 0.001)) * (w - 8);
+  const y = (v) => h - 6 - ((v - low) / (high - low)) * (h - 12);
+
+  for (const line of spec.lines) {
+    const values = series[line.key];
+    if (!values) continue;
+    c.strokeStyle = line.colour;
+    c.lineWidth = 2;
+    c.lineJoin = "round";
+    c.beginPath();
+    let drawing = false;
+    for (let i = 0; i < values.length; i++) {
+      if (values[i] == null) { drawing = false; continue; }
+      const px = x(store.t[i]), py = y(values[i]);
+      if (!drawing) { c.moveTo(px, py); drawing = true; } else { c.lineTo(px, py); }
+    }
+    c.stroke();
+  }
+}
+
+/* --- why we say that -----------------------------------------------------
+ *
+ * The working, not the answer.
+ *
+ * "The GPS is lying" is an assertion. What makes it believable is that four
+ * other sensors agree with each other and only one disagrees with all of
+ * them — and that agreement existed only inside the detector, where nobody
+ * could see it. This draws it.
+ *
+ * Every number here comes off the ordinary stream. Nothing is recomputed for
+ * display, so what a judge reads is what the detector decided on.
+ */
+
+const SENSOR_NAME = {
+  gnss: "GPS", imu: "motion", baro: "height", mag: "compass",
+  odom: "wheels", road: "road map",
+};
+
+/* Where each sensor sits in the web. Fixed positions rather than laid out on
+ * the fly: the picture has to look the same every run, or a judge watching
+ * twice cannot tell whether the change means anything. */
+const WEB_AT = {
+  gnss: [0.50, 0.16],
+  mag:  [0.86, 0.42],
+  odom: [0.72, 0.85],
+  baro: [0.72, 0.85],
+  imu:  [0.28, 0.85],
+  road: [0.14, 0.42],
+};
+
+function pairFailing(pair, states) {
+  return (states[pair.key] || "OK") !== "OK";
+}
+
+/* One check, in words an operator reads rather than a field name. */
+function checkLine(pair) {
+  const times = pair.sigma > 0 ? pair.ratio : 0;
+  return {
+    what: pair.label,
+    num: `${pair.value}${pair.unit === "deg" ? "°" : " " + pair.unit}`,
+    rel: times >= 1 ? `${times.toFixed(1)}x normal` : `${times.toFixed(1)}x`,
+  };
+}
+
+function renderProof(snapshot) {
+  const state = snapshot.state;
+  const panel = el("proofpanel");
+  if (!state || !state.pairs || !state.pairs.length) {
+    panel.hidden = true;
+    return;
+  }
+
+  const states = state.pair_states || {};
+  // A check that has never produced a reading proves nothing either way, so
+  // it is left out rather than shown as agreement it has not earned.
+  const usable = state.pairs.filter((p) => p.valid || p.stale);
+  const failing = usable.filter((p) => pairFailing(p, states));
+  const passing = usable.filter((p) => !pairFailing(p, states));
+
+  if (!failing.length && state.state === "OK") {
+    // Nothing is wrong. Still show the agreement — a judge should see what
+    // "healthy" looks like before they see what a lie looks like.
+    el("prooflede").innerHTML =
+      `<span class="agreeing">All ${usable.length} cross-checks agree.</span> ` +
+      `Every sensor is telling the same story about where this vehicle is ` +
+      `and which way it is pointing.`;
+  } else {
+    const guilty = state.blame && state.blame.guilty;
+    const named = guilty && guilty !== "cannot_isolate" ? SENSOR_NAME[guilty] : null;
+    const others = [...new Set(passing.flatMap((p) => [p.a, p.b]))]
+      .filter((s) => s !== guilty)
+      .map((s) => SENSOR_NAME[s] || s);
+
+    if (named && others.length) {
+      el("prooflede").innerHTML =
+        `The <span class="agreeing">${others.join(", ")}</span> all agree with ` +
+        `each other. Only <b>${named}</b> disagrees — with ` +
+        `${failing.length === 1 ? "the check it is in" : `all ${failing.length} checks it is in`}.`;
+    } else if (failing.length) {
+      el("prooflede").innerHTML =
+        `${failing.length} check${failing.length > 1 ? "s" : ""} failing, but the ` +
+        `sensors involved still back each other up elsewhere — not enough to ` +
+        `name one of them yet.`;
+    }
+  }
+
+  const fill = (id, groupId, list) => {
+    const box = el(id);
+    box.innerHTML = "";
+    for (const pair of list) {
+      const line = checkLine(pair);
+      const li = document.createElement("li");
+      li.innerHTML =
+        `<span class="what"></span><span class="num"></span><span class="rel"></span>`;
+      li.children[0].textContent = line.what;
+      li.children[1].textContent = line.num;
+      li.children[2].textContent = line.rel;
+      box.appendChild(li);
+    }
+    el(groupId).hidden = list.length === 0;
+  };
+  fill("disagree", "disagreegroup", failing);
+  fill("agree", "agreegroup", passing);
+
+  panel.hidden = false;
+  drawWeb(usable, states, state.blame && state.blame.guilty);
+}
+
+/* The web: every sensor that takes part in a check, and a line for each check
+ * between them. Green where they agree, red where they do not. A liar shows
+ * up as the one node with red running to everything it touches. */
+function drawWeb(pairs, states, guilty) {
+  const canvas = el("web");
+  const ctx2 = canvas.getContext("2d");
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  const w = rect.width || 300, h = 190;
+  canvas.width = Math.round(w * dpr);
+  canvas.height = Math.round(h * dpr);
+  ctx2.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx2.clearRect(0, 0, w, h);
+
+  const involved = [...new Set(pairs.flatMap((p) => [p.a, p.b]))];
+  const at = {};
+  for (const sensor of involved) {
+    const spot = WEB_AT[sensor] || [0.5, 0.5];
+    at[sensor] = [24 + spot[0] * (w - 48), 22 + spot[1] * (h - 48)];
+  }
+
+  // Edges first, so nodes sit on top of them.
+  for (const pair of pairs) {
+    const from = at[pair.a], to = at[pair.b];
+    if (!from || !to) continue;
+    const bad = (states[pair.key] || "OK") !== "OK";
+    ctx2.strokeStyle = bad ? "#b3352a" : "#9dc3ad";
+    ctx2.lineWidth = bad ? 2.6 : 1.2;
+    if (!bad) ctx2.setLineDash([]);
+    ctx2.beginPath();
+    ctx2.moveTo(from[0], from[1]);
+    ctx2.lineTo(to[0], to[1]);
+    ctx2.stroke();
+  }
+
+  for (const sensor of involved) {
+    const [x, y] = at[sensor];
+    const accused = sensor === guilty;
+    ctx2.beginPath();
+    ctx2.arc(x, y, accused ? 15 : 12, 0, Math.PI * 2);
+    ctx2.fillStyle = accused ? "#b3352a" : "#ffffff";
+    ctx2.fill();
+    ctx2.lineWidth = accused ? 0 : 1.4;
+    ctx2.strokeStyle = "#9aa8b2";
+    if (!accused) ctx2.stroke();
+
+    ctx2.fillStyle = accused ? "#ffffff" : "#4a5c69";
+    ctx2.font = accused
+      ? "700 10px ui-sans-serif, system-ui, sans-serif"
+      : "600 10px ui-sans-serif, system-ui, sans-serif";
+    ctx2.textAlign = "center";
+    ctx2.textBaseline = "middle";
+    const label = SENSOR_NAME[sensor] || sensor;
+    ctx2.fillText(label.length > 7 ? label.slice(0, 7) : label, x, y);
+  }
+}
 
 /* --- you are the sensor --------------------------------------------------
  *

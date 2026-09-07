@@ -156,7 +156,7 @@ python -m harness.send_fleet                  # 4 vehicles, 3 attacked
 | False alarms, 9 honest flights and drives incl. hard manoeuvres | **zero** |
 | Walk-off 2 / 3 / 5 m/s | caught 15-18 s after onset |
 | Drone floor: 2 m/s | caught in 18 s; below that, **not detected** |
-| Truck floor: 1 m/s | caught in 159 s — half the drone's floor |
+| Truck floor: 2 m/s | caught in 37 s |
 | Magnet on compass, 25 deg+ | caught 2 s after onset |
 | Names the guilty sensor | 8 of 8 |
 | Attack / fault / interference | 7 of 8 |
@@ -166,14 +166,17 @@ python -m harness.send_fleet                  # 4 vehicles, 3 attacked
 | Truck: walk-off 3.5 m/s | alerts at 47 s; names gnss/attack at 64-70 s |
 | Incident replays to identical verdict | yes |
 
-**The two floors differ for a reason worth saying out loud.** Watch both for
-the same 220 s and the truck still catches an attack half as slow as the drone
-can. Waiting longer helps a truck and never helps a drone: a road stays where
-it is, so the road check's tolerance is a fixed wall the attack eventually
-crosses, while the drone's only witness is inertial and its uncertainty grows
-alongside the attack. **The drone floor is physics; the truck floor is
-patience.** Both windows are equal in `harness/results.py` precisely so nobody
-can say the truck was handed more time.
+**The truck floor moved from 1 m/s to 2 when the map became real, and the
+reason is worth saying out loud rather than hiding.** On the drawn network
+there were three roads, so a spoofed position left the carriageway quickly and
+the road check caught a 1 m/s crawl given long enough. The real corridor has a
+hundred roads, and a slowly drifting position keeps landing on one of them —
+so the same check catches at 2 m/s instead, though it now catches *much*
+faster when it does: 37 s against 159 s.
+
+**A dense road network helps the attacker and a sparse one helps us.** That is
+a real property of the method, it only became visible on real geometry, and it
+is exactly the kind of thing a buyer's engineer will ask about. Say it first.
 
 ### Owners
 

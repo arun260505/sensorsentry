@@ -288,6 +288,21 @@ def _within_domain(
     # `cannot_isolate` for those few seconds instead, which is the truth.
     instant_passing = [p for p in domain_passing if p.window_s <= 0.0]
 
+    # A fixed reference can convict, but it cannot acquit.
+    #
+    # The road network proves a position wrong when they disagree, because the
+    # road does not move. It proves nothing when they agree: being on *a* road
+    # is not evidence of being on the *right* road, and a spoofer with a map
+    # can keep the fake position on a carriageway all day. In this corridor
+    # there are a hundred roads, so a replayed position 250 m away landed on
+    # one — the road check passed, GPS collected the alibi, and the blame went
+    # to the accelerometer.
+    #
+    # The asymmetry is the point, and it is not a special case for the road:
+    # any party that cannot itself be wrong can only ever rule out.
+    instant_passing = [p for p in instant_passing
+                       if not ({p.a, p.b} & profiles.INFALLIBLE)]
+
     cleared: dict[str, str] = {}
     for sensor in suspects:
         if sensor in convicted:

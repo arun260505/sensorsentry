@@ -262,6 +262,14 @@ class CrossValidator:
 
     # --- main entry ---------------------------------------------------------
 
+    @property
+    def gyro_heading_deg(self) -> Optional[float]:
+        """The gyro's own idea of heading, for the console to draw.
+
+        Read-only and only for display — nothing decides on it through this
+        property. The comparison that matters is already a scored pair."""
+        return self._gyro_heading_deg if self._gyro_seeded else None
+
     def update(self, frame: Frame, witness: Witness, origin: Optional[Origin]) -> list[PairScore]:
         """Score every applicable pair. Returns one PairScore per pair, always
         the same list in the same order, valid or not — stage 5 needs to know

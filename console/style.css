@@ -726,3 +726,73 @@ button.target.mine.on::after { content: " ●"; font-size: .6em; vertical-align:
 
 /* a target this vehicle does not carry: visibly absent, not merely off */
 button.target.absent { text-decoration: line-through; opacity: .35; }
+
+/* ---------------------------------------------------------------------------
+   "Why we say that" — the working, not the answer
+
+   A verdict is an assertion. This is the evidence behind it: every check with
+   its real number, split into the ones that back each other up and the one
+   that stands alone. It is the difference between "trust me" and "look".
+--------------------------------------------------------------------------- */
+.panel.proof h2 { margin-bottom: 8px; }
+.prooflede {
+  margin: 0 0 10px; font-size: .84rem; line-height: 1.5; color: var(--ink);
+}
+.prooflede b { color: var(--alert); }
+.prooflede .agreeing { color: var(--ok); }
+
+.web {
+  width: 100%; height: auto; display: block; margin: 0 0 12px;
+  background: var(--panel-2); border-radius: 6px;
+}
+
+.proofgroup { margin-bottom: 12px; }
+.proofgroup:last-child { margin-bottom: 0; }
+.proofgroup h3 {
+  display: flex; align-items: center; gap: 6px; margin: 0 0 6px;
+  font-size: .68rem; font-weight: 700; letter-spacing: .07em;
+  text-transform: uppercase; color: var(--ink-3);
+}
+.proofgroup .tick { font-size: .95rem; line-height: 1; }
+.proofgroup.bad  h3 .tick { color: var(--alert); }
+.proofgroup.good h3 .tick { color: var(--ok); }
+.proofgroup ul { list-style: none; margin: 0; padding: 0; }
+.proofgroup li {
+  display: grid; grid-template-columns: minmax(0,1fr) auto auto;
+  gap: 8px; align-items: baseline;
+  padding: 6px 9px; margin-bottom: 3px; border-radius: 4px;
+  font-size: .74rem; background: var(--panel-2);
+}
+.proofgroup.bad  li { background: #fbeceb; }
+.proofgroup.good li { background: #eef5f0; }
+.proofgroup li .what { color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; }
+.proofgroup li .num  { font-family: var(--mono); font-weight: 600; color: var(--ink); }
+.proofgroup li .rel  { font-family: var(--mono); font-size: .68rem; color: var(--ink-3); }
+.proofgroup.bad  li .num, .proofgroup.bad  li .rel { color: var(--alert); }
+.proofgroup.good li .rel { color: var(--ok); }
+
+/* ---------------------------------------------------------------------------
+   The readings — two measurements of one physical thing
+
+   Only the GPS used to have anything to look at. Taking over the compass
+   changed a number nobody could see, so three of the four sensors appeared to
+   do nothing at all. These are the pictures that make the manipulation
+   visible, and they double as the proof: honest sensors draw one line,
+   because the two traces sit on top of each other.
+--------------------------------------------------------------------------- */
+.tracecard { margin-bottom: 10px; }
+.tracecard:last-of-type { margin-bottom: 4px; }
+.tracehead {
+  display: flex; justify-content: space-between; align-items: baseline;
+  gap: 8px; margin-bottom: 2px;
+  font-size: .72rem; color: var(--ink-2);
+}
+.tracenows { display: flex; gap: 9px; }
+.tracenow { font-family: var(--mono); font-size: .68rem; font-weight: 600; }
+.tracecanvas {
+  width: 100%; height: 58px; display: block;
+  background: var(--panel-2); border-radius: 4px;
+}
+.tracenote {
+  margin: 6px 0 0; font-size: .68rem; line-height: 1.45; color: var(--ink-3);
+}

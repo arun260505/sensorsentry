@@ -386,12 +386,38 @@ class Handler(BaseHTTPRequestHandler):
             lat, lon, _alt = llh_from_enu(ENU(east, north, 0.0), origin)
             return [lat, lon]
 
+        # Real surveyed geometry when it has been baked, and it usually has.
+        # Eight hundred roads with their real names and classes is a map; the
+        # handful of straight lines below is a diagram, and a diagram is what
+        # made this look like a drawing of a demo rather than a demo.
+        baked = Path(__file__).resolve().parent.parent / "simulator" / "chennai_map.json"
+        if baked.is_file():
+            try:
+                data = json.loads(baked.read_text(encoding="utf-8"))
+                roads = [
+                    {"name": r["name"], "cls": r["cls"], "rank": r["rank"],
+                     "points": [to_llh(e, n) for e, n in r["points"]]}
+                    for r in data.get("roads", [])
+                ]
+                route = data.get("route", {})
+                return {
+                    "roads": roads,
+                    "places": self._places(to_llh),
+                    "route": [to_llh(e, n) for e, n in
+                              route.get("approach", []) + route.get("leg", [])],
+                }
+            except Exception:
+                pass  # fall through to the drawn network
+
         roads = [
             {"name": name, "points": [to_llh(e, n) for e, n in points],
-             "major": name.upper().startswith(("NH", "SH"))}
+             "rank": 4 if name.upper().startswith(("NH", "SH")) else 1}
             for name, points in ROADS
         ]
 
+        return {"roads": roads, "places": self._places(to_llh)}
+
+    def _places(self, to_llh) -> list[dict[str, Any]]:
         # Landmarks come from the network itself, so the map cannot name
         # places the trucks are not driving through.
         places = []
@@ -401,7 +427,7 @@ class Handler(BaseHTTPRequestHandler):
                       for name, at, kind in PLACES]
         except Exception:
             pass
-        return {"roads": roads, "places": places}
+        return places
 
     def _report(self) -> dict[str, Any]:
         """Write up the focused vehicle's incident from its stored record.
