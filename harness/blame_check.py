@@ -11,7 +11,7 @@ DT = 1/20
 
 def verdict(sc, seed, spoof=0.0, magnet=0.0, stuck_baro=False,
             onset=40.0, secs=140.0, bearing=135.0):
-    rng = np.random.default_rng(seed); wps, vt = get_scenario(sc)
+    rng = np.random.default_rng(seed); wps, vt = get_scenario(sc)[:2]
     v = Vehicle(wps, rng); s = SensorSuite(rng, vehicle_type=vt); p = Pipeline()
     p.accept({'type':'run_start','run_id':'r','vehicle_id':'V','vehicle_type':vt,
               'seed':seed,'rate_hz':20,'gnss_rate_hz':5,'t0':0.0})

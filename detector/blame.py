@@ -139,7 +139,59 @@ def assign(
     isolated = [b for b in attempts if b.isolated]
     if isolated:
         return max(isolated, key=lambda b: b.confidence)
+
+    across = _across_domains(failing)
+    if across is not None:
+        return across
     return attempts[0]
+
+
+def _across_domains(failing: list[PairScore]) -> Optional[Blame]:
+    """Last resort: which sensor is failing in more *kinds* of way than anyone?
+
+    Some faults break one check in each of several domains, and no single
+    domain then has enough evidence to accuse anybody — every one of them
+    reports a two-way tie. A drifting IMU does exactly this: it breaks the
+    heading check against the compass and the position check against GNSS,
+    and each domain on its own can only shrug.
+
+    Stand back and the answer is obvious. The compass appears in the heading
+    failure only, GNSS in the horizontal failure only, and the IMU in both.
+    A sensor at the centre of several different kinds of damage is the one
+    causing it — an innocent sensor is only ever dragged in by the checks it
+    happens to share with the culprit.
+
+    Deliberately the last thing tried, and only when at least two domains are
+    failing. Within a single domain the corroboration rule is stronger, and
+    this counting argument would happily overrule it.
+    """
+    domains_by_sensor: dict[str, set[str]] = defaultdict(set)
+    for pair in failing:
+        domains_by_sensor[pair.a].add(pair.domain)
+        domains_by_sensor[pair.b].add(pair.domain)
+
+    if len({p.domain for p in failing}) < 2:
+        return None
+
+    ranked = sorted(domains_by_sensor.items(), key=lambda kv: len(kv[1]), reverse=True)
+    if len(ranked) < 2 or len(ranked[0][1]) <= len(ranked[1][1]):
+        return None
+
+    name, domains = ranked[0]
+    blame = Blame(
+        guilty=name,
+        domain="multiple",
+        confidence=min(1.0, (len(domains) - len(ranked[1][1])) / len(domains)),
+        suspects=sorted(domains_by_sensor),
+    )
+    kinds = ", ".join(sorted(domains))
+    blame.evidence.append(
+        f"{name} is the only sensor failing in more than one way at once ({kinds})"
+    )
+    for pair in sorted(failing, key=lambda p: p.ratio, reverse=True):
+        if name in (pair.a, pair.b) and pair.valid:
+            blame.evidence.append(pair.as_evidence())
+    return blame
 
 
 def _within_domain(

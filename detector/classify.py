@@ -173,9 +173,13 @@ class Classifier:
         # compass offset sits still — and the two cancel into noise. A magnet
         # that holds +40 degrees for two minutes scored 0.1 coherence pooled,
         # and 0.99 on its own check.
+        # "multiple" and "self-check" are not real domains — they mean blame
+        # reached its answer by standing back from any single one, so every
+        # check the sensor takes part in is relevant.
         involved = [
             p for p in pairs
-            if guilty in (p.a, p.b) and p.domain == blame.domain
+            if guilty in (p.a, p.b)
+            and (blame.domain in ("multiple", "self-check") or p.domain == blame.domain)
             and len(self._history.get(p.key, ())) >= MIN_SAMPLES
         ]
         if not involved:

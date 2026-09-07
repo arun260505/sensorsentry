@@ -504,6 +504,34 @@ def a_failed_self_check_strengthens_the_case() -> None:
     assert any("health check" in e for e in verdict.evidence), verdict.evidence
 
 
+@test
+def blame_spots_the_sensor_failing_in_two_different_ways() -> None:
+    """A drifting IMU breaks the heading check against the compass and the
+    position check against GNSS. Neither domain can accuse anyone on its own —
+    both see a two-way tie — but only the IMU is in both."""
+    pairs = [
+        _pair("mag", "imu", "heading_offset", "heading", 20.0),
+        _pair("gnss", "imu", "position", "horizontal", 26.0),
+    ]
+    states = {p.key: "ALERT" for p in pairs}
+    verdict = blame_mod.assign(pairs, states)
+    assert verdict.guilty == "imu", verdict.guilty
+    assert verdict.domain == "multiple"
+
+
+@test
+def one_domain_alone_is_not_enough_to_count_across_domains() -> None:
+    """The counting argument only applies when several kinds of check fail.
+    Inside one domain the corroboration rule is stronger and must win."""
+    pairs = [
+        _pair("gnss", "mag", "course_mag", "heading", 6.0),
+        _pair("mag", "imu", "heading_offset", "heading", 1.0),
+    ]
+    states = {pairs[0].key: "ALERT", pairs[1].key: "OK"}
+    verdict = blame_mod.assign(pairs, states)
+    assert verdict.guilty == "gnss", verdict.guilty
+
+
 # --- classify -------------------------------------------------------------
 
 def _classified(guilty, series, domain="heading", health=None, kind="heading_offset"):

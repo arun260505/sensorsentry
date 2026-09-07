@@ -37,7 +37,7 @@ def run(scenario: str, seed: int, *, spoof_mps: float = 0.0, magnet_deg: float =
     flies its real route throughout, exactly as a real spoofer would leave it.
     """
     rng = np.random.default_rng(seed)
-    waypoints, vehicle_type = get_scenario(scenario)
+    waypoints, vehicle_type = get_scenario(scenario)[:2]
     vehicle = Vehicle(waypoints, rng)
     sensors = SensorSuite(rng, vehicle_type=vehicle_type)
     pipeline = Pipeline()
