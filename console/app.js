@@ -417,6 +417,10 @@ function renderPanels(snapshot) {
     return;
   }
 
+  const count = Object.keys(fleet).length;
+  el("mode").textContent = count > 1 ? `FLEET · ${count} VEHICLES` : "SINGLE VEHICLE";
+  el("mode").dataset.mode = count > 1 ? "fleet" : "single";
+
   el("vehicle").textContent = `${s.vehicle_id} (${s.vehicle_type})`;
   el("runid").textContent = s.run_id;
   el("clock").textContent = `t ${s.t.toFixed(1)} s`;

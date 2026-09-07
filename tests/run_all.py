@@ -16,6 +16,7 @@ from detector.geo import ENU, Origin, enu_from_llh, heading_from_yaw, llh_from_e
 from detector.ingest import FrameStream, SchemaViolation, validate_frame
 from detector import blame as blame_mod
 from detector import classify as classify_mod
+from detector import evidence as evidence_mod
 from detector import fusion as fusion_mod
 from detector.crossvalidate import CrossValidator, PairScore
 from detector.residual import ResidualTracker
@@ -716,6 +717,78 @@ def positions_leave_the_detector_as_lat_lon_too() -> None:
     # And they must be real coordinates, not zeros left by a missing origin.
     assert abs(payload["gnss"]["lat"]) > 1.0
     assert abs(payload["gnss"]["lon"]) > 1.0
+
+
+# --- evidence -------------------------------------------------------------
+
+def _record_a_run(directory, spoof_mps=3.0, duration_s=90.0):
+    """Fly a spoofed run and write it down exactly as the server would."""
+    from detector.pipeline import Pipeline
+    recorder = evidence_mod.Recorder(directory)
+    pipeline = Pipeline()
+    spoof = fixtures.Spoof(start_t=25.0, speed_mps=spoof_mps, bearing_deg=135.0)
+    for raw in fixtures.frames(duration_s=duration_s, spoof=spoof, seed=31):
+        if raw.get("type") == "run_start":
+            recorder.note_run(raw)
+        else:
+            recorder.note_frame(raw)
+        state = pipeline.accept(raw)
+        if state is not None:
+            recorder.note_state(state.to_json())
+    recorder.close()
+    return recorder.path
+
+
+@test
+def a_run_is_written_down_frame_by_frame() -> None:
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmp:
+        path = _record_a_run(tmp)
+        header, frames, incidents = evidence_mod.read(path)
+        assert header["seed"] == 31, header
+        assert len(frames) > 1000, len(frames)
+        assert incidents, "no verdict was ever recorded"
+
+
+@test
+def the_record_holds_no_truth_and_no_attack_state() -> None:
+    """It is the frames as they arrived, so replaying it proves the verdict
+    came out of sensor data and nothing else — the same argument the demo
+    makes live. A record containing the answer would prove nothing."""
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmp:
+        path = _record_a_run(tmp)
+        _header, frames, _incidents = evidence_mod.read(path)
+        for frame in frames:
+            validate_frame(frame)      # raises on truth or attack fields
+
+
+@test
+def an_incident_replays_to_the_same_verdict() -> None:
+    """An investigator must be able to reach our conclusion themselves rather
+    than take our word for it. This is also how we catch ourselves: a change
+    that would have called an old incident differently shows up here."""
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmp:
+        path = _record_a_run(tmp)
+        _header, _frames, recorded = evidence_mod.read(path)
+        replayed = evidence_mod.replay(path)
+        assert evidence_mod.verdicts_match(recorded, replayed), (
+            [(i.state, i.guilty, i.cause) for i in recorded],
+            [(i.state, i.guilty, i.cause) for i in replayed],
+        )
+
+
+@test
+def a_verdict_is_written_only_when_it_changes() -> None:
+    """A line every frame would bury the few moments that matter under
+    thousands that repeat them."""
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmp:
+        path = _record_a_run(tmp)
+        _header, frames, incidents = evidence_mod.read(path)
+        assert len(incidents) < 20, len(incidents)
+        assert len(incidents) < len(frames) / 50
 
 
 # --- fleet ----------------------------------------------------------------

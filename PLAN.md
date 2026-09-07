@@ -12,7 +12,7 @@ measured rather than claimed (`python -m harness.sweep`).
 |---|---|
 | **Done** | 1-8 plus **9 fleet logic** — detect, blame, classify, keep flying, locate the attacker |
 | **In progress** | 4 attack injectors (Abishek, task 2) |
-| **Next** | fleet map on the console · truck (Abishek) · evidence |
+| **Next** | phone view · report toggle · truck (Abishek) · **rehearsal** |
 | **Not started** | 8 truck · 9 fleet · 10 evidence · 12 rehearsal |
 | **Tests** | 22 passing |
 
@@ -219,9 +219,9 @@ circle** · one vehicle alone produces **no circle**.
 
 ## Phase 10 — Evidence, phone, report · ~6h · B + D
 
-- [ ] `evidence.py` — append-only incident record
-- [ ] Record includes the RNG seed, so replay is exact
-- [ ] Replay mode: feed a stored record back through the detector
+- [x] `evidence.py` — append-only, frames verbatim plus every verdict change
+- [x] Record includes the RNG seed, so the run can be re-created
+- [x] Replay: stored record back through a fresh detector, identical verdict
 - [ ] Responsive layout — same page works as the phone app
 - [ ] Push alert to the phone view
 - [ ] Optional written report behind a **visible on/off switch**
@@ -272,7 +272,7 @@ playbook without asking a question.
 - [~] Magnet caught — but not yet *classified* as interference (phase 6)
 - [ ] Truck profile runs with configuration only
 - [x] Attacked vehicles → one event, one zone
-- [ ] Incident replays to an identical verdict
+- [x] Incident replays to an identical verdict
 - [x] Strength ladder filled with measured numbers, including the failure point
 - [ ] Report switch turns off with no effect on detection
 - [ ] Demo run end to end, out loud, five times

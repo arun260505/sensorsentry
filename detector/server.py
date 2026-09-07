@@ -29,6 +29,7 @@ from typing import Any, Optional
 from fleet.advisory import VehicleState, advise
 from fleet.cluster import Incident, find_zones
 
+from .evidence import Recorder
 from .ingest import DEFAULT_PORT, SchemaViolation, UdpReceiver
 from .pipeline import Pipeline
 
@@ -213,6 +214,7 @@ def detector_loop(shared: Shared, port: int, vehicle_type: Optional[str]) -> Non
     """
     receiver = UdpReceiver(port=port)
     pipelines: dict[str, Pipeline] = {}
+    recorders: dict[str, Recorder] = {}
 
     while True:
         try:
@@ -222,6 +224,12 @@ def detector_loop(shared: Shared, port: int, vehicle_type: Optional[str]) -> Non
                     continue
                 if vid not in pipelines:
                     pipelines[vid] = Pipeline(vehicle_type)
+                    recorders[vid] = Recorder()
+                recorder = recorders[vid]
+                if message.get("type") == "run_start":
+                    recorder.note_run(message)
+                else:
+                    recorder.note_frame(message)
                 try:
                     state = pipelines[vid].accept(message)
                 except SchemaViolation as exc:
@@ -232,7 +240,9 @@ def detector_loop(shared: Shared, port: int, vehicle_type: Optional[str]) -> Non
                     pipelines.pop(vid, None)
                     continue
                 if state is not None:
-                    shared.update(state.to_json(), message)
+                    payload = state.to_json()
+                    recorder.note_state(payload)
+                    shared.update(payload, message)
         except OSError:
             time.sleep(0.5)
 
