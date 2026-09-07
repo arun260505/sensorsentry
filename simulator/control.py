@@ -435,3 +435,30 @@ def serve(host: str = "0.0.0.0", port: int = PORT,
     finally:
         state.stop(timeout=1.0)
         server.server_close()
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Entry point, so the console can actually reach this.
+
+        python -m simulator.control
+
+    `serve()` existed but nothing could start it, which left the console's
+    buttons wired to a port with nobody listening.
+    """
+    import argparse
+
+    parser = argparse.ArgumentParser(description="SensorSentry simulator control")
+    parser.add_argument("--host", default="127.0.0.1")
+    parser.add_argument("--port", type=int, default=PORT)
+    parser.add_argument("--truth-log", default=None, metavar="FILE",
+                        help="write truth to FILE (simulator side only)")
+    parser.add_argument("--quiet", action="store_true")
+    args = parser.parse_args(argv)
+
+    serve(host=args.host, port=args.port,
+          truth_log_path=args.truth_log, quiet=args.quiet)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

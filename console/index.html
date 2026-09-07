@@ -47,6 +47,17 @@
       </div>
     </div>
 
+    <div class="panel verdict" id="verdictpanel" hidden>
+      <h2>Verdict</h2>
+      <div class="guilty">
+        <span id="guilty">—</span>
+        <span class="cause" id="cause">—</span>
+      </div>
+      <p class="reason" id="reason"></p>
+      <p class="action" id="action"></p>
+      <ul class="evidence" id="evidence"></ul>
+    </div>
+
     <div class="panel">
       <h2>Sensors</h2>
       <div id="sensors" class="sensors"><p class="empty">no run</p></div>
@@ -73,10 +84,11 @@
 </section>
 
 <footer class="controls">
-  <button id="start" class="primary">Start run</button>
-  <button id="reset">Reset</button>
+  <span class="ctrl-label">Scenario</span>
+  <div id="scenarios" class="scenarios"><span class="hint">loading…</span></div>
   <span class="spacer"></span>
-  <span id="hint" class="hint">Send frames with: <code>python -m harness.send_fixture --spoof 2.0</code></span>
+  <button id="reset">Stop</button>
+  <span id="hint" class="hint"></span>
 </footer>
 
 <script src="app.js"></script>

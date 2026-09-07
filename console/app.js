@@ -12,14 +12,17 @@ const el = (id) => document.getElementById(id);
 const canvas = el("map");
 const ctx = canvas.getContext("2d");
 
+/* Canvas cannot read CSS variables, so these mirror style.css. Change one,
+   change the other, or the map stops matching its own legend. */
 const COLOR = {
-  grid: "#182833",
-  gridMajor: "#22343f",
-  claimed: "#e0a34f",
-  witness: "#4faecc",
-  link: "#e0685c",
-  text: "#6c7f8c",
+  grid: "#e6ecf1",
+  gridMajor: "#cfd9e0",
+  claimed: "#a35d07",
+  witness: "#0b5c7a",
+  link: "#b3352a",
+  text: "#788894",
 };
+const CANVAS_BG = "#ffffff";
 
 let latest = null;
 let trails = { gnss: [], witness: [] };
@@ -175,7 +178,7 @@ function head(e, n, color, label, view, w, h) {
   ctx.beginPath();
   ctx.arc(x, y, 6, 0, Math.PI * 2);
   ctx.fill();
-  ctx.strokeStyle = "#0a1219";
+  ctx.strokeStyle = CANVAS_BG;
   ctx.lineWidth = 2;
   ctx.stroke();
 
@@ -252,6 +255,31 @@ function renderPanels(snapshot) {
     box.appendChild(row);
   }
 
+  // --- verdict: which sensor is lying, and why -------------------------
+  const blame = s.blame || {};
+  const cause = s.cause || {};
+  const named = blame.guilty && blame.guilty !== "cannot_isolate";
+  const showing = Boolean(blame.guilty);
+
+  el("verdictpanel").hidden = !showing;
+  if (showing) {
+    el("guilty").textContent = named
+      ? (SENSOR_LABEL[blame.guilty] || blame.guilty)
+      : "Cannot isolate";
+    el("cause").textContent = cause.label || "—";
+    el("cause").dataset.cause = cause.label || "";
+    el("reason").textContent = cause.reason || "";
+    el("action").textContent = cause.action || "";
+
+    const list = el("evidence");
+    list.innerHTML = "";
+    for (const line of (blame.evidence || [])) {
+      const li = document.createElement("li");
+      li.textContent = line;
+      list.appendChild(li);
+    }
+  }
+
   if (snapshot.raw) {
     el("feed").textContent = JSON.stringify(snapshot.raw, null, 1);
   }
@@ -292,24 +320,84 @@ async function post(path, body) {
     if (!response.ok) {
       hint.className = "hint bad";
       hint.textContent = data.hint || data.error || `failed (${response.status})`;
-    } else {
-      hint.className = "hint";
-      hint.textContent = "ok";
+      return false;
     }
+    return true;
   } catch (err) {
     hint.className = "hint bad";
     hint.textContent = String(err);
+    return false;
   }
 }
 
-el("start").addEventListener("click", () => post("/control/start", { scenario: "drone_clean" }));
-el("reset").addEventListener("click", async () => {
-  await post("/control/clear");
+/* --- scenario buttons ---------------------------------------------------
+ * Built from whatever the simulator says it has, rather than hardcoded here.
+ * A judge picking the scenario off a live list is part of the argument that
+ * nothing is staged: the list comes from the other process.
+ */
+
+const NOTES = {
+  drone_clean:     "no attack",
+  drone_manoeuvre: "hard flying, no attack",
+  drone_walkoff:   "GPS spoofing",
+  drone_magnet:    "magnet on compass",
+  drone_fault:     "sensor failure",
+  truck_theft:     "cargo theft",
+};
+
+let running = null;
+
+async function loadScenarios() {
+  const box = el("scenarios");
+  try {
+    const res = await fetch("/control/scenarios");
+    const data = await res.json();
+    box.innerHTML = "";
+    for (const name of data.scenarios || []) {
+      const b = document.createElement("button");
+      b.textContent = name.replace(/^drone_|^truck_/, "").replace(/_/g, " ");
+      b.dataset.note = NOTES[name] || "";
+      b.addEventListener("click", () => startScenario(name, b));
+      box.appendChild(b);
+    }
+    if (!box.children.length) box.innerHTML = '<span class="hint">none offered</span>';
+  } catch (err) {
+    box.innerHTML = '<span class="hint bad">simulator control not running — ' +
+      'start it with: python -m simulator.control</span>';
+  }
+}
+
+async function startScenario(name, button) {
+  // Stop whatever is running first, so switching mid-flight cannot leave two
+  // vehicles talking over each other on the same port.
   await post("/control/reset");
+  await post("/control/clear");
   latest = null;
   trails = { gnss: [], witness: [] };
   draw();
+
+  const ok = await post("/control/start", { scenario: name });
+  running = ok ? name : null;
+  for (const b of el("scenarios").children) {
+    if (b.classList) b.classList.toggle("running", b === button && ok);
+  }
+  el("hint").className = "hint";
+  el("hint").textContent = ok ? `running ${name}` : "";
+}
+
+el("reset").addEventListener("click", async () => {
+  await post("/control/reset");
+  await post("/control/clear");
+  running = null;
+  for (const b of el("scenarios").children) {
+    if (b.classList) b.classList.remove("running");
+  }
+  latest = null;
+  trails = { gnss: [], witness: [] };
+  draw();
+  el("hint").textContent = "stopped";
 });
 
 resize();
 connect();
+loadScenarios();

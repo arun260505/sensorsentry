@@ -115,7 +115,8 @@ def detector_loop(shared: Shared, port: int, vehicle_type: Optional[str]) -> Non
             time.sleep(0.5)
 
 
-def forward_to_simulator(path: str, body: bytes) -> tuple[int, bytes]:
+def forward_to_simulator(path: str, body: bytes | None = None,
+                         method: str = "POST") -> tuple[int, bytes]:
     """Pass a control request through to the simulator.
 
     The console talks only to us, so the simulator does not need to be
@@ -124,9 +125,9 @@ def forward_to_simulator(path: str, body: bytes) -> tuple[int, bytes]:
     """
     request = urllib.request.Request(
         f"{SIMULATOR_CONTROL}{path}",
-        data=body or b"{}",
+        data=(body or b"{}") if method == "POST" else None,
         headers={"Content-Type": "application/json"},
-        method="POST",
+        method=method,
     )
     try:
         with urllib.request.urlopen(request, timeout=2.0) as response:
@@ -157,6 +158,19 @@ class Handler(BaseHTTPRequestHandler):
             self._static("index.html")
         elif path == "/snapshot":
             self._json(self.shared.snapshot())
+        elif path.startswith("/control/"):
+            # The console asks the simulator what scenarios it has rather than
+            # carrying its own list. A judge picking from a list that came out
+            # of the other process is part of the argument that nothing here
+            # is staged.
+            status, payload = forward_to_simulator(
+                path[len("/control"):], method="GET"
+            )
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
         else:
             self._static(path.lstrip("/"))
 
