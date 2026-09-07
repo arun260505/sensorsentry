@@ -101,7 +101,36 @@ expect and which pairs to score. It does **not** tell it anything about attacks.
 
 ## 3. Verdict frame — detector → console
 
-JSON over **WebSocket port 8080**, 20 Hz.
+JSON over **Server-Sent Events**, `GET http://127.0.0.1:8080/stream`, ~10 Hz.
+
+> **Changed 7 Sep 2026, was WebSocket.** The stream is one-way — the detector
+> talks, the browser listens — so a WebSocket bought nothing, while SSE needs
+> only the Python standard library where a WebSocket needs either a dependency
+> or a hundred lines of hand-rolled frame encoding to fail on demo day.
+> Controls stay HTTP POST (section 4). Nobody had built against the WebSocket
+> yet; if you had, say so.
+
+Each event carries the whole console state, not a delta — a browser that
+reconnects mid-run is immediately correct with no replay logic:
+
+```json
+{
+  "version": 4127,
+  "state":   { ... the object below ... },
+  "raw":     { ... the last sensor frame verbatim, for the feed panel ... },
+  "violation": null,
+  "trails":  { "gnss": [[e, n], ...], "witness": [[e, n], ...] }
+}
+```
+
+`trails` are in local metres and are capped at 4000 points each. `violation`
+is a string when a frame arrived carrying truth or attack state, and the
+console shows it as a banner rather than hiding it.
+
+The `state` object today reflects stages 1-3 and the residual. `trust`,
+`pairs` and a real `verdict` arrive with phases 5-7; until then `state` is a
+provisional threshold on the residual ratio and is labelled as such in the
+code. The shape below is the target once those phases land.
 
 ```json
 {

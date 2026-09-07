@@ -4,7 +4,7 @@ Working checklist. Tick tasks as they land. The reasoning behind each phase is
 in [docs/sensorsentry-implementation-plan.html](docs/sensorsentry-implementation-plan.html);
 this file is the version you keep open while building.
 
-**Status:** Phase 0 done · Phase 1 with Abishek · Phase 2 done (22 tests passing) · **Phase 3 is the next gate**
+**Status:** Phases 0, 2, 3 done (22 tests passing, console live) · Phase 1 with Abishek · **Phase 4 next**
 **Owners:** A = simulator · B = detector core · C = unique logic · D = console
 *(fewer people? see [Team](#team) at the bottom)*
 
@@ -71,12 +71,12 @@ confirms **GNSS is never read in the dead-reckoning path**.
 
 ## Phase 3 — Console v1 · ~6h · D ⛔ GATE
 
-- [ ] `detector/server.py` — WebSocket out on :8080
-- [ ] `console/ws.js` — browser client
-- [ ] `console/map.js` — canvas map: grid, route (**no online tiles**)
-- [ ] Draw GNSS-claimed path and dead-reckoned path
-- [ ] Raw-feed panel showing incoming frames
-- [ ] Start and Reset controls wired to the simulator
+- [x] `detector/server.py` — SSE out on :8080 *(was WebSocket, see docs/schema.md)*
+- [x] `console/app.js` — browser client *(one file, not ws/map/panels split)*
+- [x] canvas map: grid, scale bar, auto-fit (**no online tiles**)
+- [x] Draw GNSS-claimed path and dead-reckoned path, plus the gap between them
+- [x] Raw-feed panel showing incoming frames
+- [ ] Start and Reset controls wired to the simulator *(buttons live; simulator :5010 not up yet)*
 
 **⛔ Do not pass until:** you can show this to someone and they understand it
 without explanation.

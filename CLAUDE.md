@@ -126,25 +126,37 @@ short.**
 
 ## Status
 
-**Current phase:** 1 (simulator) · phases 0 and 2 done
+**Current phase:** 1 (simulator) · phases 0, 2, 3 done — **the project is demoable**
 **Last updated:** 7 September 2026
 
 | Owner | Area | Current task |
 |---|---|---|
 | Abishek | Simulator | Task 1 — clean flight ([handover](docs/handover/01-abishek-simulator.md)) |
 | — | Detector core | **stages 1–3 + residual done**, 22 tests passing |
+| — | Console | **live** — canvas map, two paths, raw feed |
 | — | Unique logic (blame, classify) | not started — phases 5, 6 |
-| — | Console | not started — phase 3, the next gate |
 
 Full checklist: **[PLAN.md](PLAN.md)**
 
-Run what exists:
+Run it:
 
 ```bash
-python -m tests.run_all                                  # 22 tests
-python -m detector.run                                   # terminal 1
-python -m harness.send_fixture --spoof 2.0 --spoof-at 20 # terminal 2
+python -m detector.server                                 # terminal 1
+python -m harness.send_fixture --spoof 2.5 --spoof-at 15  # terminal 2
+# open http://127.0.0.1:8080
+
+python -m tests.run_all                                   # 22 tests
+python -m detector.run                                    # terminal-only version
 ```
+
+Two things about the console that are deliberate and easy to undo by accident:
+
+- **It draws its own map on a canvas — no tile server, no map library.** The
+  demo runs with wifi off in front of judges; a map that silently fails to
+  load would take the whole thing with it.
+- **The raw-feed panel stays visible.** It is the anti-hardcoding proof: point
+  at it and say *"that is everything the detector receives — show me the field
+  that tells it an attack is happening."*
 
 ### Engineering findings — these cost real time, don't rediscover them
 

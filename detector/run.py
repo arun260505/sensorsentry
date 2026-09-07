@@ -1,11 +1,10 @@
-"""Detector entry point.
+"""Detector entry point, terminal output.
 
     python -m detector.run                 # listen on UDP 5005
-    python -m detector.run --port 5005 --verbose
+    python -m detector.run --verbose       # every frame, not once a second
 
-Wires stages 1-3 plus the GNSS-versus-witness residual, and prints a status
-line once a second. Stages 4-10 land in later phases; this is what PLAN.md
-phase 2 needs to be finished.
+For the visual version use `python -m detector.server` instead. Both drive the
+same Pipeline, so what the console draws is what this prints.
 
 Run it in its own terminal, with the simulator in another. That separation is
 the point: this process receives sensor readings and nothing else, so it
@@ -17,10 +16,9 @@ from __future__ import annotations
 import argparse
 import sys
 
-from . import health, profiles
-from .deadreckon import DeadReckoner
-from .ingest import DEFAULT_PORT, FrameStream, SchemaViolation, UdpReceiver
-from .residual import ResidualTracker
+from . import health
+from .ingest import DEFAULT_PORT, SchemaViolation, UdpReceiver
+from .pipeline import Pipeline
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -33,73 +31,50 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     receiver = UdpReceiver(port=args.port)
-    stream = FrameStream()
-
-    profile = profiles.get(args.vehicle_type) if args.vehicle_type else None
-    monitor: health.HealthMonitor | None = None
-    reckoner: DeadReckoner | None = None
-    tracker: ResidualTracker | None = None
+    pipeline = Pipeline(args.vehicle_type)
 
     print(f"detector listening on UDP {args.port} — waiting for a run", flush=True)
+    announced: str | None = None
     last_report_t = 0.0
 
     try:
         for message in receiver.messages():
             try:
-                frame = stream.accept(message)
+                state = pipeline.accept(message)
             except SchemaViolation as exc:
                 # Loud and fatal on purpose. A malformed frame is a bug to fix
                 # now; a forbidden field invalidates the entire demo.
                 print(f"\nSCHEMA VIOLATION: {exc}\n", file=sys.stderr, flush=True)
                 return 2
 
-            if frame is None:
-                header = stream.header
-                if header is not None:
-                    profile = profiles.get(args.vehicle_type or header.vehicle_type)
-                    monitor = health.HealthMonitor(profile)
-                    reckoner = DeadReckoner(profile)
-                    tracker = ResidualTracker(profile.accel_bias_sigma)
-                    last_report_t = 0.0
-                    print(
-                        f"\nrun {header.run_id} — {header.vehicle_id} "
-                        f"({profile.name}, seed {header.seed})",
-                        flush=True,
-                    )
+            header = pipeline.stream.header
+            if header is not None and header.run_id != announced:
+                announced = header.run_id
+                last_report_t = 0.0
+                print(f"\nrun {header.run_id} — {header.vehicle_id} "
+                      f"(seed {header.seed})", flush=True)
+
+            if state is None:
                 continue
 
-            if reckoner is None or monitor is None or tracker is None:
-                # Frames before a run_start. The simulator was already going
-                # when we attached; wait for the next run rather than guessing
-                # a profile.
+            if not (args.verbose or state.t - last_report_t >= 1.0):
+                continue
+            last_report_t = state.t
+
+            if not state.anchored or state.residual is None:
+                print(f"  t={state.t:6.1f}  anchoring…", flush=True)
                 continue
 
-            report = monitor.update(frame)
-            witness = reckoner.update(frame)
-            residual = tracker.update(frame, witness)
-
-            due = args.verbose or frame.t - last_report_t >= 1.0
-            if not due:
-                continue
-            last_report_t = frame.t
-
-            if not tracker.anchored:
-                print(f"  t={frame.t:6.1f}  anchoring…", flush=True)
-                continue
-
-            last = residual or tracker.last
-            if last is None:
-                continue
-
-            faults = health.summarise(report)
+            residual = state.residual
+            faults = health.summarise(state.health)
             faults = "" if faults == "all sensors healthy" else f"  [{faults}]"
             print(
-                f"  t={frame.t:6.1f}  "
-                f"residual {last.horizontal_m:7.1f} m  "
-                f"vert {last.vertical_m:+6.1f} m  "
-                f"sigma {last.sigma_m:6.1f}  "
-                f"ratio {last.ratio:5.2f}  "
-                f"dr {witness.distance_travelled_m:7.1f} m"
+                f"  t={state.t:6.1f}  {state.state:<5}  "
+                f"apart {residual.horizontal_m:7.1f} m  "
+                f"vert {residual.vertical_m:+6.1f} m  "
+                f"sigma {residual.sigma_m:6.1f}  "
+                f"ratio {residual.ratio:5.2f}  "
+                f"dr {state.witness.distance_travelled_m:7.1f} m"
                 f"{faults}",
                 flush=True,
             )
@@ -109,11 +84,9 @@ def main(argv: list[str] | None = None) -> int:
     finally:
         receiver.close()
 
-    if stream.frames_seen:
-        print(
-            f"{stream.frames_seen} frames, {stream.frames_dropped} dropped",
-            flush=True,
-        )
+    if pipeline.stream.frames_seen:
+        print(f"{pipeline.stream.frames_seen} frames, "
+              f"{pipeline.stream.frames_dropped} dropped", flush=True)
     return 0
 
 
