@@ -1,252 +1,217 @@
-# Task 2 — Attacks, faults and interference
+# Task 2 — Attacks and faults
 
-**Assigned to:** Abishek
-**Estimated:** ~8 hours
-**Depends on:** your Task 1 (merged, with fixes — read the note at the bottom)
-**Blocks:** our phases 5 and 6, so this one *is* on the critical path
+**For:** Abishek · **Time:** ~8 hours · **Branch:** `sim/attacks`
 
----
-
-## First, what happened to Task 1
-
-Your simulator was reviewed by running it into the detector. Structure, CLI and
-the drift self-check were all good, and you were right to push back on the gyro
-bias figure in my handover — 0.002 rad/s is 412 deg/hr and real commercial IMUs
-are far better than that. Good catch.
-
-One real bug, worth understanding because it shapes this task:
-
-`sensors.py` reported `roll_rate = pitch_rate = 0` while the vehicle banked to
-30 degrees. So the accelerometer said "gravity is tilted 30 degrees" and the
-gyro said "we never rotated." Both cannot be true. A detector integrates the
-gyro, holds its attitude level, and then reads that tilted gravity as forward
-thrust — **2.8 m/s² of acceleration that never happened.** A clean flight with
-no attack at all pushed the detector 2 km off and raised a full alarm.
-
-Your `check_drift.py` could not catch it because it integrates using the
-vehicle's *true* attitude, which no real detector ever has.
-
-**The rule this gives us, and it matters for every injector below:** every
-sensor must describe the *same* physical situation. If one sensor says the
-vehicle did something, the others must agree — unless you are deliberately
-injecting a fault, and then exactly one of them should disagree, in exactly the
-way that fault would cause.
-
-Fixes are on your branch (`6e2f491`). Worth reading the diff.
-
-Also: `truth.jsonl` got committed, under the message "Your commit message". I
-removed it and gitignored it. Generated output stays out of git, and commit
-messages should say what changed.
+Task 1 is merged. I fixed a bug in it — details at the bottom, read that after.
 
 ---
 
 ## What you're building
 
-The attack and fault library, plus the control endpoint that lets the console
-drive it. This is what turns a flight into a demo.
+Four new files in `simulator/`. Do them in this order.
 
 ```
-simulator/
-  attacks.py     GPS spoofing: walk-off, teleport, altitude-only, replay
-  faults.py      broken sensors: stuck, noisy, dropout, slow bias
-  interference.py  magnet near the compass, pressure near the barometer
-  control.py     HTTP :5010 — start, reset, inject, scenarios
-  scenarios.py   add the six demo scenarios
+attacks.py        fake the GPS position
+faults.py         break a sensor
+interference.py   magnet near the compass
+control.py        buttons for the console
 ```
 
 ---
 
-## The one idea that makes all of this correct
+## The one rule
 
-**An attack changes what a sensor *reports*. It does not change where the
-vehicle actually is.**
+**An attack changes what a sensor *reports*. It does not move the vehicle.**
 
-A spoofer transmits a fake radio signal. The drone's motors, its inertia, its
-compass and its barometer carry on exactly as before — the vehicle keeps flying
-its real path through real air. Only the number coming out of the GPS receiver
-is a lie.
+A spoofer sends a fake radio signal. The drone still flies its real route
+through real air — only the number coming out of the GPS is a lie.
 
-So every injector in this task is a filter applied to the **sensor output**,
-after `sensors.py` has produced an honest reading. None of them may touch
-`vehicle.py`. If you find yourself modifying the vehicle's position to make an
-attack work, the design has gone wrong.
-
-(One day the autopilot would react to the fake position and fly off course.
-Not yet — that is a later phase. For now the vehicle flies its route and only
-the reported position lies.)
+So every file below changes the **output of `sensors.py`**, after the reading
+is made. **Never edit `vehicle.py`.** If you need to move the vehicle to make
+an attack work, something has gone wrong — ask me.
 
 ---
 
-## The injectors
+## Step 1 — `attacks.py`
 
-Each takes parameters, applies to a specific sensor, and can start at a chosen
-moment mid-run.
+Four attacks. Each one changes the `gnss` dict only.
 
-### attacks.py — someone is lying to the receiver
+```python
+class WalkOff:
+    """Pull the reported position slowly along a bearing."""
+    def __init__(self, speed_mps, bearing_deg): ...
+    def apply(self, gnss, t_since_start): ...
 
-| Attack | What it does | Parameters |
-|---|---|---|
-| `walkoff` | Reported position pulled steadily along a bearing. Every individual fix looks reasonable; only the accumulation gives it away. **This is the core demo.** | `speed_mps`, `bearing_deg` |
-| `teleport` | Position jumps to an offset in a single sample | `offset_m`, `bearing_deg` |
-| `altitude_only` | Horizontal position honest, altitude forced. The classic geofence-ceiling defeat | `offset_m` or `rate_mps` |
-| `replay` | Position from a different place, replayed. Position is internally consistent but wrong, and the receiver clock goes stale | `source_offset_m`, `clock_lag_s` |
+class Teleport:
+    """Jump the position instantly."""
+    def __init__(self, offset_m, bearing_deg): ...
 
-For `walkoff`, offset at time *t* is `speed_mps × (t − start_t)` along the
-bearing. Make `speed_mps` adjustable from **0.0 to 5.0** — we turn it down live
-on stage until the detector fails, and show the judges exactly where that is.
-At 0.0 nothing should happen at all.
+class AltitudeOnly:
+    """Only change altitude. Horizontal stays honest."""
+    def __init__(self, offset_m): ...
 
-A real spoofer also arrives louder and more uniformly than a real constellation,
-so while any GPS attack is active also nudge `cn0_mean` up by a few dB-Hz and
-tighten `hdop` slightly. Small effects, but they are a second independent
-signature and cost you three lines.
+class Replay:
+    """Position from somewhere else, plus a stale clock."""
+    def __init__(self, source_offset_m, clock_lag_s): ...
+```
 
-### faults.py — nothing is attacking, the hardware is failing
+**WalkOff is the main one.** Offset = `speed_mps × seconds_since_attack_started`,
+in the direction of `bearing_deg`.
 
-| Fault | What it does | Parameters |
-|---|---|---|
-| `stuck` | Sensor freezes on its last value | `sensor` |
-| `noisy` | Noise inflated well past the rated figure | `sensor`, `multiplier` |
-| `dropout` | Sensor emits `null` | `sensor`, `duty_cycle` |
-| `bias` | Slow ramp added to a sensor's reading | `sensor`, `rate_per_s` |
+`speed_mps` must work anywhere from **0.0 to 5.0**.
+**At 0.0 nothing must change at all** — we prove that on stage.
 
-Any of `gnss`, `imu`, `baro`, `mag`, `odom`.
-
-**These must look different from an attack, and the difference must be real,
-not cosmetic.** A failing sensor is erratic and incoherent. An attack is smooth
-and purposeful, because the attacker wants the vehicle somewhere specific.
-Phase 6 separates them on exactly that, so please do not make your faults
-tidy and directional — a `bias` fault that ramps smoothly in one direction is
-genuinely ambiguous, which is fine and honest, but `noisy` and `stuck` should
-be visibly messy.
-
-### interference.py — the environment itself is manipulated
-
-This is the third thing PS 18 asks for and the one most teams will skip.
-
-| Injector | What it does | Parameters |
-|---|---|---|
-| `magnet` | Adds an offset to the compass heading | `offset_deg` |
-| `pressure` | Adds an offset to barometric pressure | `offset_hpa` |
-
-The signature that makes `magnet` detectable is worth stating explicitly,
-because your job is to produce it faithfully: **the compass swings while the
-gyroscope reports no rotation.** The vehicle did not turn — the magnetic field
-around it changed. So `magnet` must affect `mag.heading_deg` *only*, and leave
-`imu.gz` completely untouched. If you also nudge the gyro, the signature
-disappears and the whole case becomes undetectable.
+While any attack is running, also add ~3 to `gnss["cn0_mean"]`. A real spoofer
+transmits louder than satellites do. Three lines, second piece of evidence.
 
 ---
 
-## control.py — the endpoint the console drives
+## Step 2 — `faults.py`
 
-Already specified in **[docs/schema.md](../schema.md) section 4**. Build to it
-exactly; the console is already calling it.
+Four faults. Each works on any sensor: `gnss`, `imu`, `baro`, `mag`, `odom`.
 
-HTTP on port **5010**:
+```python
+class Stuck:    # freeze on the last value
+    def __init__(self, sensor): ...
+
+class Noisy:    # multiply the noise
+    def __init__(self, sensor, multiplier): ...
+
+class Dropout:  # send null
+    def __init__(self, sensor): ...
+
+class Bias:     # slow ramp added to the reading
+    def __init__(self, sensor, rate_per_s): ...
+```
+
+**Make `Stuck` and `Noisy` look messy.** A broken sensor is random and jumpy.
+An attack is smooth and points one way. Later we have to tell them apart, so
+don't make your faults tidy.
+
+---
+
+## Step 3 — `interference.py`
+
+Two injectors.
+
+```python
+class Magnet:    # add an offset to compass heading
+    def __init__(self, offset_deg): ...
+
+class Pressure:  # add an offset to barometer
+    def __init__(self, offset_hpa): ...
+```
+
+**Important for `Magnet`:** change `mag["heading_deg"]` only.
+**Do not touch `imu["gz"]`.**
+
+The way we detect it is: *the compass turned but the gyro says we didn't.*
+If you change the gyro too, that disappears and the case stops working.
+
+---
+
+## Step 4 — `control.py`
+
+An HTTP server on **port 5010**. Use `http.server` from the standard library.
+The console already calls these.
 
 | Method | Path | Body | Does |
 |---|---|---|---|
-| `POST` | `/start` | `{"scenario": "drone_clean"}` | Begin a run |
-| `POST` | `/reset` | — | Stop and clear |
-| `POST` | `/inject` | `{"kind","type","strength","bearing_deg"}` | Start an injector mid-run |
-| `GET` | `/scenarios` | — | List scenario names |
+| POST | `/start` | `{"scenario": "drone_clean"}` | start a run |
+| POST | `/reset` | — | stop and clear |
+| POST | `/inject` | `{"kind","type","strength","bearing_deg"}` | start an attack now |
+| GET | `/scenarios` | — | list the names |
 
-Requirements that come straight from the demo:
+Three requirements:
 
-- **Reset must return to a clean state in under two seconds, from any state.**
-  Judges interrupt, and ask to see things again.
-- **Injection takes effect on the next frame**, not the next run.
-- **Scenario switching must not need a restart.**
-- The standard library's `http.server` is fine. NumPy is still the only
-  dependency.
+- **Reset must finish in under 2 seconds**, from any state
+- **Inject takes effect on the next frame**
+- **Changing scenario must not need a restart**
 
 ---
 
-## scenarios.py — the six demo scenarios
+## Step 5 — three new scenarios
 
-These are what the judges pick from, so the names appear on screen:
+Add these to `scenarios.py`. Each is a normal route with an attack scheduled
+partway through, so pressing Start plays the whole story by itself.
 
-| Name | What it is |
+| Name | What happens |
 |---|---|
-| `drone_clean` | Already built. No attack. |
-| `drone_manoeuvre` | Already built. Hard flying, no attack. |
-| `drone_walkoff` | Clean route, walk-off spoof starting partway |
-| `drone_fault` | Clean route, a sensor genuinely fails |
-| `drone_magnet` | Clean route, magnet near the compass |
-| `truck_theft` | Truck profile — comes with Task 3, leave a stub |
-
-Scenarios should compose a route with a scheduled injection, so that pressing
-Start runs the whole story without anyone touching a slider. The manual
-`/inject` path stays available for driving it live.
+| `drone_walkoff` | clean route, walk-off spoof starts around t=30 s |
+| `drone_fault` | clean route, a sensor genuinely breaks |
+| `drone_magnet` | clean route, magnet near the compass |
 
 ---
 
-## Recording truth (important for later)
+## Step 6 — truth log
 
-Extend `--truth-log` to also record **when each injection started, what type,
-and with what parameters.**
+Extend `--truth-log` so it also writes a line whenever an attack starts:
+**what type, what parameters, what time.**
 
-Simulator side only, never in a frame. We need it in phase 11 to measure
-detection latency — "caught 14 seconds after onset" is a number we can only
-produce if something wrote down the onset. That measurement is what fills the
-results card the demo closes on.
+Simulator side only, never in a frame. We need it later to measure "caught
+14 seconds after it started" — which we can only do if something wrote down
+when it started.
 
 ---
 
 ## Done when
 
-- [ ] All four attacks work and are parameterised
-- [ ] `walkoff` at `speed_mps=0.0` produces **no change whatsoever**
-- [ ] All four faults work on any named sensor
-- [ ] `magnet` shifts the compass and leaves the gyro **completely untouched**
+- [ ] All four attacks work
+- [ ] WalkOff at `0.0` changes nothing at all
+- [ ] All four faults work on any sensor
+- [ ] Magnet changes the compass and **not** the gyro
 - [ ] `/start`, `/reset`, `/inject`, `/scenarios` all work
-- [ ] Reset returns to clean state in under two seconds
-- [ ] Injection takes effect on the next frame
-- [ ] The five drone scenarios run start to finish
-- [ ] Truth log records injection onset, type and parameters
-- [ ] **A clean run still finishes with zero alerts** — check this last, every time
+- [ ] Reset finishes in under 2 seconds
+- [ ] The three new scenarios run start to finish
+- [ ] Truth log records when each attack started
+- [ ] **`drone_clean` still runs with zero alerts** — check this last
 
 ---
 
-## Please don't
+## Don't
 
-- **Don't touch `vehicle.py` to make an attack work.** Attacks change reported
-  readings, never the vehicle's real motion.
-- **Don't leak attack state into a frame.** Not `attack_active`, not
-  `spoof_offset`, not a suspicious extra field. The detector rejects unknown
-  fields loudly, so you will find out immediately — but the reason is that this
-  is the one thing that would make our demo dishonest.
-- **Don't make faults look like attacks.** Phase 6 has to tell them apart, and
-  if your fault is a smooth directional ramp there is nothing to tell apart.
-- **Don't touch `detector/`, `fleet/` or `console/`.**
+- Don't edit `vehicle.py`
+- Don't put anything about attacks into a frame (no `attack_active`, no
+  `spoof_offset`, nothing). The detector rejects unknown fields, so you'll
+  find out straight away
+- Don't touch `detector/`, `fleet/` or `console/`
 
 ---
 
-## Handing back
+## When done
 
-Same branch flow. In the PR description include:
+```bash
+git checkout -b sim/attacks
+git push -u origin sim/attacks
+```
 
-1. One frame from during a `walkoff`, and one from a clean run, so we can see
-   they are indistinguishable field-by-field
-2. Confirmation that `walkoff` at 0.0 changes nothing
-3. Timing for `/reset`
-
-Then message the group. **Task 3 is the truck profile** — wheel odometry, road
-constraint, and the cargo-theft scenario.
+Open a PR and paste in:
+1. One frame from during a walk-off, and one from a clean run
+2. Confirmation that walk-off at 0.0 changes nothing
+3. How long `/reset` takes
 
 ---
 
-## If you get stuck
+## What I fixed in your Task 1
 
-- Contract → [docs/schema.md](../schema.md), section 4 for the control endpoint
-- Why each attack matters → [docs/sensorsentry.html](../sensorsentry.html),
-  the attack library table
-- What the demo does with all this →
-  [docs/sensorsentry-demo-playbook.html](../sensorsentry-demo-playbook.html)
+Your structure, CLI and drift check were good. You were also right to change my
+gyro bias figure — 0.002 rad/s is 412 deg/hr and real IMUs are far better.
 
-The demo playbook is worth twenty minutes of your time before you start. It
-shows exactly how these injectors get used on stage, including the moment we
-turn the attack strength down until the detector fails and tell the judges
-that is where our limit is. Building for that moment will make better choices
-about parameter ranges than any spec I could write.
+The bug: `sensors.py` always reported `roll_rate = 0` and `pitch_rate = 0`,
+but the vehicle banks to 30°. So the accelerometer said "gravity is tilted 30°"
+and the gyro said "we never turned". Both can't be true.
+
+The detector believes the gyro, keeps its attitude level, and then reads that
+tilted gravity as forward acceleration — about 2.8 m/s² of thrust that never
+happened. A clean flight with no attack pushed it 2 km off course.
+
+Your `check_drift.py` couldn't catch it because it uses the vehicle's *true*
+attitude, which the real detector never has.
+
+**The lesson for this task:** every sensor has to describe the same situation.
+The only sensor allowed to disagree is one you're deliberately breaking.
+
+Fix is on your branch, commit `6e2f491` — worth reading the diff.
+
+Small thing: `truth.jsonl` got committed with the message "Your commit
+message". I removed it and gitignored it. Generated files stay out of git.
