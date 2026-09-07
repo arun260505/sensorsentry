@@ -4,10 +4,23 @@ Working checklist. Tick tasks as they land. The reasoning behind each phase is
 in [docs/sensorsentry-implementation-plan.html](docs/sensorsentry-implementation-plan.html);
 this file is the version you keep open while building.
 
-**Status:** Phases 0-4 done · phase 7 hysteresis done · **zero false alarms, detection measured**
-**Blocker cleared.** The witness could never carry detection on its own; the
-cross-checks do. Clean runs are silent and a 3 m/s walk-off is caught in ~16 s.
-Floor is ~2 m/s — measured, and stated on stage. Next: blame (5) and classify (6).
+**Where we are:** the detection core works. Clean flights are silent, GPS
+spoofing and compass interference are both caught, and the numbers are
+measured rather than claimed (`python -m harness.sweep`).
+
+| | |
+|---|---|
+| **Done** | 1 simulator · 2 witness · 3 console · 4 cross-validation · 7 hysteresis |
+| **In progress** | 4 attack injectors (Abishek, task 2) |
+| **Next gate** | **5 — blame assignment**, then 6 — attack or fault |
+| **Not started** | 8 truck · 9 fleet · 10 evidence · 12 rehearsal |
+| **Tests** | 22 passing |
+
+What the system can do today: say *something is wrong* and show it on a live
+map. What it cannot yet do is the part that makes this project different —
+name **which** sensor is lying, and say whether it is an **attack or a
+breakdown**. Those are phases 5 and 6, and they are next for a reason.
+
 **Owners:** A = simulator · B = detector core · C = unique logic · D = console
 *(fewer people? see [Team](#team) at the bottom)*
 
@@ -15,10 +28,10 @@ Floor is ~2 m/s — measured, and stated on stage. Next: blame (5) and classify 
 
 ## Ground rules — check these hold after every phase
 
-- [ ] Simulator and detector run as **separate processes**
-- [ ] **No truth crosses the socket** — no true position, no attack flag, ever
-- [ ] Clean-run scenario finishes with **zero false alarms**
-- [ ] Demo still runs end to end
+- [x] Simulator and detector run as **separate processes**
+- [x] **No truth crosses the socket** — enforced at ingest, rejected loudly
+- [x] Clean-run scenario finishes with **zero false alarms** — 8 runs, verified
+- [x] Demo still runs end to end
 
 > Rule 3 is a gate, not a goal. If false alarms ever leave zero, stop and fix
 > it before adding anything new.
@@ -30,7 +43,7 @@ Floor is ~2 m/s — measured, and stated on stage. Next: blame (5) and classify 
 - [x] Python env, NumPy only, no other dependencies
 - [x] **Freeze the sensor-frame schema** — write it to `docs/schema.md`
 - [x] Freeze the verdict-frame schema
-- [ ] `simulator/publisher.py` sends a dummy frame over UDP :5005
+- [x] `simulator/publisher.py` sends frames over UDP :5005
 - [x] `detector/ingest.py` receives and prints it
 - [x] Agree coordinate frame: **local metres (ENU)**, lat/lon for display only
 
@@ -236,16 +249,16 @@ playbook without asking a question.
 
 ## Definition of done
 
-- [ ] Two processes, no truth crossing the socket
+- [x] Two processes, no truth crossing the socket
 - [ ] Six scenarios selectable, starting within two seconds
-- [ ] Clean run with hard manoeuvres → **zero alerts**
-- [ ] Spoofing caught, GNSS named, vehicle stays on true route
+- [x] Clean run with hard manoeuvres → **zero alerts**
+- [~] Spoofing caught — but GNSS not yet *named* (phase 5) and no fallback yet (phase 7)
 - [ ] Broken sensor reported as fault, not attack
-- [ ] Magnet scenario reported as interference
+- [~] Magnet caught — but not yet *classified* as interference (phase 6)
 - [ ] Truck profile runs with configuration only
 - [ ] Four attacked vehicles → one event, one zone
 - [ ] Incident replays to an identical verdict
-- [ ] Strength ladder filled with measured numbers, including the failure point
+- [x] Strength ladder filled with measured numbers, including the failure point
 - [ ] Report switch turns off with no effect on detection
 - [ ] Demo run end to end, out loud, five times
 

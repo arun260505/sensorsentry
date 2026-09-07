@@ -126,15 +126,22 @@ short.**
 
 ## Status
 
-**Current phase:** 1 (simulator) · phases 0, 2, 3 done — **the project is demoable**
+**Current phase:** 5 — blame assignment. Phases 1-4 and 7's hysteresis are done.
 **Last updated:** 7 September 2026
 
-| Owner | Area | Current task |
+The detector works end to end: honest flights are silent, GPS spoofing and
+compass interference are both caught, and `python -m harness.sweep` prints the
+measured numbers. What it still cannot do is the part that makes this project
+different — name *which* sensor is lying, and say whether it is an attack or a
+breakdown. That is next.
+
+| Owner | Area | State |
 |---|---|---|
-| Abishek | Simulator | Task 1 — clean flight ([handover](docs/handover/01-abishek-simulator.md)) |
-| — | Detector core | **stages 1–3 + residual done**, 22 tests passing |
-| — | Console | **live** — canvas map, two paths, raw feed |
-| — | Unique logic (blame, classify) | not started — phases 5, 6 |
+| Abishek | Simulator | task 1 done (reviewed, fixed) · **task 2 in progress** — attack injectors |
+| — | Detector core | stages 1-4 + hysteresis done, 22 tests passing |
+| — | Console | live — canvas map, two paths, raw feed |
+| — | **Blame + classify** | **not started — phases 5, 6, and they are the point** |
+| — | Truck, fleet, evidence | not started — phases 8, 9, 10 |
 
 Full checklist: **[PLAN.md](PLAN.md)**
 
