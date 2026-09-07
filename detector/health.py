@@ -23,9 +23,24 @@ from .ingest import Frame
 
 # --- tunables -------------------------------------------------------------
 STUCK_CYCLES = 20
-"""Identical readings before a sensor is called frozen. One second at 20 Hz.
-Real sensors always dither at the least-significant bit; a value that does not
-move at all has stopped being measured."""
+"""Identical readings *in a row* before a sensor is called frozen. One second
+at 20 Hz. Real sensors always dither at the least-significant bit; a value that
+does not move at all has stopped being measured."""
+
+STUCK_FRACTION = 0.6
+"""...or this share of a whole window sitting on one single value.
+
+The consecutive test alone was too literal to catch a realistically broken
+sensor. A sensor that has seized does not usually go quiet and stay perfectly
+quiet — it sits on its last reading and throws the occasional nonsense spike,
+which is exactly how the simulator models it and exactly what the field
+reports. One spike every dozen frames resets a consecutive counter forever, so
+a plainly frozen compass read as healthy while the operator watched it not
+move.
+
+Repeats within the window are counted instead, so spikes no longer hide the
+freeze. A working sensor almost never returns the identical number for most of
+two seconds; a frozen one does, whatever noise is sprinkled over the top."""
 
 NOISE_WINDOW = 40
 """Samples used for the rolling spread check. Two seconds at 20 Hz."""
@@ -120,6 +135,21 @@ class _Channel:
             self.identical = 0
         self.last = value
         self.values.append(value)
+
+    def frozen(self) -> bool:
+        """Is this channel sitting on one value, spikes notwithstanding?
+
+        Counts how much of the window is the single most common reading. A
+        consecutive run is the clean case and is caught by `identical`; this
+        catches the messy one, where a seized sensor holds its last value and
+        occasionally throws nonsense.
+        """
+        if len(self.values) < self.values.maxlen:
+            return False
+        counts: dict[float, int] = {}
+        for value in self.values:
+            counts[value] = counts.get(value, 0) + 1
+        return max(counts.values()) / len(self.values) >= STUCK_FRACTION
 
     def noise_sigma(self) -> Optional[float]:
         """Estimated per-sample white noise, or None until the window fills.
@@ -238,7 +268,7 @@ class HealthMonitor:
         # the stuck check is meaningful on a circular quantity here.
         chan = self._channel("mag.h")
         chan.push(value)
-        if chan.identical >= STUCK_CYCLES:
+        if chan.identical >= STUCK_CYCLES or chan.frozen():
             health.flag(STUCK, heading_deg=value)
 
     def _check_odom(self, frame: Frame, health: SensorHealth) -> None:
@@ -253,7 +283,7 @@ class HealthMonitor:
         # check would fire on every red light. Only flag a frozen non-zero.
         chan = self._channel("odom.v")
         chan.push(value)
-        if chan.identical >= STUCK_CYCLES and abs(value) > 0.01:
+        if (chan.identical >= STUCK_CYCLES or chan.frozen()) and abs(value) > 0.01:
             health.flag(STUCK, wheel_speed_mps=value)
 
     def _check_gnss(self, frame: Frame, health: SensorHealth) -> None:
@@ -280,7 +310,8 @@ class HealthMonitor:
             # attack. A position has two numbers; freezing means both.
             chan = self._channel("gnss.pos")
             chan.push(_pack_position(float(gnss["lat"]), float(gnss["lon"])))
-            self._gnss_stuck = chan.identical >= STUCK_CYCLES // 4  # 5 Hz, not 20
+            self._gnss_stuck = (chan.identical >= STUCK_CYCLES // 4  # 5 Hz, not 20
+                                or chan.frozen())
             if self._gnss_stuck:
                 health.flag(STUCK, lat=float(gnss["lat"]))
             return
@@ -303,7 +334,7 @@ class HealthMonitor:
         chan = self._channel(key)
         chan.push(value)
 
-        if chan.identical >= STUCK_CYCLES:
+        if chan.identical >= STUCK_CYCLES or chan.frozen():
             health.flag(STUCK, **{label: value})
 
         sigma = chan.noise_sigma()

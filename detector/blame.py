@@ -208,8 +208,21 @@ def _within_domain(
     ]
     domain_passing = [
         p for p in pairs
-        if p.domain == domain and p.valid and pair_states.get(p.key, "OK") == "OK"
+        if p.domain == domain and (p.valid or p.stale)
+        and pair_states.get(p.key, "OK") == "OK"
     ]
+    # `stale` counts as well as `valid`, and that is not a shortcut.
+    #
+    # GNSS arrives at 5 Hz against 20 Hz frames, so on three frames in four
+    # every check involving it is unevaluable. Excluding those left the
+    # horizontal domain holding a single check, which can never clear anybody,
+    # so blame oscillated at 15 Hz between naming the right sensor and
+    # shrugging — a seized odometer was correctly identified and then
+    # un-identified, over and over, and the operator saw a flickering screen.
+    #
+    # A check that passed a twentieth of a second ago is still evidence. The
+    # crossvalidator already carries the last real reading forward for exactly
+    # this reason; this is the other half of that decision.
 
     suspects: set[str] = set()
     for pair in domain_failing:
@@ -222,9 +235,44 @@ def _within_domain(
 
     blame = Blame(domain=domain, suspects=sorted(suspects))
 
+    # --- who cannot be excused? --------------------------------------------
+    #
+    # A failing check against something that cannot be wrong is not a
+    # disagreement to be arbitrated. The road network does not move, so when
+    # the reported position and the map disagree, the position is wrong — and
+    # no amount of agreement with the compass changes that.
+    #
+    # Without this a teleported GPS walked free: it sat 300 m off the
+    # carriageway while still agreeing with the compass about which way the
+    # lorry was pointing, collected that alibi, and blame drifted onto the
+    # innocent accelerometer. Two sensors agreeing is ordinary evidence.
+    # Disagreeing with a fixed fact is not, and it outranks an alibi.
+    convicted = {
+        (pair.b if pair.a in profiles.INFALLIBLE else pair.a)
+        for pair in domain_failing
+        if bool({pair.a, pair.b} & profiles.INFALLIBLE)
+    } & suspects
+
+    # A sensor failing its own health check cannot be excused either, for the
+    # same reason: an alibi is someone else agreeing with you, and a broken
+    # sensor can still accidentally agree with something.
+    #
+    # A frozen GPS proves it. Its position stops on the carriageway, so it
+    # goes on passing the road check that would otherwise convict it, collects
+    # that alibi, and blame lands on the odometer — which is working perfectly
+    # and is the only other sensor in the failing distance check. Naming an
+    # innocent sensor sends a mechanic to the wrong part of the lorry.
+    convicted |= {
+        name for name in suspects
+        if (r := health.get(name)) is not None and not r.healthy
+        and pair_states.get(f"health:{name}", "OK") != "OK"
+    }
+
     # --- who has an alibi? -------------------------------------------------
     cleared: dict[str, str] = {}
     for sensor in suspects:
+        if sensor in convicted:
+            continue
         for pair in domain_passing:
             other = pair.b if pair.a == sensor else pair.a if pair.b == sensor else None
             if other is None or other in suspects:
@@ -236,6 +284,22 @@ def _within_domain(
 
     candidates = [s for s in suspects if s not in cleared]
     blame.cleared = [reason for _s, reason in sorted(cleared.items())]
+
+    # One sensor caught contradicting a fixed fact is the whole answer.
+    if len(convicted) == 1:
+        name = next(iter(convicted))
+        fixed = sorted(p.label for p in domain_failing
+                       if name in (p.a, p.b) and bool({p.a, p.b} & profiles.INFALLIBLE))
+        report = health.get(name)
+        if fixed:
+            why = f"{name} disagrees with {fixed[0]}, which cannot be wrong"
+        else:
+            why = (f"{name} failed its own health check: "
+                   f"{', '.join(report.flags)}" if report else f"{name} is unwell")
+        blame.guilty = name
+        blame.confidence = 1.0
+        blame.evidence.insert(0, why)
+        return blame
 
     if not candidates:
         blame.guilty = CANNOT_ISOLATE

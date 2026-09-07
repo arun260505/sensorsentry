@@ -78,6 +78,11 @@
 
       <button id="taketarget" class="atk primary">Take it over</button>
 
+      <!-- Everything else that can be done to the selected sensor. Built from
+           a table in app.js so the list matches what the simulator actually
+           offers, and so harness/usecases.py can check every one of them. -->
+      <div class="actions" id="actions"></div>
+
       <div class="drive" id="drive" hidden>
         <div class="drivehead">
           <span id="drivewhat">You are the GPS</span>

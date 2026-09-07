@@ -711,3 +711,15 @@ button.target.mine.on::after { content: " ●"; font-size: .6em; vertical-align:
 }
 .scenarios button.scripted { opacity: .72; font-size: .72rem; padding: 5px 8px; }
 .scenarios button.scripted:hover { opacity: 1; }
+
+/* every other thing that can be done to the selected sensor */
+.actions { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 7px; }
+.actions button {
+  flex: 1 1 calc(50% - 3px); min-width: 0;
+  font: inherit; font-size: .72rem; padding: 6px 6px; cursor: pointer;
+  border: 1px solid var(--rule); border-radius: 4px;
+  background: var(--panel); color: var(--ink-2); white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis;
+}
+.actions button:hover:not(:disabled) { background: var(--panel-2); color: var(--ink); }
+.actions button:disabled { opacity: .4; cursor: not-allowed; }

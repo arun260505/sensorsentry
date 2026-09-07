@@ -945,22 +945,74 @@ const TARGETS = {
     hint: "Left and right turn it. The gyro does not follow.",
     arrow: (dir) => ({ turn_deg: (dir === "right" || dir === "up") ? 5 : -5 }),
     stop:  () => ({}),
-    show:  (d) => Math.round(d.heading_deg || 0) + "°",
+    // null until the puppet has seen one frame and learned the real heading
+    // to take over from. Showing "—" for that instant beats showing NaN.
+    show:  (d) => d.heading_deg == null ? "—" : Math.round(d.heading_deg) + "°",
   },
   altitude: {
     sensor: "baro", label: "You are the barometer",
     hint: "Up and down move its reported height.",
     arrow: (dir) => ({ step_m: (dir === "up" || dir === "right") ? 10 : -10 }),
     stop:  () => ({ height_offset_m: 0 }),
-    show:  (d) => (d.height_offset_m > 0 ? "+" : "") + Math.round(d.height_offset_m || 0) + " m",
+    show:  (d) => (d.height_offset_m > 0 ? "+" : "")
+                  + Math.round(d.height_offset_m || 0) + " m",
   },
   wheels: {
     sensor: "odom", label: "You are the wheel sensor",
     hint: "Hold it at zero while the truck drives on.",
     arrow: (dir) => ({ step_mps: (dir === "up" || dir === "right") ? 2 : -2 }),
     stop:  () => ({ speed_mps: 0 }),
-    show:  (d) => (Math.round((d.speed_mps || 0) * 10) / 10) + " m/s",
+    show:  (d) => d.speed_mps == null ? "—"
+                  : (Math.round(d.speed_mps * 10) / 10) + " m/s",
   },
+};
+
+/* Everything else that can be done to each sensor, beyond taking it over.
+ *
+ * One table, so the console offers exactly what the simulator implements and
+ * harness/usecases.py can check every entry end to end. If a button is here,
+ * a case in that file says what it should produce; if it is not, a judge
+ * cannot press it and be surprised.
+ */
+const ACTIONS = {
+  gnss: [
+    ["Jump it 300 m",     { kind: "attack", type: "teleport", strength: 300, bearing_deg: 90 },
+     "you jumped the GPS 300 m"],
+    ["Replay elsewhere",  { kind: "attack", type: "replay", strength: 250, bearing_deg: 45 },
+     "you replayed a signal from elsewhere"],
+    ["Slow walk-off",     { kind: "attack", type: "walkoff", strength: 3, bearing_deg: 90 },
+     "you started a slow walk-off"],
+    ["Cut it off",        { kind: "fault", type: "dropout", sensor: "gnss" },
+     "you cut the GPS off"],
+  ],
+  mag: [
+    ["Hold a magnet",     { kind: "interference", type: "magnet", strength: 30 },
+     "you held a magnet to the compass"],
+    ["Freeze it",         { kind: "fault", type: "stuck", sensor: "mag" },
+     "you froze the compass"],
+    ["Make it noisy",     { kind: "fault", type: "noisy", sensor: "mag", strength: 18 },
+     "you made the compass noisy"],
+    ["Cut it off",        { kind: "fault", type: "dropout", sensor: "mag" },
+     "you cut the compass off"],
+  ],
+  baro: [
+    ["Squeeze it",        { kind: "interference", type: "pressure", strength: -6 },
+     "you squeezed the barometer"],
+    ["Spoof height only", { kind: "attack", type: "altitude_only", strength: 60 },
+     "you spoofed the height only"],
+    ["Freeze it",         { kind: "fault", type: "stuck", sensor: "baro" },
+     "you froze the barometer"],
+    ["Make it noisy",     { kind: "fault", type: "noisy", sensor: "baro", strength: 12 },
+     "you made the barometer noisy"],
+  ],
+  odom: [
+    ["Freeze it",         { kind: "fault", type: "stuck", sensor: "odom" },
+     "you froze the wheel sensor"],
+    ["Make it noisy",     { kind: "fault", type: "noisy", sensor: "odom", strength: 12 },
+     "you made the wheels noisy"],
+    ["Cut it off",        { kind: "fault", type: "dropout", sensor: "odom" },
+     "you cut the wheel sensor off"],
+  ],
 };
 
 /* What the detector currently believes, in the judge's own words. */
@@ -985,6 +1037,7 @@ function setAttackEnabled() {
     node.disabled = !live;
   }
   if (!live && Object.keys(held).length) { held = {}; renderHeld(); }
+  for (const button of el("actions").querySelectorAll("button")) button.disabled = !live;
   el("atkhint").textContent = live
     ? TARGETS[target].hint
     : "Press Start below, then take a sensor.";
@@ -997,6 +1050,24 @@ function selectTarget(name) {
   }
   renderHeld();
   setAttackEnabled();
+}
+
+function renderActions() {
+  const box = el("actions");
+  box.innerHTML = "";
+  for (const [label, body, said] of ACTIONS[TARGETS[target].sensor] || []) {
+    const button = document.createElement("button");
+    button.textContent = label;
+    button.disabled = !attackLive();
+    button.addEventListener("click", async () => {
+      if (latest && latest.state === "ALERT" && !hunting) {
+        el("atkhint").textContent = "It is already alerting — let go of everything first.";
+        return;
+      }
+      if (await post("/control/inject", body)) startHunt(said);
+    });
+    box.appendChild(button);
+  }
 }
 
 function renderHeld() {

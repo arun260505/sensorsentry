@@ -144,6 +144,7 @@ python -m harness.blame_check                 # which sensor          8/8
 python -m harness.classify_check              # attack/fault/interf.  7/8
 python -m harness.fallback_check              # keeps flying under attack
 python -m harness.fleet_check                 # zone + advisory
+python -m harness.usecases                    # all 17 cases, named
 python -m harness.results --save              # the closing card
 python -m harness.send_fleet                  # 4 vehicles, 3 attacked
 ```
@@ -193,13 +194,23 @@ Same control, two verdicts, and the difference is only how they press:
 | Drive the GPS away | **TAMPERED** `gnss/attack` | 9.7 s |
 | Let go — GPS freezes | **FAILED SENSOR** `gnss/fault` | 3.0 s |
 | Turn the compass | **FAILED SENSOR** `mag/fault` | 5.0 s |
-| Freeze the wheels at 0 | detected, `cannot_isolate` | 7.0 s |
+| Freeze the wheels at 0 | **FAILED SENSOR** `odom/fault` | 7.0 s |
+
+**All 17 cases are named and checked** — `python -m harness.usecases`, and
+[docs/SCENARIOS.md](docs/SCENARIOS.md) lists every one with the buttons that
+produce it. Three of them answer more narrowly than you might expect, and the
+table says so rather than leaving them out: a height spoof and a squeezed
+barometer are detected but not attributed (only two sensors measure height, so
+one failing check between them cannot name which), and two sensors taken at
+once names one of the two liars rather than both.
 
 The stopwatch and scoreboard run **in the browser only** — the click, the
 timer and the comparison all happen in the page. The detector is never told an
 attack was injected, which is the only reason the number means anything.
 
-Building it exposed two real detector faults, both invisible to the tests:
+Building it exposed four real detector faults, every one invisible to the 64
+tests, because a puppet produces ordinary bad readings and ordinary bad
+readings are what the ten stages are meant to catch:
 
 **1. A frozen GNSS was invisible.** The stuck flag only existed on frames that
 carried a fix, and three frames in four have none, so it flickered at 5 Hz and
@@ -210,6 +221,30 @@ the same "absence of evidence" trap as the course check.
 **2. `gnss-odom:distance` was declared in `profiles.py` and never
 implemented**, so it reported OK forever and a seized odometer reading zero
 while the lorry drove was undetected. Now implemented in `crossvalidate.py`.
+
+**3. "Stuck" was defined too literally to catch a broken sensor.** It demanded
+20 bit-identical readings in a row, while the simulator models a seized sensor
+the way they actually fail — sitting on the last value and throwing the
+occasional spike. One spike every dozen frames resets a consecutive counter
+forever, so a plainly frozen compass read as perfectly healthy. Now counts
+repeats across the window instead, and the frozen compass, barometer and
+wheels are all named in 3-7 s.
+
+**4. An alibi could excuse a sensor that had already convicted itself.** Two
+ways, both fixed in `blame.py`: a failing check against the *road network* now
+convicts outright, because the road cannot be wrong and no amount of agreeing
+with the compass changes that — without it a teleported GPS collected an alibi
+and blame drifted onto the innocent accelerometer. And a sensor failing its own
+health check can no longer be cleared: a frozen GPS stops on the carriageway,
+keeps passing the road check, and the blame landed on a perfectly good
+odometer, which sends a mechanic to the wrong part of the lorry.
+
+Blame also now accepts **stale** passes as alibis. GNSS is 5 Hz against 20 Hz
+frames, so on three frames in four every check involving it is unevaluable —
+the horizontal domain was left holding one check, which can never clear
+anybody, and blame oscillated at 15 Hz between naming the right sensor and
+shrugging. The crossvalidator already carries the last real reading forward;
+this is the other half of that decision.
 
 And one near-miss worth remembering: the first version of fix 1 watched
 **latitude alone**, so a truck waiting at a signal read as a broken receiver,
@@ -329,6 +364,7 @@ Use these words consistently; they end up in the UI and the pitch.
 | File | For |
 |---|---|
 | **[docs/schema.md](docs/schema.md)** | The frozen data contract. Read before writing code. |
+| **[docs/SCENARIOS.md](docs/SCENARIOS.md)** | Every case a judge can produce, how to press it, what it says. Checked by `harness/usecases.py`. |
 | **[PLAN.md](PLAN.md)** | Tickable build checklist, 12 phases |
 | [docs/sensorsentry.html](docs/sensorsentry.html) | The main brief — problem, workflow, novelty, business |
 | [docs/sensorsentry-explained.html](docs/sensorsentry-explained.html) | Plain-language version, no background needed |
