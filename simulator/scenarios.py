@@ -10,6 +10,13 @@ drone_clean       : gentle 3-minute route — straight segments, easy turns,
 drone_manoeuvre   : same length, aggressively violent — hard banks, rapid
                     climbs/descents, sharp accelerations. Used to prove zero
                     false alarms during hard flying.
+drone_walkoff     : drone_clean route, walk-off GPS spoof starts at t≈30 s.
+drone_fault       : drone_clean route, IMU bias fault starts at t≈30 s.
+drone_magnet      : drone_clean route, magnet on compass starts at t≈30 s.
+
+Attack scenarios carry a schedule: a list of dicts describing when to start
+each injector, read by run.py. The vehicle route is identical to drone_clean —
+the only difference is what gets injected mid-flight.
 """
 
 from .vehicle import Waypoint
@@ -138,11 +145,82 @@ def drone_manoeuvre():
 
 
 # ---------------------------------------------------------------------------
+# drone_walkoff — walk-off GPS spoof, starts at t=30 s
+# ---------------------------------------------------------------------------
+def drone_walkoff():
+    """
+    Normal drone_clean route. At t≈30 s, a walk-off GPS attack starts:
+    the reported position drifts 2 m/s east (bearing 90°).
+
+    The schedule is a list of dicts:
+      t_start   : simulation time (s) to arm the injector
+      kind      : 'attack' | 'fault' | 'interference'
+      cls       : injector class name (string, looked up in run.py)
+      kwargs    : constructor arguments for that class
+    """
+    waypoints, vehicle_type = drone_clean()
+    schedule = [
+        {
+            "t_start": 30.0,
+            "kind":    "attack",
+            "cls":     "WalkOff",
+            "kwargs":  {"speed_mps": 2.0, "bearing_deg": 90.0},
+        }
+    ]
+    return waypoints, vehicle_type, schedule
+
+
+# ---------------------------------------------------------------------------
+# drone_fault — IMU accelerometer bias fault, starts at t=30 s
+# ---------------------------------------------------------------------------
+def drone_fault():
+    """
+    Normal drone_clean route. At t≈30 s, the IMU develops a slow bias fault:
+    every numeric field of the IMU reading gets a ramp of 0.05 per second.
+    This looks different from a GPS walk-off — it's noisy and all-axis.
+    """
+    waypoints, vehicle_type = drone_clean()
+    schedule = [
+        {
+            "t_start": 30.0,
+            "kind":    "fault",
+            "cls":     "Bias",
+            "kwargs":  {"sensor": "imu", "rate_per_s": 0.05},
+        }
+    ]
+    return waypoints, vehicle_type, schedule
+
+
+# ---------------------------------------------------------------------------
+# drone_magnet — magnet on compass, starts at t=30 s
+# ---------------------------------------------------------------------------
+def drone_magnet():
+    """
+    Normal drone_clean route. At t≈30 s, a 45° magnetic offset is applied to
+    the compass. The gyro is deliberately NOT changed — that discrepancy is
+    exactly what lets the detector classify this as interference, not a turn.
+    """
+    waypoints, vehicle_type = drone_clean()
+    schedule = [
+        {
+            "t_start": 30.0,
+            "kind":    "interference",
+            "cls":     "Magnet",
+            "kwargs":  {"offset_deg": 45.0},
+        }
+    ]
+    return waypoints, vehicle_type, schedule
+
+
+# ---------------------------------------------------------------------------
 # Registry
 # ---------------------------------------------------------------------------
 SCENARIOS = {
     "drone_clean":      drone_clean,
     "drone_manoeuvre":  drone_manoeuvre,
+    "drone_walkoff":    drone_walkoff,
+    "drone_fault":      drone_fault,
+    "drone_magnet":     drone_magnet,
 }
 
 
@@ -153,4 +231,9 @@ def list_scenarios():
 def get_scenario(name: str):
     if name not in SCENARIOS:
         raise ValueError(f"Unknown scenario {name!r}. Available: {list_scenarios()}")
-    return SCENARIOS[name]()
+    result = SCENARIOS[name]()
+    # Normalise: scenarios without a schedule return (wps, vtype);
+    # attack scenarios return (wps, vtype, schedule).
+    if len(result) == 2:
+        return result[0], result[1], []   # no schedule
+    return result   # (wps, vtype, schedule)
