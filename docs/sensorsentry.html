@@ -1,0 +1,761 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SensorSentry</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chivo:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Literata:opsz,wght@7..72,400;7..72,600&display=swap">
+<style>
+:root{
+  --ground:#F1F4F6;
+  --surface:#FFFFFF;
+  --surface-2:#E6EBEF;
+  --ink:#0F1C25;
+  --ink-2:#4A5C69;
+  --ink-3:#788894;
+  --rule:#D5DDE3;
+  --rule-strong:#B3C0C9;
+  --accent:#0B5C7A;
+  --accent-soft:#DBEBF1;
+  --ok:#2C7A55;
+  --ok-soft:#DEEEE6;
+  --warn:#A66A0E;
+  --warn-soft:#F6EBD8;
+  --bad:#AE3529;
+  --bad-soft:#F7E4E1;
+  --shadow:0 1px 2px rgba(15,28,37,.06),0 12px 30px -18px rgba(15,28,37,.28);
+  --maxw:1080px;
+  --prose:66ch;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --ground:#0A1219;
+    --surface:#101C24;
+    --surface-2:#17242D;
+    --ink:#E7EEF3;
+    --ink-2:#A2B4C0;
+    --ink-3:#758794;
+    --rule:#213039;
+    --rule-strong:#33474F;
+    --accent:#4FAECC;
+    --accent-soft:#0F2E3A;
+    --ok:#57B287;
+    --ok-soft:#122C22;
+    --warn:#D5A051;
+    --warn-soft:#2E2416;
+    --bad:#DF7264;
+    --bad-soft:#31201D;
+    --shadow:0 1px 2px rgba(0,0,0,.45),0 14px 34px -18px rgba(0,0,0,.8);
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#0A1219;
+  --surface:#101C24;
+  --surface-2:#17242D;
+  --ink:#E7EEF3;
+  --ink-2:#A2B4C0;
+  --ink-3:#758794;
+  --rule:#213039;
+  --rule-strong:#33474F;
+  --accent:#4FAECC;
+  --accent-soft:#0F2E3A;
+  --ok:#57B287;
+  --ok-soft:#122C22;
+  --warn:#D5A051;
+  --warn-soft:#2E2416;
+  --bad:#DF7264;
+  --bad-soft:#31201D;
+  --shadow:0 1px 2px rgba(0,0,0,.45),0 14px 34px -18px rgba(0,0,0,.8);
+}
+
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0;
+  background:var(--ground);
+  color:var(--ink);
+  font-family:Literata,Georgia,"Times New Roman",serif;
+  font-size:17.5px;
+  line-height:1.65;
+}
+.wrap{max-width:var(--maxw);margin:0 auto;padding:0 26px}
+.prose{max-width:var(--prose)}
+
+h1,h2,h3,h4,.ui{font-family:Chivo,"Helvetica Neue",Arial,sans-serif;margin:0;text-wrap:balance}
+.mono{font-family:"JetBrains Mono",ui-monospace,Consolas,monospace}
+h1{font-size:clamp(2.5rem,6vw,4rem);font-weight:700;line-height:1.02;letter-spacing:-.028em}
+h2{font-size:clamp(1.55rem,3.3vw,2.05rem);font-weight:600;line-height:1.16;letter-spacing:-.018em}
+h3{font-size:1.1rem;font-weight:600;line-height:1.3;letter-spacing:-.006em}
+h4{font-size:.95rem;font-weight:600;letter-spacing:-.003em}
+p{margin:0}
+.lead{font-size:1.16rem;color:var(--ink-2);line-height:1.55}
+.eyebrow{
+  font-family:Chivo,sans-serif;font-size:.7rem;font-weight:700;
+  letter-spacing:.17em;text-transform:uppercase;color:var(--accent);
+}
+
+/* ---------- masthead ---------- */
+header{background:var(--surface);border-bottom:1px solid var(--rule);padding:60px 0 44px}
+.mast{display:flex;flex-direction:column;gap:20px}
+.badge{
+  align-self:flex-start;font-family:Chivo,sans-serif;font-size:.7rem;font-weight:700;
+  letter-spacing:.14em;text-transform:uppercase;background:var(--accent);color:var(--surface);
+  padding:6px 13px;border-radius:3px;
+}
+h1 .sub{display:block;font-size:.34em;font-weight:600;letter-spacing:-.01em;color:var(--ink-3);margin-top:14px;line-height:1.3}
+.facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));border-top:1px solid var(--rule);border-bottom:1px solid var(--rule);background:var(--surface-2)}
+.facts > div{padding:14px 26px;border-right:1px solid var(--rule)}
+.facts > div:last-child{border-right:0}
+.facts dt{font-family:Chivo,sans-serif;font-size:.64rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);margin:0 0 3px}
+.facts dd{margin:0;font-family:"JetBrains Mono",monospace;font-size:.88rem;font-weight:500;color:var(--ink)}
+
+/* ---------- sections ---------- */
+section{padding:56px 0;border-bottom:1px solid var(--rule)}
+section:last-of-type{border-bottom:0}
+.sec-head{display:flex;flex-direction:column;gap:10px;margin-bottom:28px}
+.stack{display:flex;flex-direction:column;gap:18px}
+
+/* three problems */
+.triple{display:grid;gap:1px;grid-template-columns:repeat(auto-fit,minmax(255px,1fr));background:var(--rule);border:1px solid var(--rule);border-radius:4px;overflow:hidden}
+.triple > article{background:var(--surface);padding:24px;display:flex;flex-direction:column;gap:9px}
+.triple .quote{font-family:"JetBrains Mono",monospace;font-size:.74rem;letter-spacing:.03em;color:var(--accent);text-transform:uppercase}
+.triple p{font-size:.95rem;color:var(--ink-2);line-height:1.55}
+
+/* analogy — the one loud moment */
+.analogy{background:var(--accent);color:var(--surface);padding:36px 40px;border-radius:4px;display:flex;flex-direction:column;gap:13px;box-shadow:var(--shadow)}
+.analogy .eyebrow{color:var(--surface);opacity:.7}
+.analogy .big{font-family:Literata,Georgia,serif;font-weight:600;font-size:1.4rem;line-height:1.4;max-width:36ch}
+.analogy .after{font-family:Chivo,sans-serif;font-size:.99rem;line-height:1.55;opacity:.88;max-width:54ch}
+
+/* stories */
+.stories{display:grid;gap:20px;grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+.story{background:var(--surface);border:1px solid var(--rule);border-radius:4px;padding:26px;display:flex;flex-direction:column;gap:12px}
+.story .who{font-family:"JetBrains Mono",monospace;font-size:.72rem;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-3)}
+.story ol{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:8px}
+.story li{font-size:.95rem;color:var(--ink-2);line-height:1.5}
+.story .end{font-family:Chivo,sans-serif;font-weight:600;font-size:.95rem;color:var(--bad);padding-top:12px;border-top:1px solid var(--rule)}
+
+/* senses */
+.senses{display:grid;gap:1px;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));background:var(--rule);border:1px solid var(--rule);border-radius:4px;overflow:hidden}
+.senses > div{background:var(--surface);padding:22px;display:flex;flex-direction:column;gap:7px}
+.senses .label{font-family:"JetBrains Mono",monospace;font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3)}
+.senses p{font-size:.93rem;color:var(--ink-2);line-height:1.5}
+
+/* key callout */
+.key{border-left:4px solid var(--accent);background:var(--surface);padding:24px 28px;display:flex;flex-direction:column;gap:10px;border-radius:0 4px 4px 0;box-shadow:var(--shadow)}
+.key h3{color:var(--accent)}
+.key p{color:var(--ink-2);font-size:1rem;line-height:1.6}
+.key b{color:var(--ink);font-weight:600}
+
+/* ---------- the workflow spine ---------- */
+.flow{display:flex;flex-direction:column;margin-top:6px}
+.stage{display:grid;grid-template-columns:46px minmax(0,1fr);gap:22px;position:relative;padding-bottom:26px}
+.stage::before{content:"";position:absolute;left:22px;top:50px;bottom:0;width:2px;background:var(--rule)}
+.stage:last-child::before{display:none}
+.stage .num{
+  width:46px;height:46px;border-radius:50%;background:var(--surface);
+  border:2px solid var(--rule-strong);color:var(--ink-2);
+  display:flex;align-items:center;justify-content:center;
+  font-family:Chivo,sans-serif;font-weight:700;font-size:.98rem;
+  font-variant-numeric:tabular-nums;
+}
+.stage.star .num{background:var(--accent);border-color:var(--accent);color:var(--surface)}
+.stage .body{display:flex;flex-direction:column;gap:8px;padding-top:8px}
+.stage .body p{font-size:.99rem;color:var(--ink-2);line-height:1.58}
+.stage .titleline{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+.newbadge{
+  font-family:Chivo,sans-serif;font-size:.62rem;font-weight:700;letter-spacing:.12em;
+  text-transform:uppercase;background:var(--accent-soft);color:var(--accent);
+  padding:4px 9px;border-radius:11px;
+}
+.stage .why{
+  font-size:.92rem;color:var(--ink-3);font-style:italic;line-height:1.5;
+  border-left:2px solid var(--rule);padding-left:14px;
+}
+
+/* tables */
+.tablewrap{overflow-x:auto;border:1px solid var(--rule);border-radius:4px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;min-width:600px;font-size:.92rem}
+th,td{text-align:left;padding:13px 16px;border-bottom:1px solid var(--rule);vertical-align:top}
+th{font-family:Chivo,sans-serif;font-size:.65rem;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-3);font-weight:700;background:var(--surface-2);white-space:nowrap}
+tr:last-child td{border-bottom:0}
+td{color:var(--ink-2)}
+td strong{color:var(--ink);font-weight:600;font-family:Chivo,sans-serif;font-size:.93rem}
+td.mono{font-family:"JetBrains Mono",monospace;font-size:.84rem;color:var(--ink)}
+.chip{display:inline-block;font-family:Chivo,sans-serif;font-size:.64rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:3px 9px;border-radius:11px;white-space:nowrap}
+.chip.fault{background:var(--warn-soft);color:var(--warn)}
+.chip.attack{background:var(--bad-soft);color:var(--bad)}
+.chip.env{background:var(--accent-soft);color:var(--accent)}
+
+/* diagram */
+figure{margin:0;background:var(--surface);border:1px solid var(--rule);border-radius:4px;padding:26px}
+figure svg{display:block;width:100%;height:auto}
+figcaption{margin-top:16px;font-size:.9rem;color:var(--ink-3);line-height:1.55;max-width:60ch}
+
+/* novelty */
+.claims{display:grid;gap:20px;grid-template-columns:repeat(auto-fit,minmax(270px,1fr))}
+.claim{background:var(--surface);border:1px solid var(--rule);border-top:3px solid var(--accent);border-radius:0 0 4px 4px;padding:24px;display:flex;flex-direction:column;gap:9px}
+.claim .k{font-family:"JetBrains Mono",monospace;font-size:.71rem;letter-spacing:.08em;text-transform:uppercase;color:var(--accent)}
+.claim p{font-size:.95rem;color:var(--ink-2);line-height:1.56}
+.claim b{color:var(--ink);font-weight:600}
+
+/* markets */
+.markets{display:grid;gap:18px;grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
+.market{background:var(--surface);border:1px solid var(--rule);border-radius:4px;padding:22px;display:flex;flex-direction:column;gap:9px}
+.market .sensors{font-family:"JetBrains Mono",monospace;font-size:.76rem;color:var(--ink-3);line-height:1.6}
+.market p{font-size:.93rem;color:var(--ink-2);line-height:1.55}
+.market.first{border-color:var(--accent);box-shadow:var(--shadow)}
+.market.first h3{color:var(--accent)}
+
+/* plain boxes */
+.plainbox{background:var(--surface-2);border-radius:4px;padding:22px 26px;display:flex;flex-direction:column;gap:10px}
+.plainbox p{color:var(--ink-2);font-size:.99rem;line-height:1.6}
+.plainbox b{color:var(--ink);font-weight:600}
+.note{background:var(--surface);border-left:3px solid var(--warn);padding:18px 22px;border-radius:0 4px 4px 0}
+.note p{color:var(--ink-2);font-size:.95rem;line-height:1.55}
+.note b{color:var(--ink);font-weight:600}
+
+:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+footer{padding:34px 0 62px;color:var(--ink-3);font-size:.86rem;border-top:1px solid var(--rule)}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+@media (max-width:640px){
+  body{font-size:16.5px}
+  .analogy{padding:26px 24px}
+  .stage{grid-template-columns:38px minmax(0,1fr);gap:16px}
+  .stage .num{width:38px;height:38px;font-size:.88rem}
+  .stage::before{left:18px;top:42px}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap mast">
+    <span class="badge">PS 18 · Spoofing Detection &amp; Sensor Fusion</span>
+    <h1>SensorSentry
+      <span class="sub">A trust layer for any vehicle that navigates by GPS</span>
+    </h1>
+    <p class="lead prose">Someone can lie to a drone, a truck or a ship about where it is — and it will believe them completely. We catch the lie by asking the vehicle's other sensors whether they agree, name which sensor is wrong, work out whether it is an attack or a breakdown, and keep the vehicle running safely on the sensors that are still honest.</p>
+  </div>
+</header>
+
+<dl class="facts">
+  <div><dt>Extra hardware</dt><dd>None</dd></div>
+  <div><dt>Fits vehicles</dt><dd>Already in service</dd></div>
+  <div><dt>Threats covered</dt><dd>All three in the PS</dd></div>
+  <div><dt>External AI calls</dt><dd>Zero in the loop</dd></div>
+  <div><dt>Runs on</dt><dd>One laptop</dd></div>
+</dl>
+
+<main>
+
+<!-- ============ WHAT THE PS ASKS ============ -->
+<section>
+  <div class="wrap">
+    <div class="sec-head prose">
+      <span class="eyebrow">Reading the problem statement properly</span>
+      <h2>PS 18 asks for three problems, not one</h2>
+      <p class="lead">Most teams will read it as "detect GPS spoofing" and stop there. The sentence actually names three separate things — and covering all three is what makes our system different.</p>
+    </div>
+    <div class="triple">
+      <article>
+        <span class="quote">"GPS spoofing"</span>
+        <h3>Someone fakes the signal</h3>
+        <p>An attacker broadcasts counterfeit satellite signals. The vehicle receives a completely fake position and has no way to object.</p>
+      </article>
+      <article>
+        <span class="quote">"False readings"</span>
+        <h3>A sensor is simply failing</h3>
+        <p>No attacker at all. A sensor is old, damaged, or drifting. It reports wrong numbers with total confidence, exactly like an attack would.</p>
+      </article>
+      <article>
+        <span class="quote">"Manipulated environmental inputs"</span>
+        <h3>Someone changes what the sensor feels</h3>
+        <p>The attacker never touches the radio. He changes the physical world around the sensor — a magnet near the compass, heat near a thermal sensor, air pressure near the altitude sensor.</p>
+      </article>
+    </div>
+    <div class="note" style="margin-top:22px">
+      <p><b>All three look identical at first — "something is wrong."</b> Telling them apart is the hard part, and it is the reason this is a real product rather than a script. A failing sensor means service the vehicle. An attack means someone is nearby targeting your fleet. Opposite responses, so guessing is not good enough.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ THE PROBLEM ============ -->
+<section>
+  <div class="wrap">
+    <div class="sec-head prose">
+      <span class="eyebrow">The problem in plain words</span>
+      <h2>GPS is a whisper, and anyone can shout over it</h2>
+    </div>
+    <div class="stack prose" style="margin-bottom:28px">
+      <p>A vehicle knows where it is by listening to satellites in space. Those satellites are extremely far away, so their signal arrives <b>very weak</b> — like someone whispering to you from across a field.</p>
+      <p>A person on the ground with a cheap radio box can simply <b>shout louder than the whisper</b>, pretending to be the satellite. The vehicle listens to the louder, clearer voice, and now believes a completely fake location.</p>
+    </div>
+    <div class="analogy">
+      <span class="eyebrow">Think of it this way</span>
+      <p class="big">Someone swapped all the road signs. You follow every sign perfectly — and still end up in the wrong city.</p>
+      <p class="after">You did not make a mistake. You trusted the sign, and the sign lied. That is exactly what happens to the vehicle. And the worst part: it has no idea. It is completely confident, and completely wrong.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ STORIES ============ -->
+<section>
+  <div class="wrap">
+    <div class="sec-head prose">
+      <span class="eyebrow">What it costs when it happens</span>
+      <h2>Two situations, the same attack</h2>
+    </div>
+    <div class="stories">
+      <div class="story">
+        <span class="who">Case A · Medicine delivery drone</span>
+        <h3>A hospital sends medicine to a village 12 km away</h3>
+        <ol>
+          <li>An attacker parks near the route and switches on his box.</li>
+          <li>The fake position starts only a few metres off. Nothing looks wrong.</li>
+          <li>The drone thinks it has drifted, so it steers to correct — which actually pushes it further off the real route.</li>
+          <li>Five minutes later it is 2 km from where it believes it is.</li>
+          <li>It lands in an empty field. The attacker collects it.</li>
+          <li>The flight log recorded the fake path, so the record shows a normal flight.</li>
+        </ol>
+        <p class="end">Drone gone. Medicine gone. No evidence for the company or the insurer.</p>
+      </div>
+      <div class="story">
+        <span class="who">Case B · Cargo truck</span>
+        <h3>A container truck on a long-distance route</h3>
+        <ol>
+          <li>A spoofer is placed in the cab, or beside the road.</li>
+          <li>The control room's screen keeps showing the truck moving normally along its route.</li>
+          <li>The real truck turns off and is unloaded somewhere else entirely.</li>
+          <li>Nobody is alerted, because nothing on the screen looks wrong.</li>
+          <li>Delivery records, toll records and driver-hours records are all now false.</li>
+          <li>The insurance claim has no trustworthy location history behind it.</li>
+        </ol>
+        <p class="end">Cargo stolen, and the tracking system was the thief's best tool.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ THE IDEA ============ -->
+<section>
+  <div class="wrap">
+    <div class="sec-head prose">
+      <span class="eyebrow">Our idea</span>
+      <h2>The vehicle has other senses. Nobody is asking them.</h2>
+      <p class="lead">GPS is not the only thing on board that knows something about where the vehicle is and what it is doing. Every one of these is already fitted — and none of them listens to a radio.</p>
+    </div>
+    <div class="senses">
+      <div>
+        <span class="label">Sense 1</span>
+        <h3>An inner ear</h3>
+        <p>Feels speed, turning and tilting. Like walking across a dark room with your eyes closed — you still roughly know where you have reached.</p>
+      </div>
+      <div>
+        <span class="label">Sense 2</span>
+        <h3>A pressure sensor</h3>
+        <p>Measures air pressure, which tells it how high it is. Nothing to do with satellites.</p>
+      </div>
+      <div>
+        <span class="label">Sense 3</span>
+        <h3>A compass</h3>
+        <p>Knows which direction the vehicle is facing, from the Earth's magnetic field.</p>
+      </div>
+      <div>
+        <span class="label">Sense 4 · road vehicles</span>
+        <h3>Wheels and the map</h3>
+        <p>The wheels count real distance travelled, and a truck must physically be on a road. Both are powerful checks a drone does not have.</p>
+      </div>
+    </div>
+    <div class="key" style="margin-top:26px">
+      <h3>The single question the software keeps asking</h3>
+      <p>GPS says <b>"you are here."</b> Do the other senses agree?</p>
+      <p>Normally they all agree. But when someone fakes the GPS, the GPS starts describing movements the vehicle never actually made. GPS claims <em>"you just moved 50 metres east"</em> — the inner ear felt no eastward movement, and the wheels turned barely at all. <b>That disagreement is the proof.</b></p>
+      <p>And this is why it works: an attacker can fake a radio signal arriving from far away. He <b>cannot fake what the vehicle physically feels inside its own body.</b> To beat us he would have to fool every sensor at once and keep them all perfectly consistent with each other — a far harder problem than shouting over a whisper.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ WORKFLOW ============ -->
+<section>
+  <div class="wrap">
+    <div class="sec-head prose">
+      <span class="eyebrow">The workflow</span>
+      <h2>Ten stages, running continuously</h2>
+      <p class="lead">Stages 5 and 6 are the ones nobody else builds. Everything before them exists to make those two possible.</p>
+    </div>
+    <div class="flow">
+
+      <div class="stage">
+        <span class="num">1</span>
+        <div class="body">
+          <div class="titleline"><h3>Take in the readings</h3></div>
+          <p>All sensor data arrives and is lined up in time, so every sensor's value for the same moment sits together.</p>
+          <p class="why">From here on, the system does not care whether the data came from our simulator or from a real vehicle. Same input, same behaviour.</p>
+        </div>
+      </div>
+
+      <div class="stage">
+        <span class="num">2</span>
+        <div class="body">
+          <div class="titleline"><h3>Check each sensor on its own</h3></div>
+          <p>Before comparing anything, ask of each sensor alone: is it frozen on one value? Is it jumping around more than it should? Is it reading something physically impossible? Has it gone silent?</p>
+          <p class="why">This step alone catches plainly broken sensors — the PS's "false readings" — before they can confuse anything downstream.</p>
+        </div>
+      </div>
+
+      <div class="stage">
+        <span class="num">3</span>
+        <div class="body">
+          <div class="titleline"><h3>Build an independent witness</h3></div>
+          <p>Using the inner ear, compass, pressure sensor and wheels — and <b>deliberately not GPS</b> — work out separately where the vehicle should be and which way it should be pointing.</p>
+          <p class="why">This is the second opinion the attacker cannot reach, because it is built entirely from what the vehicle physically felt.</p>
+        </div>
+      </div>
+
+      <div class="stage">
+        <span class="num">4</span>
+        <div class="body">
+          <div class="titleline"><h3>Cross-validate everything against everything</h3></div>
+          <p>Do not just compare GPS against one reference. Compare every pair of sensors that can be checked against each other, and score how well each pair agrees. You end up with a complete picture of who agrees with whom.</p>
+          <p class="why">"Cross-validates" is the word the problem statement uses. This stage is that word, built properly.</p>
+        </div>
+      </div>
+
+      <div class="stage star">
+        <span class="num">5</span>
+        <div class="body">
+          <div class="titleline"><h3>Find out which sensor is lying</h3><span class="newbadge">Unique</span></div>
+          <p>If one sensor disagrees with <b>every other sensor</b>, while all the others agree with each other, that one sensor is the guilty one. The rest form a majority against it.</p>
+          <p class="why">Most systems only say "something is wrong." Ours says "the compass is wrong, and here is the evidence." You cannot respond correctly until you know which sensor to stop trusting.</p>
+        </div>
+      </div>
+
+      <div class="stage star">
+        <span class="num">6</span>
+        <div class="body">
+          <div class="titleline"><h3>Decide: attack, or breakdown?</h3><span class="newbadge">Unique</span></div>
+          <p>The same symptom has three possible causes, and they leave different fingerprints. A failing sensor behaves randomly and incoherently. An attack behaves <em>smoothly and purposefully</em>, pulling steadily in one direction, because the attacker wants the vehicle somewhere specific. Environmental manipulation shows up in one physical measurement while everything else stays honest.</p>
+          <p class="why">This is the stage that covers all three problems the PS names, and it is the one that decides what happens next — service the vehicle, or raise the alarm on an attack in progress.</p>
+        </div>
+      </div>
+
+      <div class="stage">
+        <span class="num">7</span>
+        <div class="body">
+          <div class="titleline"><h3>Score the trust, slowly</h3></div>
+          <p>Each sensor gets a trust score that moves gradually — 100% to 70% to 20% — and the problem must persist before the system acts on it.</p>
+          <p class="why">A single odd reading during a sharp turn is not an attack. A system that cries wolf gets switched off by its operator within a week, and then protects nobody.</p>
+        </div>
+      </div>
+
+      <div class="stage">
+        <span class="num">8</span>
+        <div class="body">
+          <div class="titleline"><h3>Re-fuse, and keep going</h3></div>
+          <p>The untrusted sensor is dropped from the calculation and the honest ones carry the navigation. The vehicle holds its true route and reports honestly how fast its accuracy is decaying, so the operator knows how long it can continue safely.</p>
+          <p class="why">This is the "fusion" in the problem statement — a blend that changes according to trust, instead of a fixed recipe. Detecting an attack and then still following the fake position would be theatre.</p>
+        </div>
+      </div>
+
+      <div class="stage">
+        <span class="num">9</span>
+        <div class="body">
+          <div class="titleline"><h3>Record the evidence</h3></div>
+          <p>Store what happened: when it started, which sensor failed, which checks caught it, whether it was an attack or a fault, and the real path against the faked one.</p>
+          <p class="why">This is what the company, the insurer and any investigation actually need — and in both stories above, it was the missing piece.</p>
+        </div>
+      </div>
+
+      <div class="stage">
+        <span class="num">10</span>
+        <div class="body">
+          <div class="titleline"><h3>Show the operator</h3></div>
+          <p>A live map with both paths, a trust score for every sensor, and a plain statement of what is happening and what the system already did about it.</p>
+          <p class="why">The operator should not need to interpret numbers during an incident. The screen should say the answer.</p>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ============ CROSS-CHECK TABLE ============ -->
+<section>
+  <div class="wrap">
+    <div class="sec-head prose">
+      <span class="eyebrow">Inside stage 4</span>
+      <h2>What gets checked against what</h2>
+    </div>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Pair</th><th>What should match</th><th>Catches</th></tr></thead>
+        <tbody>
+          <tr><td><strong>GPS ↔ inner ear</strong></td><td>The distance and direction actually travelled</td><td>Slow spoofing attacks — the main one</td></tr>
+          <tr><td><strong>GPS ↔ wheels</strong></td><td>Distance covered on the ground</td><td>Any faked movement in a road vehicle</td></tr>
+          <tr><td><strong>GPS ↔ map</strong></td><td>The vehicle must be on a road</td><td>Positions in fields, water, or nowhere</td></tr>
+          <tr><td><strong>GPS altitude ↔ pressure</strong></td><td>Height above ground</td><td>Height faking, geofence defeat</td></tr>
+          <tr><td><strong>GPS direction ↔ compass</strong></td><td>Which way it is heading</td><td>Position pulled sideways</td></tr>
+          <tr><td><strong>Compass ↔ gyroscope</strong></td><td>A turn must appear on both</td><td>A magnet placed near the compass</td></tr>
+          <tr><td><strong>Pressure ↔ vertical motion</strong></td><td>Going up must be both felt and measured</td><td>Pressure interference near the sensor</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="plainbox" style="margin-top:22px">
+      <p><b>Why so many pairs?</b> Every pair is an independent witness. An attacker might defeat one check. Defeating all of them at the same time, while keeping them consistent with each other, is a completely different order of difficulty — and it is the reason this approach holds up.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ BLAME DIAGRAM ============ -->
+<section>
+  <div class="wrap">
+    <div class="sec-head prose">
+      <span class="eyebrow">Inside stage 5</span>
+      <h2>How the guilty sensor gives itself away</h2>
+    </div>
+    <figure>
+      <svg viewBox="0 0 640 372" role="img" aria-label="Diagram of five sensors arranged in a ring. The four non-GPS sensors are joined to each other by solid lines marked agree. GPS at the top is joined to all four by dashed lines marked disagree, showing that GPS is the sensor that is lying.">
+        <g stroke="var(--ok)" stroke-width="2">
+          <line x1="444" y1="140" x2="396" y2="285"></line>
+          <line x1="444" y1="140" x2="244" y2="285"></line>
+          <line x1="444" y1="140" x2="196" y2="140"></line>
+          <line x1="396" y1="285" x2="244" y2="285"></line>
+          <line x1="396" y1="285" x2="196" y2="140"></line>
+          <line x1="244" y1="285" x2="196" y2="140"></line>
+        </g>
+        <g stroke="var(--bad)" stroke-width="2.5" stroke-dasharray="7 5">
+          <line x1="320" y1="60" x2="444" y2="140"></line>
+          <line x1="320" y1="60" x2="396" y2="285"></line>
+          <line x1="320" y1="60" x2="244" y2="285"></line>
+          <line x1="320" y1="60" x2="196" y2="140"></line>
+        </g>
+
+        <g font-family="Chivo, sans-serif" font-size="13" font-weight="600" text-anchor="middle">
+          <rect x="258" y="41" width="124" height="38" rx="4" fill="var(--bad-soft)" stroke="var(--bad)" stroke-width="2"></rect>
+          <text x="320" y="65" fill="var(--bad)">GPS</text>
+
+          <rect x="390" y="121" width="118" height="38" rx="4" fill="var(--surface-2)" stroke="var(--rule-strong)" stroke-width="1.5"></rect>
+          <text x="449" y="145" fill="var(--ink)">Inner ear</text>
+
+          <rect x="337" y="266" width="118" height="38" rx="4" fill="var(--surface-2)" stroke="var(--rule-strong)" stroke-width="1.5"></rect>
+          <text x="396" y="290" fill="var(--ink)">Pressure</text>
+
+          <rect x="185" y="266" width="118" height="38" rx="4" fill="var(--surface-2)" stroke="var(--rule-strong)" stroke-width="1.5"></rect>
+          <text x="244" y="290" fill="var(--ink)">Compass</text>
+
+          <rect x="132" y="121" width="118" height="38" rx="4" fill="var(--surface-2)" stroke="var(--rule-strong)" stroke-width="1.5"></rect>
+          <text x="191" y="145" fill="var(--ink)">Wheels</text>
+        </g>
+
+        <g font-family="JetBrains Mono, monospace" font-size="11.5">
+          <line x1="30" y1="341" x2="62" y2="341" stroke="var(--ok)" stroke-width="2"></line>
+          <text x="70" y="345" fill="var(--ink-2)">agrees</text>
+          <line x1="150" y1="341" x2="182" y2="341" stroke="var(--bad)" stroke-width="2.5" stroke-dasharray="7 5"></line>
+          <text x="190" y="345" fill="var(--ink-2)">disagrees</text>
+        </g>
+        <text x="610" y="345" font-family="Chivo, sans-serif" font-size="13" font-weight="600" fill="var(--bad)" text-anchor="end">Four against one — GPS is the liar</text>
+      </svg>
+      <figcaption>Four sensors agree with each other and all four disagree with GPS. That pattern is the accusation. If instead the compass disagreed with everyone while GPS, the inner ear, the pressure sensor and the wheels agreed among themselves, the compass would be the guilty one — same method, different verdict.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<!-- ============ ATTACK VS FAULT ============ -->
+<section>
+  <div class="wrap">
+    <div class="sec-head prose">
+      <span class="eyebrow">Inside stage 6</span>
+      <h2>Three causes, three fingerprints, three responses</h2>
+    </div>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Cause</th><th>How it behaves</th><th>Telling sign</th><th>What we do</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><span class="chip fault">Sensor fault</span></td>
+            <td>Random, jumpy, incoherent. No pattern and no purpose.</td>
+            <td>The error goes in no particular direction, and often the sensor also fails its own health check.</td>
+            <td>Drop the sensor, keep operating, flag the vehicle for service.</td>
+          </tr>
+          <tr>
+            <td><span class="chip attack">Spoofing attack</span></td>
+            <td>Smooth, steady, purposeful. Pulls consistently in one direction.</td>
+            <td>Too clean to be a fault. Real hardware fails messily; an attacker wants a specific destination.</td>
+            <td>Alarm the operator, switch navigation, preserve evidence, check the rest of the fleet.</td>
+          </tr>
+          <tr>
+            <td><span class="chip env">Environment manipulated</span></td>
+            <td>One physical measurement shifts while everything else stays honest.</td>
+            <td>The compass swings but the gyroscope felt no turn — so the vehicle did not rotate, the magnetic field around it changed.</td>
+            <td>Ignore that sensor, warn that interference is present near the vehicle.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ============ NOVELTY ============ -->
+<section>
+  <div class="wrap">
+    <div class="sec-head prose">
+      <span class="eyebrow">Novelty</span>
+      <h2>Four things that make this ours</h2>
+      <p class="lead">The vulnerability is well known and the physics are public. Novelty is not in noticing that GPS can be faked — it is in where the defence sits and what it does once it fires.</p>
+    </div>
+    <div class="claims">
+      <div class="claim">
+        <span class="k">01 · No hardware</span>
+        <h3>Software into vehicles already in service</h3>
+        <p>Today the real protection is a <b>special antenna fitted to each vehicle</b>. It works, and almost nobody has it — because it means opening every unit and paying per unit. The hardware answer protects the fleet you buy next year. Ours installs into the fleet that is running <b>today</b>, using the sensors already on board.</p>
+      </div>
+      <div class="claim">
+        <span class="k">02 · Names the sensor</span>
+        <h3>A diagnosis, not an alarm</h3>
+        <p>Not "something is wrong" — <b>"the compass is lying, and the other four sensors agree that it is."</b> That difference decides whether the operator can act. An alarm with no subject leaves a human guessing during the worst possible minute.</p>
+      </div>
+      <div class="claim">
+        <span class="k">03 · Attack or fault</span>
+        <h3>The question everyone else skips</h3>
+        <p>Others stop at "anomaly detected." We answer <b>why</b>, because a broken sensor and a deliberate attack demand opposite responses. It is also the only way one system can cover all three problems PS 18 lists instead of just the first.</p>
+      </div>
+      <div class="claim">
+        <span class="k">04 · The fleet checks itself</span>
+        <h3>One vehicle can be fooled. A fleet cannot.</h3>
+        <p>If one vehicle reports a GPS problem, it might be a fault. If <b>five vehicles in the same area report it at the same moment</b>, it is certainly an attack — and you now know roughly where the attacker is standing. Detection gets stronger as the fleet grows.</p>
+      </div>
+    </div>
+    <div class="key" style="margin-top:26px">
+      <h3>Why claim 04 is also the business</h3>
+      <p>Every new customer makes the product better for every existing customer, because each vehicle added is another witness on the map. A competitor can copy our code in a month. They cannot copy the fleet.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ MARKETS ============ -->
+<section>
+  <div class="wrap">
+    <div class="sec-head prose">
+      <span class="eyebrow">Who it protects</span>
+      <h2>The same engine, different vehicles</h2>
+      <p class="lead">The logic does not care what it is fitted to. It needs a GPS reading and at least one independent way to check it — and every vehicle below already has both.</p>
+    </div>
+    <div class="markets">
+      <div class="market first">
+        <h3>Logistics fleets</h3>
+        <p class="sensors">GPS · motion · wheels · road map</p>
+        <p>Trucks are the <b>easiest to protect</b> — wheels count real distance, and a road map means a faked position in a field is caught instantly. The tracking box is already fitted, so we ship as a software update and nobody touches a vehicle.</p>
+        <p><b>Start here.</b> Cargo theft, false proof-of-delivery, toll and fuel fraud, driver-hours records, insurance evidence.</p>
+      </div>
+      <div class="market">
+        <h3>Delivery &amp; survey drones</h3>
+        <p class="sensors">GPS · motion · pressure · compass</p>
+        <p>Losing one drone is felt immediately and directly. Fast buyers, real budgets, and no procurement bureaucracy to fight through.</p>
+      </div>
+      <div class="market">
+        <h3>Agriculture drones</h3>
+        <p class="sensors">GPS · motion · pressure · compass</p>
+        <p>Large fleets spraying and surveying. Many units per customer, and every loss is felt on the balance sheet.</p>
+      </div>
+      <div class="market">
+        <h3>Later: shipping &amp; defence</h3>
+        <p class="sensors">GPS · motion · compass · speed log</p>
+        <p>Bigger contracts, but slow and standards-bound. Worth reaching, not worth starting with.</p>
+      </div>
+    </div>
+    <div class="plainbox" style="margin-top:24px">
+      <p><b>How we charge:</b> a yearly fee per vehicle protected, a subscription for the fleet dashboard, and a paid evidence tier — signed, replayable incident reports for insurers and investigators.</p>
+      <p><b>Why the numbers work:</b> once the software is built, adding one more vehicle costs us almost nothing. And the customer says yes easily, because losing a single vehicle or one container of cargo costs far more than a year of the software.</p>
+    </div>
+    <div class="note" style="margin-top:20px">
+      <p><b>Do not put market-size figures on your slides unless you have checked them yourself.</b> Judges do verify, and a wrong number costs more credibility than no number at all. The argument above is stronger anyway, because it is arithmetic they can do in their heads.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ BUILD ============ -->
+<section>
+  <div class="wrap">
+    <div class="sec-head prose">
+      <span class="eyebrow">What we build</span>
+      <h2>Three pieces, all software, one laptop</h2>
+      <p class="lead">No vehicle, no hardware, no internet needed. The problem statement says <em>simulated</em> sensor data — so the simulator is expected, not a shortcut.</p>
+    </div>
+    <div class="senses">
+      <div>
+        <span class="label">Piece 1 · our test tool</span>
+        <h3>The pretend vehicle</h3>
+        <p>Runs an imaginary route and produces the sensor readings a real vehicle would produce. We also use it to launch attacks, faults and interference whenever we want.</p>
+      </div>
+      <div>
+        <span class="label">Piece 2 · the product</span>
+        <h3>The detector</h3>
+        <p>Watches those readings and runs the ten stages — cross-checking, naming the guilty sensor, deciding attack or fault, and re-fusing what is left.</p>
+      </div>
+      <div>
+        <span class="label">Piece 3 · the surface</span>
+        <h3>The console</h3>
+        <p>A live map with both paths — where GPS claims the vehicle is, and where it really is — with every sensor's trust score falling as the attack proceeds.</p>
+      </div>
+    </div>
+    <div class="key" style="margin-top:26px">
+      <h3>The sentence to say in the demo</h3>
+      <p>The pretend vehicle is <b>our testing tool, not our product.</b> The detector accepts ordinary vehicle data, so pointing it at a real flight log or a real truck changes nothing about how it works.</p>
+    </div>
+    <div class="note" style="margin-top:22px">
+      <p><b>Build one scenario with no attack in it at all.</b> Fly a hard turn, or take a sharp corner, and show that no alarm fires. Judges will ask whether sudden manoeuvres fool the system, and proving it stays quiet when nothing is wrong is more convincing than catching one more attack.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PS MAPPING ============ -->
+<section>
+  <div class="wrap">
+    <div class="sec-head prose">
+      <span class="eyebrow">Coverage</span>
+      <h2>Every phrase in PS 18 has a home</h2>
+      <p class="lead">When a judge asks whether we solved the whole problem statement, point at this table.</p>
+    </div>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>The problem statement says</th><th>Where it lives</th><th>What it does</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">"sensor-fusion system"</td><td><strong>Stage 8</strong></td><td>A blend that adapts to trust instead of a fixed recipe</td></tr>
+          <tr><td class="mono">"cross-validates"</td><td><strong>Stage 4</strong></td><td>Every sensor pair scored against every other</td></tr>
+          <tr><td class="mono">"simulated sensor data"</td><td><strong>Stage 1</strong></td><td>The simulator feeds the pipeline</td></tr>
+          <tr><td class="mono">"GPS spoofing"</td><td><strong>Stages 3–6</strong></td><td>The independent witness exposes the fake position</td></tr>
+          <tr><td class="mono">"false readings"</td><td><strong>Stages 2, 5, 6</strong></td><td>Broken sensors found, named, and separated from attacks</td></tr>
+          <tr><td class="mono">"manipulated environmental inputs"</td><td><strong>Stage 6</strong></td><td>The compass-swings-without-turning fingerprint</td></tr>
+          <tr><td class="mono">"intelligent"</td><td><strong>Stages 5–7</strong></td><td>Reasoning about which sensor and why — not a threshold alarm</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ============ LLM ============ -->
+<section>
+  <div class="wrap">
+    <div class="sec-head prose">
+      <span class="eyebrow">Optional integration</span>
+      <h2>Where an AI model is allowed to sit</h2>
+    </div>
+    <div class="stack prose">
+      <p>Nothing in the detection path calls an AI model. This is physics and arithmetic, and an AI model is simply the wrong tool for it. Saying that plainly is stronger than apologising for a constraint.</p>
+      <p>It earns exactly one job: <b>turning an incident into a report a human reads.</b> The system already produces the facts — which sensor, which checks failed, by how much, when it started, attack or fault. Writing that up in clear sentences for the operator and the insurer is a genuine language task, and it happens after the event, not during it.</p>
+      <p>Put a visible switch on the console. Turn it off on stage and re-run the attack: detection is identical, only the written report disappears. That one gesture answers the question every judge is holding — <em>did you just call somebody's API?</em> — better than any slide can.</p>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <div class="wrap">SensorSentry · PS 18 — Spoofing Detection &amp; Sensor Fusion · team brief, 7 September 2026. Diagram is illustrative.</div>
+</footer>
+
+</body>
+</html>

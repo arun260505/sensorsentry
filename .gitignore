@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# Recorded runs and generated results
+recordings/
+evidence/
+*.log
+harness/out/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Screenshots and scratch
+*.png
+*.jpg
+*.jpeg
+!console/assets/*.png

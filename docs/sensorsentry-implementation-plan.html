@@ -1,0 +1,701 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SensorSentry Implementation Plan</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chivo:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Literata:opsz,wght@7..72,400;7..72,600&display=swap">
+<style>
+:root{
+  --ground:#F1F4F6;--surface:#FFFFFF;--surface-2:#E6EBEF;
+  --ink:#0F1C25;--ink-2:#4A5C69;--ink-3:#788894;
+  --rule:#D5DDE3;--rule-strong:#B3C0C9;
+  --accent:#0B5C7A;--accent-soft:#DBEBF1;
+  --ok:#2C7A55;--ok-soft:#DEEEE6;
+  --warn:#A66A0E;--warn-soft:#F6EBD8;
+  --bad:#AE3529;--bad-soft:#F7E4E1;
+  --shadow:0 1px 2px rgba(15,28,37,.06),0 12px 30px -18px rgba(15,28,37,.28);
+  --maxw:1080px;--prose:66ch;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --ground:#0A1219;--surface:#101C24;--surface-2:#17242D;
+    --ink:#E7EEF3;--ink-2:#A2B4C0;--ink-3:#758794;
+    --rule:#213039;--rule-strong:#33474F;
+    --accent:#4FAECC;--accent-soft:#0F2E3A;
+    --ok:#57B287;--ok-soft:#122C22;
+    --warn:#D5A051;--warn-soft:#2E2416;
+    --bad:#DF7264;--bad-soft:#31201D;
+    --shadow:0 1px 2px rgba(0,0,0,.45),0 14px 34px -18px rgba(0,0,0,.8);
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#0A1219;--surface:#101C24;--surface-2:#17242D;
+  --ink:#E7EEF3;--ink-2:#A2B4C0;--ink-3:#758794;
+  --rule:#213039;--rule-strong:#33474F;
+  --accent:#4FAECC;--accent-soft:#0F2E3A;
+  --ok:#57B287;--ok-soft:#122C22;
+  --warn:#D5A051;--warn-soft:#2E2416;
+  --bad:#DF7264;--bad-soft:#31201D;
+  --shadow:0 1px 2px rgba(0,0,0,.45),0 14px 34px -18px rgba(0,0,0,.8);
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--ground);color:var(--ink);font-family:Literata,Georgia,serif;font-size:17px;line-height:1.62}
+.wrap{max-width:var(--maxw);margin:0 auto;padding:0 26px}
+.prose{max-width:var(--prose)}
+h1,h2,h3,h4{font-family:Chivo,"Helvetica Neue",Arial,sans-serif;margin:0;text-wrap:balance}
+h1{font-size:clamp(2.2rem,5.4vw,3.3rem);font-weight:700;line-height:1.04;letter-spacing:-.026em}
+h2{font-size:clamp(1.5rem,3.2vw,1.95rem);font-weight:600;line-height:1.16;letter-spacing:-.017em}
+h3{font-size:1.06rem;font-weight:600;line-height:1.32;letter-spacing:-.005em}
+h4{font-size:.9rem;font-weight:600}
+p{margin:0}
+.lead{font-size:1.13rem;color:var(--ink-2);line-height:1.55}
+.eyebrow{font-family:Chivo,sans-serif;font-size:.69rem;font-weight:700;letter-spacing:.17em;text-transform:uppercase;color:var(--accent)}
+.mono{font-family:"JetBrains Mono",ui-monospace,Consolas,monospace}
+
+header{background:var(--surface);border-bottom:1px solid var(--rule);padding:54px 0 40px}
+.mast{display:flex;flex-direction:column;gap:18px}
+.badge{align-self:flex-start;font-family:Chivo,sans-serif;font-size:.69rem;font-weight:700;letter-spacing:.14em;text-transform:uppercase;background:var(--accent);color:var(--surface);padding:6px 13px;border-radius:3px}
+.facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));border-top:1px solid var(--rule);border-bottom:1px solid var(--rule);background:var(--surface-2)}
+.facts > div{padding:13px 26px;border-right:1px solid var(--rule)}
+.facts > div:last-child{border-right:0}
+.facts dt{font-family:Chivo,sans-serif;font-size:.63rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);margin:0 0 3px}
+.facts dd{margin:0;font-family:"JetBrains Mono",monospace;font-size:.87rem;font-weight:500;color:var(--ink)}
+
+section{padding:52px 0;border-bottom:1px solid var(--rule)}
+section:last-of-type{border-bottom:0}
+.sec-head{display:flex;flex-direction:column;gap:9px;margin-bottom:26px}
+.stack{display:flex;flex-direction:column;gap:16px}
+
+/* processes */
+.procs{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(230px,1fr))}
+.proc{background:var(--surface);border:1px solid var(--rule);border-radius:4px;padding:20px;display:flex;flex-direction:column;gap:8px}
+.proc.prod{border:2px solid var(--accent);box-shadow:var(--shadow)}
+.proc .tag{font-family:"JetBrains Mono",monospace;font-size:.69rem;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-3)}
+.proc.prod .tag{color:var(--accent)}
+.proc p{font-size:.9rem;color:var(--ink-2);line-height:1.5}
+.proc .port{font-family:"JetBrains Mono",monospace;font-size:.78rem;color:var(--accent);padding-top:6px;border-top:1px solid var(--rule);margin-top:2px}
+
+/* code */
+.code{background:var(--surface);border:1px solid var(--rule);border-radius:4px;overflow:hidden}
+.code .bar{background:var(--surface-2);padding:9px 16px;font-family:Chivo,sans-serif;font-size:.64rem;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-3);font-weight:700;border-bottom:1px solid var(--rule)}
+.code pre{margin:0;padding:18px;overflow-x:auto;font-family:"JetBrains Mono",monospace;font-size:.79rem;line-height:1.75;color:var(--ink-2)}
+.code pre b{color:var(--ink);font-weight:600}
+.code pre i{color:var(--ink-3);font-style:normal}
+
+/* phase cards */
+.phases{display:flex;flex-direction:column;gap:16px}
+.ph{background:var(--surface);border:1px solid var(--rule);border-radius:4px;overflow:hidden}
+.ph.gate{border:2px solid var(--accent);box-shadow:var(--shadow)}
+.ph > .head{display:flex;flex-wrap:wrap;align-items:center;gap:12px;padding:15px 20px;background:var(--surface-2);border-bottom:1px solid var(--rule)}
+.ph .pn{font-family:"JetBrains Mono",monospace;font-size:.79rem;font-weight:600;color:var(--accent)}
+.ph .eff{margin-left:auto;font-family:"JetBrains Mono",monospace;font-size:.76rem;color:var(--ink-3)}
+.ph .body{padding:20px;display:grid;gap:18px;grid-template-columns:1.15fr 1fr}
+@media (max-width:720px){.ph .body{grid-template-columns:1fr}}
+.ph .col{display:flex;flex-direction:column;gap:8px}
+.ph .lbl{font-family:Chivo,sans-serif;font-size:.62rem;font-weight:700;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-3)}
+.ph ul{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px}
+.ph li{font-size:.9rem;color:var(--ink-2);line-height:1.5}
+.ph .done{background:var(--ok-soft);border-left:3px solid var(--ok);padding:11px 15px;border-radius:0 3px 3px 0;font-size:.89rem;color:var(--ink-2);line-height:1.5}
+.ph .done b{color:var(--ok);font-family:Chivo,sans-serif;font-weight:700;font-size:.63rem;letter-spacing:.12em;text-transform:uppercase;display:block;margin-bottom:4px}
+.ph .us{font-family:"JetBrains Mono",monospace;font-size:.74rem;color:var(--ink-3);letter-spacing:.03em}
+.tagline{font-family:Chivo,sans-serif;font-size:.63rem;font-weight:700;letter-spacing:.11em;text-transform:uppercase;padding:3px 9px;border-radius:11px;background:var(--accent-soft);color:var(--accent)}
+
+/* tables */
+.tablewrap{overflow-x:auto;border:1px solid var(--rule);border-radius:4px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;min-width:560px;font-size:.9rem}
+th,td{text-align:left;padding:12px 15px;border-bottom:1px solid var(--rule);vertical-align:top}
+th{font-family:Chivo,sans-serif;font-size:.63rem;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-3);font-weight:700;background:var(--surface-2);white-space:nowrap}
+tr:last-child td{border-bottom:0}
+td{color:var(--ink-2)}
+td strong{color:var(--ink);font-weight:600;font-family:Chivo,sans-serif;font-size:.91rem}
+td.mono{font-family:"JetBrains Mono",monospace;font-size:.83rem;color:var(--ink);white-space:nowrap}
+
+/* decisions */
+.decs{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(270px,1fr))}
+.dec{background:var(--surface);border:1px solid var(--rule);border-top:3px solid var(--accent);border-radius:0 0 4px 4px;padding:19px;display:flex;flex-direction:column;gap:7px}
+.dec .k{font-family:"JetBrains Mono",monospace;font-size:.7rem;letter-spacing:.07em;text-transform:uppercase;color:var(--accent)}
+.dec p{font-size:.91rem;color:var(--ink-2);line-height:1.55}
+.dec b{color:var(--ink);font-weight:600}
+
+.plainbox{background:var(--surface-2);border-radius:4px;padding:21px 25px;display:flex;flex-direction:column;gap:9px}
+.plainbox p{color:var(--ink-2);font-size:.96rem;line-height:1.58}
+.plainbox b{color:var(--ink);font-weight:600}
+.note{background:var(--surface);border-left:3px solid var(--warn);padding:17px 21px;border-radius:0 4px 4px 0}
+.note p{color:var(--ink-2);font-size:.93rem;line-height:1.55}
+.note b{color:var(--ink);font-weight:600}
+
+:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+footer{padding:32px 0 60px;color:var(--ink-3);font-size:.85rem;border-top:1px solid var(--rule)}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap mast">
+    <span class="badge">PS 18 · Implementation plan</span>
+    <h1>How we build it</h1>
+    <p class="lead prose">Three processes, one data contract, twelve phases. Ordered so that each phase makes the next one testable, and so the project is demonstrable long before it is finished.</p>
+  </div>
+</header>
+
+<dl class="facts">
+  <div><dt>Processes</dt><dd>3 + browser</dd></div>
+  <div><dt>Language</dt><dd>Python + JS</dd></div>
+  <div><dt>Phases</dt><dd>12</dd></div>
+  <div><dt>Demoable from</dt><dd>Phase 3</dd></div>
+  <div><dt>Internet needed</dt><dd>Never</dd></div>
+</dl>
+
+<main>
+
+<!-- PRINCIPLES -->
+<section>
+  <div class="wrap">
+    <div class="sec-head prose">
+      <span class="eyebrow">Ground rules</span>
+      <h2>Four rules that shape every decision below</h2>
+    </div>
+    <div class="decs">
+      <div class="dec">
+        <span class="k">Rule 01</span>
+        <h3>Separate processes, always</h3>
+        <p>The simulator and the detector are different programs talking over a socket. This is not tidiness — it is the <b>proof the demo is not hardcoded</b>, and it must be true from the first commit.</p>
+      </div>
+      <div class="dec">
+        <span class="k">Rule 02</span>
+        <h3>The detector never sees truth</h3>
+        <p>No true position, no attack flag, ever crosses the socket. If a debugging shortcut needs it, the shortcut is wrong. <b>Enforce this in code review.</b></p>
+      </div>
+      <div class="dec">
+        <span class="k">Rule 03</span>
+        <h3>Demoable beats complete</h3>
+        <p>Get the two-path map on screen at Phase 3, before any clever detection exists. From then on every phase improves a working demo instead of risking one.</p>
+      </div>
+      <div class="dec">
+        <span class="k">Rule 04</span>
+        <h3>Zero false alarms is a gate</h3>
+        <p>The clean-run scenario must finish with no alerts after every single phase. If that number ever leaves zero, <b>stop and fix it</b> before adding anything new.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ARCHITECTURE -->
+<section>
+  <div class="wrap">
+    <div class="sec-head prose">
+      <span class="eyebrow">Architecture</span>
+      <h2>Three processes and a browser</h2>
+    </div>
+    <div class="procs">
+      <div class="proc">
+        <span class="tag">Program A · test tool</span>
+        <h3>Simulator</h3>
+        <p>Vehicle motion model, sensor models, attack and fault injectors, scenario runner. Knows the truth and never shares it.</p>
+        <span class="port">publishes UDP :5005</span>
+      </div>
+      <div class="proc prod">
+        <span class="tag">Program B · the product</span>
+        <h3>Detector</h3>
+        <p>The ten workflow stages. One instance per vehicle. Consumes sensor frames, emits verdicts, trust scores and incidents.</p>
+        <span class="port">listens :5005 · serves WS :8080</span>
+      </div>
+      <div class="proc">
+        <span class="tag">Program C · fleet layer</span>
+        <h3>Fleet service</h3>
+        <p>Collects incidents from all detectors, clusters them in time and space, computes the attack zone, issues advisories.</p>
+        <span class="port">listens :8090 · serves WS :8081</span>
+      </div>
+      <div class="proc">
+        <span class="tag">Browser</span>
+        <h3>Console &amp; phone app</h3>
+        <p>One responsive web page. Wide screen becomes the operator console; phone screen becomes the fleet app. Same code.</p>
+        <span class="port">connects WS :8080 / :8081</span>
+      </div>
+    </div>
+    <div class="note" style="margin-top:20px">
+      <p><b>The console must not use online map tiles.</b> You will be running with wifi off to prove the system is self-contained, and tiles would fail silently and leave a blank map. Draw the map yourself on a canvas — a grid, the route, the two paths, the attack zone. It also looks more like an instrument and less like a website.</p>
+    </div>
+  </div>
+</section>
+
+<!-- DATA CONTRACT -->
+<section>
+  <div class="wrap">
+    <div class="sec-head prose">
+      <span class="eyebrow">The interface</span>
+      <h2>Fix the data contract on day one</h2>
+      <p class="lead">This is the only thing two people must agree on before working separately. Write it, freeze it, and both sides can be built in parallel.</p>
+    </div>
+    <div class="code">
+      <div class="bar">Sensor frame · simulator → detector · 20 Hz · JSON over UDP</div>
+<pre>{
+  "<b>vehicle_id</b>":     "TRUCK-42",
+  "<b>t</b>":              1725701482.40,      <i># seconds, monotonic</i>
+  "<b>seq</b>":            8492,               <i># detects dropped frames</i>
+
+  "<b>gnss</b>":   { "lat": 11.024891, "lon": 76.955203,
+               "alt": 412.7, "fix": 3, "sats": 11,
+               "hdop": 0.9, "cn0_mean": 41.2 },
+
+  "<b>imu</b>":    { "ax": 0.184, "ay": -0.037, "az": 9.792,
+               "gx": 0.002, "gy": 0.011, "gz": -0.004 },
+
+  "<b>baro</b>":   { "pressure_hpa": 964.31 },
+  "<b>mag</b>":    { "heading_deg": 71.4 },
+  "<b>odom</b>":   { "wheel_speed_mps": 13.8 }   <i># null for drones</i>
+}
+
+<i># NOT PRESENT, EVER:
+#   true_lat / true_lon / true_alt
+#   attack_active / attack_type / attack_strength
+#   anything the detector could use to cheat</i></pre>
+    </div>
+    <div class="code" style="margin-top:16px">
+      <div class="bar">Verdict frame · detector → console · 20 Hz · JSON over WebSocket</div>
+<pre>{
+  "vehicle_id": "TRUCK-42", "t": 1725701482.40,
+  "<b>estimate</b>":  { "lat": ..., "lon": ..., "alt": ...,
+                  "source": "gnss_fused" | "dead_reckoning",
+                  "error_budget_m": 4.2 },
+  "<b>trust</b>":     { "gnss": 0.18, "imu": 0.97, "baro": 0.95,
+                  "mag": 0.96, "odom": 0.98 },
+  "<b>pairs</b>":     [ { "a": "gnss", "b": "imu",
+                    "residual": 142.8, "score": 0.04 }, ... ],
+  "<b>verdict</b>":   { "state": "ALERT",
+                  "guilty": "gnss",
+                  "cause": "attack",
+                  "confidence": 0.91,
+                  "evidence": [ "gnss-imu 142.8 m for 17 s",
+                                "gnss-odom 138.1 m for 17 s" ],
+                  "action": "Stop trusting GPS. Navigating on
+                             motion sensors. Alert control room." }
+}</pre>
+    </div>
+  </div>
+</section>
+
+<!-- REPO -->
+<section>
+  <div class="wrap">
+    <div class="sec-head prose">
+      <span class="eyebrow">Layout</span>
+      <h2>Repository structure</h2>
+    </div>
+    <div class="code">
+      <div class="bar">sensorsentry/</div>
+<pre>simulator/
+  vehicle.py          <i># motion model: drone and truck profiles</i>
+  sensors.py          <i># gnss, imu, baro, mag, odom — noise + drift</i>
+  attacks.py          <i># walk-off, teleport, alt-only, replay, magnet</i>
+  faults.py           <i># stuck, noisy, dropout, bias</i>
+  scenarios.py        <i># the six named scenarios</i>
+  publisher.py        <i># builds the frame, sends UDP</i>
+  control.py          <i># start / inject / reset HTTP endpoint</i>
+
+detector/
+  ingest.py           <i># stage 1 — receive, time-align, buffer</i>
+  health.py           <i># stage 2 — per-sensor sanity</i>
+  deadreckon.py       <i># stage 3 — the GPS-free witness</i>
+  crossvalidate.py    <i># stage 4 — every pair scored</i>
+  blame.py            <i># stage 5 — who disagrees with everyone  ★</i>
+  classify.py         <i># stage 6 — attack / fault / interference ★</i>
+  trust.py            <i># stage 7 — scores with hysteresis</i>
+  fusion.py           <i># stage 8 — re-weight, fall back</i>
+  evidence.py         <i># stage 9 — append-only incident record</i>
+  server.py           <i># stage 10 — WebSocket out</i>
+  profiles.py         <i># which sensors and pairs per vehicle type</i>
+
+fleet/
+  collector.py        <i># receives incidents from detectors</i>
+  cluster.py          <i># group by time + space          ★</i>
+  zone.py             <i># estimate attack area           ★</i>
+  advisory.py         <i># warn vehicles heading in       ★</i>
+
+console/
+  index.html          <i># one responsive page: console + phone</i>
+  map.js  panels.js  ws.js  style.css
+
+harness/
+  sweep.py            <i># runs the strength ladder, writes the table</i>
+  regress.py          <i># clean runs — asserts zero false alarms</i>
+  results.py          <i># builds the results card</i>
+
+<i>★ = the parts that make this project different. Protect them.</i></pre>
+    </div>
+  </div>
+</section>
+
+<!-- PHASES -->
+<section>
+  <div class="wrap">
+    <div class="sec-head prose">
+      <span class="eyebrow">The build</span>
+      <h2>Twelve phases</h2>
+      <p class="lead">Effort figures assume a small team working in parallel where the phase allows it. The two outlined phases are gates — do not pass them until their condition is met.</p>
+    </div>
+    <div class="phases">
+
+      <div class="ph">
+        <div class="head"><span class="pn">PHASE 0</span><h3>Foundations</h3><span class="eff">~2 h</span></div>
+        <div class="body">
+          <div class="col">
+            <span class="lbl">Build</span>
+            <ul>
+              <li>Repo, folders, Python env with NumPy only.</li>
+              <li>Freeze the sensor-frame and verdict-frame schemas above.</li>
+              <li>UDP publisher and receiver sending dummy frames.</li>
+              <li>Decide local-metres coordinate frame; lat/lon only for display.</li>
+            </ul>
+          </div>
+          <div class="col">
+            <div class="done"><b>Done when</b>Two separate processes are running and one is receiving frames from the other. Nothing else.</div>
+            <span class="us">Enables everything</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="ph">
+        <div class="head"><span class="pn">PHASE 1</span><h3>Simulator — clean flight</h3><span class="eff">~6 h</span></div>
+        <div class="body">
+          <div class="col">
+            <span class="lbl">Build</span>
+            <ul>
+              <li>Vehicle motion along a scripted route with turns, climbs, braking.</li>
+              <li>Sensor models with honest noise: GNSS jitter, IMU bias random-walk, baro noise, mag noise, wheel slip.</li>
+              <li>Publish frames at 20 Hz, GNSS updating at 5 Hz.</li>
+              <li>Seed the RNG per run and record the seed in the frame stream header.</li>
+            </ul>
+          </div>
+          <div class="col">
+            <div class="done"><b>Done when</b>A clean flight runs for three minutes and the frames look plausible when printed. IMU drift is realistic — this is what sets your detection limit later, so do not make it too good.</div>
+            <span class="us">US-20</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="ph">
+        <div class="head"><span class="pn">PHASE 2</span><h3>Detector — witness and residual</h3><span class="eff">~8 h</span></div>
+        <div class="body">
+          <div class="col">
+            <span class="lbl">Build</span>
+            <ul>
+              <li><span class="mono">ingest.py</span> — buffer and time-align incoming frames.</li>
+              <li><span class="mono">health.py</span> — stuck, out-of-range, dropout, excess-noise checks.</li>
+              <li><span class="mono">deadreckon.py</span> — integrate IMU into an independent position with a growing uncertainty.</li>
+              <li>Compute the GNSS-versus-dead-reckoning residual and print it.</li>
+            </ul>
+          </div>
+          <div class="col">
+            <div class="done"><b>Done when</b>On a clean run the residual stays small and bounded. Code review confirms GNSS is not read anywhere in the dead-reckoning path.</div>
+            <span class="us">US-01, US-02</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="ph gate">
+        <div class="head"><span class="pn">PHASE 3</span><h3>Console v1 — the two-path map</h3><span class="tagline">Gate</span><span class="eff">~6 h</span></div>
+        <div class="body">
+          <div class="col">
+            <span class="lbl">Build</span>
+            <ul>
+              <li>WebSocket server in the detector; browser client.</li>
+              <li>Canvas map: grid, route, GNSS-claimed path, dead-reckoned path.</li>
+              <li>Raw-feed panel showing incoming frames — the anti-hardcoding proof.</li>
+              <li>Start and Reset controls wired to the simulator's control endpoint.</li>
+            </ul>
+          </div>
+          <div class="col">
+            <div class="done"><b>Gate — do not pass until</b>You can show this to somebody and they understand it without explanation. From here the project is demonstrable; everything after improves a working demo rather than gambling on one.</div>
+            <span class="us">US-11, US-21</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="ph">
+        <div class="head"><span class="pn">PHASE 4</span><h3>Attacks and full cross-validation</h3><span class="eff">~8 h</span></div>
+        <div class="body">
+          <div class="col">
+            <span class="lbl">Build</span>
+            <ul>
+              <li>Attack injectors: walk-off with adjustable speed and direction, teleport, altitude-only, replay.</li>
+              <li>Fault injectors: stuck value, excess noise, dropout, slow bias.</li>
+              <li><span class="mono">crossvalidate.py</span> — score every applicable sensor pair, not just GNSS against one reference.</li>
+              <li>Strength slider and direction control in the console.</li>
+            </ul>
+          </div>
+          <div class="col">
+            <div class="done"><b>Done when</b>Launching a walk-off attack visibly separates the two paths on the map, and every pair's score is visible in the console.</div>
+            <span class="us">US-03, US-21</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="ph gate">
+        <div class="head"><span class="pn">PHASE 5</span><h3>Blame assignment ★</h3><span class="tagline">Unique</span><span class="eff">~6 h</span></div>
+        <div class="body">
+          <div class="col">
+            <span class="lbl">Build</span>
+            <ul>
+              <li><span class="mono">blame.py</span> — for each sensor, count disagreements; confirm the remainder still agree among themselves.</li>
+              <li>Name the guilty sensor and attach the failing pairs as evidence.</li>
+              <li>Return <span class="mono">cannot_isolate</span> when two or more sensors conflict — never guess.</li>
+            </ul>
+          </div>
+          <div class="col">
+            <div class="done"><b>Done when</b>Spoofing GNSS names GNSS. Injecting a magnet fault names the magnetometer. Injecting both at once returns <span class="mono">cannot_isolate</span> rather than a wrong answer.</div>
+            <span class="us">US-04</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="ph gate">
+        <div class="head"><span class="pn">PHASE 6</span><h3>Attack-or-fault classification ★</h3><span class="tagline">Unique</span><span class="eff">~6 h</span></div>
+        <div class="body">
+          <div class="col">
+            <span class="lbl">Build</span>
+            <ul>
+              <li><span class="mono">classify.py</span> — measure directional consistency of the error over a window.</li>
+              <li>Steady and one-directional → attack. Erratic, or paired with a health failure → fault.</li>
+              <li>One measurement shifting while motion sensors report nothing → interference.</li>
+              <li>Below the confidence threshold → <span class="mono">unclassified</span>, defaulting to the safe response.</li>
+            </ul>
+          </div>
+          <div class="col">
+            <div class="done"><b>Done when</b>The spoofing scenario reports <span class="mono">attack</span>, the broken-sensor scenario reports <span class="mono">fault</span>, and the magnet scenario reports <span class="mono">interference</span> — with no scenario-specific code anywhere in the classifier.</div>
+            <span class="us">US-05</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="ph">
+        <div class="head"><span class="pn">PHASE 7</span><h3>Trust, hysteresis and fallback</h3><span class="eff">~6 h</span></div>
+        <div class="body">
+          <div class="col">
+            <span class="lbl">Build</span>
+            <ul>
+              <li><span class="mono">trust.py</span> — 0-to-1 score per sensor, moving smoothly, requiring N sustained cycles to downgrade and M to recover.</li>
+              <li><span class="mono">fusion.py</span> — drop the untrusted sensor, keep navigating, publish a growing error budget.</li>
+              <li>Verdict panel and trust bars in the console.</li>
+            </ul>
+          </div>
+          <div class="col">
+            <div class="done"><b>Done when</b>The hard-manoeuvre clean run finishes with <b>zero alerts</b>, and the spoofing run keeps the vehicle on its true route after detection.</div>
+            <span class="us">US-06, US-07, US-08, US-10</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="ph">
+        <div class="head"><span class="pn">PHASE 8</span><h3>Truck profile</h3><span class="eff">~4 h</span></div>
+        <div class="body">
+          <div class="col">
+            <span class="lbl">Build</span>
+            <ul>
+              <li><span class="mono">profiles.py</span> — sensor set and applicable pairs per vehicle type.</li>
+              <li>Truck motion model, wheel odometry, and a simple road-network check.</li>
+              <li>The cargo-theft scenario: fake path stays on the road, real path stops behind.</li>
+            </ul>
+          </div>
+          <div class="col">
+            <div class="done"><b>Done when</b>Switching to the truck profile requires no code change in the detector — only configuration. This is the claim you make on stage, so it must be literally true.</div>
+            <span class="us">US-23</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="ph">
+        <div class="head"><span class="pn">PHASE 9</span><h3>Fleet service and attack zone ★</h3><span class="tagline">Unique</span><span class="eff">~6 h</span></div>
+        <div class="body">
+          <div class="col">
+            <span class="lbl">Build</span>
+            <ul>
+              <li>Run four detector instances against four simulated vehicles.</li>
+              <li><span class="mono">cluster.py</span> — group incidents inside one radius and time window.</li>
+              <li><span class="mono">zone.py</span> — estimate centre and radius; draw it on the fleet map.</li>
+              <li><span class="mono">advisory.py</span> — warn vehicles whose route crosses the zone.</li>
+            </ul>
+          </div>
+          <div class="col">
+            <div class="done"><b>Done when</b>Four vehicles attacked together produce one event and one circle. One vehicle alone produces no circle.</div>
+            <span class="us">US-14, US-15, US-16</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="ph">
+        <div class="head"><span class="pn">PHASE 10</span><h3>Evidence, phone view, report</h3><span class="eff">~6 h</span></div>
+        <div class="body">
+          <div class="col">
+            <span class="lbl">Build</span>
+            <ul>
+              <li><span class="mono">evidence.py</span> — append-only incident record including the RNG seed, so replay is exact.</li>
+              <li>Replay mode: feed a stored record back through the detector.</li>
+              <li>Responsive layout so the same page works as the phone app; push the alert to it.</li>
+              <li>Optional written report, behind a visible on/off switch.</li>
+            </ul>
+          </div>
+          <div class="col">
+            <div class="done"><b>Done when</b>Replaying a stored incident reproduces the identical verdict, and turning the report switch off changes nothing about detection.</div>
+            <span class="us">US-17, US-18, US-19, US-12, US-13</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="ph">
+        <div class="head"><span class="pn">PHASE 11</span><h3>Measurement harness</h3><span class="eff">~5 h</span></div>
+        <div class="body">
+          <div class="col">
+            <span class="lbl">Build</span>
+            <ul>
+              <li><span class="mono">sweep.py</span> — run attack strengths from 5 m/s down to 0.1, ten runs each, record detection time.</li>
+              <li><span class="mono">regress.py</span> — twenty clean runs, assert zero alerts.</li>
+              <li><span class="mono">results.py</span> — produce the results card and the strength ladder.</li>
+            </ul>
+          </div>
+          <div class="col">
+            <div class="done"><b>Done when</b>The failure-boundary table in the demo playbook is filled with <b>your measured numbers</b>, not the placeholders. This harness produces both your results card and your credibility.</div>
+            <span class="us">US-22</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="ph">
+        <div class="head"><span class="pn">PHASE 12</span><h3>Hardening and rehearsal</h3><span class="eff">~5 h</span></div>
+        <div class="body">
+          <div class="col">
+            <span class="lbl">Build</span>
+            <ul>
+              <li>Reset must return to clean state in under two seconds, from any state.</li>
+              <li>Scenario switching must never require a restart.</li>
+              <li>Larger fonts, higher contrast, tested from across a room.</li>
+              <li>Five full run-throughs out loud, including the spoken lines.</li>
+            </ul>
+          </div>
+          <div class="col">
+            <div class="done"><b>Done when</b>Someone outside the team can run the whole demo from the playbook without asking you a question.</div>
+            <span class="us">All</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- TECHNICAL DECISIONS -->
+<section>
+  <div class="wrap">
+    <div class="sec-head prose">
+      <span class="eyebrow">Decisions</span>
+      <h2>Choices to make once, now</h2>
+      <p class="lead">Each of these is cheap to decide today and expensive to change in Phase 9.</p>
+    </div>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Decision</th><th>Choose</th><th>Why</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Coordinate frame</strong></td><td class="mono">local metres (ENU)</td><td>All maths in metres; convert to lat/lon only for display. Avoids a whole class of bugs.</td></tr>
+          <tr><td><strong>Frame rate</strong></td><td class="mono">20 Hz frames, GNSS at 5 Hz</td><td>Realistic — GNSS genuinely updates slower than the IMU, and the gap matters to detection.</td></tr>
+          <tr><td><strong>Transport</strong></td><td class="mono">UDP for sensors</td><td>Mirrors real telemetry, and dropped frames become a case you must handle — which is realistic.</td></tr>
+          <tr><td><strong>Randomness</strong></td><td class="mono">new seed each run, stored</td><td>Different detection time every run (your proof), but exact reproducibility on replay.</td></tr>
+          <tr><td><strong>Map rendering</strong></td><td class="mono">own canvas, no tiles</td><td>Works with wifi off. Looks like an instrument rather than a website.</td></tr>
+          <tr><td><strong>Dependencies</strong></td><td class="mono">NumPy, nothing more</td><td>No install surprises on demo day, and "we wrote the maths" survives scrutiny.</td></tr>
+          <tr><td><strong>Filter</strong></td><td class="mono">start simple, upgrade later</td><td>Plain residual comparison first. Add the Kalman innovation test in Phase 11 if time allows — it is credibility, not capability.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- TEAM -->
+<section>
+  <div class="wrap">
+    <div class="sec-head prose">
+      <span class="eyebrow">Splitting the work</span>
+      <h2>Who builds what</h2>
+      <p class="lead">The frozen data contract from Phase 0 is what lets these run in parallel. Nobody waits on anybody after that.</p>
+    </div>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Person</th><th>Owns</th><th>Phases</th></tr></thead>
+        <tbody>
+          <tr><td><strong>A — Simulator</strong></td><td>Vehicle model, sensor models, attacks, faults, scenarios, control endpoint</td><td class="mono">1, 4, 8</td></tr>
+          <tr><td><strong>B — Detector core</strong></td><td>Ingest, health, dead reckoning, cross-validation, fusion</td><td class="mono">2, 4, 7</td></tr>
+          <tr><td><strong>C — The unique parts</strong></td><td>Blame assignment, classification, trust, fleet clustering and zone</td><td class="mono">5, 6, 9</td></tr>
+          <tr><td><strong>D — Console</strong></td><td>Map, panels, controls, phone layout, evidence view</td><td class="mono">3, 10</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="plainbox" style="margin-top:20px">
+      <p><b>With three people:</b> C's work goes to B, and A picks up the harness. <b>With two:</b> one takes simulator plus console, the other takes the whole detector — and cut Phase 9 to two vehicles instead of four.</p>
+      <p><b>Whoever owns Phase 5 and 6 should be your strongest person.</b> Those two phases are the entire difference between this project and a threshold alarm.</p>
+    </div>
+  </div>
+</section>
+
+<!-- RISKS -->
+<section>
+  <div class="wrap">
+    <div class="sec-head prose">
+      <span class="eyebrow">Risks</span>
+      <h2>What actually goes wrong, and the counter</h2>
+    </div>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Risk</th><th>Sign it is happening</th><th>Counter</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Simulator perfectionism</strong></td><td>Day two and you are still tuning aerodynamics</td><td>The simulator only has to be plausible. Time-box Phase 1 and move on.</td></tr>
+          <tr><td><strong>Threshold tuning until it works</strong></td><td>Numbers changed to make the attack trip</td><td>Run <span class="mono">regress.py</span> after every change. Zero false alarms is a gate, not a goal.</td></tr>
+          <tr><td><strong>Pretty console, empty engine</strong></td><td>Phase 3 grows into two days</td><td>Phase 3 ships ugly. Polish only in Phase 12.</td></tr>
+          <tr><td><strong>Truth leaking into the detector</strong></td><td>A debugging field quietly added to the frame</td><td>Assert on the schema at ingest. Reject unknown fields loudly.</td></tr>
+          <tr><td><strong>Fleet phase runs out of time</strong></td><td>Phase 9 not started with a day left</td><td>Cut to two vehicles. The circle is what matters, not the count.</td></tr>
+          <tr><td><strong>Never rehearsed</strong></td><td>First full run-through is in the room</td><td>Phase 12 is not optional. Book the time before you need it.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="note" style="margin-top:22px">
+      <p><b>The single most likely failure of this project is spending the time on the simulator instead of the detector.</b> The simulator is visible, satisfying and endless. The detector is where every mark is. If you are behind, cut simulator realism first — never cut Phase 5, 6 or 12.</p>
+    </div>
+  </div>
+</section>
+
+<!-- DONE -->
+<section>
+  <div class="wrap">
+    <div class="sec-head prose">
+      <span class="eyebrow">Definition of done</span>
+      <h2>The project is finished when all of this is true</h2>
+    </div>
+    <div class="stack prose">
+      <ul style="margin:0;padding-left:20px;display:flex;flex-direction:column;gap:10px">
+        <li>Two processes run separately, and no truth crosses the socket.</li>
+        <li>Six scenarios are selectable and start within two seconds.</li>
+        <li>A clean run with hard manoeuvres produces <b>zero alerts</b>.</li>
+        <li>Spoofing is caught, GNSS is named, and the vehicle stays on its true route.</li>
+        <li>A broken sensor is reported as a fault, not an attack.</li>
+        <li>The magnet scenario is reported as interference.</li>
+        <li>The truck profile runs with configuration changes only.</li>
+        <li>Four attacked vehicles produce one event and one attack zone.</li>
+        <li>An incident replays to an identical verdict.</li>
+        <li>The strength ladder is filled with measured numbers, including the point where you fail.</li>
+        <li>The report switch turns off with no effect on detection.</li>
+        <li>The whole demo has been run end to end, out loud, five times.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <div class="wrap">SensorSentry · PS 18 — Spoofing Detection &amp; Sensor Fusion · implementation plan, 7 September 2026. Effort figures are estimates for a small team; measure and adjust after Phase 2.</div>
+</footer>
+
+</body>
+</html>

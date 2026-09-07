@@ -1,0 +1,514 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How SensorSentry Works</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Karla:wght@400;500;600;700&display=swap">
+<style>
+:root{
+  --ground:#FBFAF7;
+  --surface:#FFFFFF;
+  --surface-2:#F1EFE9;
+  --ink:#1E1F24;
+  --ink-2:#54565F;
+  --ink-3:#83858E;
+  --rule:#E1DED6;
+  --rule-strong:#C7C3B8;
+  --accent:#1F6F5C;
+  --accent-soft:#E1EEE9;
+  --bad:#B4402F;
+  --bad-soft:#F7E7E3;
+  --good:#1F6F5C;
+  --shadow:0 1px 2px rgba(30,31,36,.05),0 10px 30px -16px rgba(30,31,36,.22);
+  --maxw:940px;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --ground:#15161A;
+    --surface:#1D1F24;
+    --surface-2:#24262C;
+    --ink:#F0EEE9;
+    --ink-2:#B0B2BA;
+    --ink-3:#83858E;
+    --rule:#2E3138;
+    --rule-strong:#414550;
+    --accent:#5FBFA3;
+    --accent-soft:#1A302B;
+    --bad:#E4796A;
+    --bad-soft:#33201D;
+    --good:#5FBFA3;
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 12px 32px -16px rgba(0,0,0,.75);
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#15161A;
+  --surface:#1D1F24;
+  --surface-2:#24262C;
+  --ink:#F0EEE9;
+  --ink-2:#B0B2BA;
+  --ink-3:#83858E;
+  --rule:#2E3138;
+  --rule-strong:#414550;
+  --accent:#5FBFA3;
+  --accent-soft:#1A302B;
+  --bad:#E4796A;
+  --bad-soft:#33201D;
+  --good:#5FBFA3;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 12px 32px -16px rgba(0,0,0,.75);
+}
+
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0;
+  background:var(--ground);
+  color:var(--ink);
+  font-family:Karla,"Helvetica Neue",Arial,sans-serif;
+  font-size:18px;
+  line-height:1.66;
+}
+.wrap{max-width:var(--maxw);margin:0 auto;padding:0 26px}
+.narrow{max-width:62ch}
+
+h1,h2,h3{font-family:Fraunces,Georgia,serif;font-weight:600;margin:0;text-wrap:balance}
+h1{font-size:clamp(2.3rem,6vw,3.5rem);line-height:1.05;letter-spacing:-.02em}
+h2{font-size:clamp(1.6rem,3.4vw,2.1rem);line-height:1.15;letter-spacing:-.014em}
+h3{font-size:1.15rem;line-height:1.3;letter-spacing:-.008em}
+p{margin:0}
+.lead{font-size:1.2rem;color:var(--ink-2);line-height:1.55}
+.eyebrow{
+  font-family:Karla,sans-serif;
+  font-size:.72rem;
+  font-weight:700;
+  letter-spacing:.17em;
+  text-transform:uppercase;
+  color:var(--accent);
+}
+
+header{padding:64px 0 46px;background:var(--surface);border-bottom:1px solid var(--rule)}
+.head-inner{display:flex;flex-direction:column;gap:20px}
+.badge{
+  align-self:flex-start;
+  font-size:.74rem;font-weight:700;letter-spacing:.13em;text-transform:uppercase;
+  background:var(--accent);color:var(--ground);
+  padding:6px 13px;border-radius:3px;
+}
+
+section{padding:56px 0;border-bottom:1px solid var(--rule)}
+section:last-of-type{border-bottom:0}
+.sec-head{display:flex;flex-direction:column;gap:10px;margin-bottom:30px}
+.stack{display:flex;flex-direction:column;gap:20px}
+
+/* the analogy — the one warm, loud moment */
+.analogy{
+  background:var(--accent);
+  color:var(--ground);
+  padding:38px 40px;
+  border-radius:4px;
+  display:flex;flex-direction:column;gap:14px;
+  box-shadow:var(--shadow);
+}
+.analogy .eyebrow{color:var(--ground);opacity:.72}
+.analogy p{font-family:Fraunces,Georgia,serif;font-size:1.42rem;line-height:1.42;max-width:34ch}
+.analogy .after{font-family:Karla,sans-serif;font-size:1rem;opacity:.86;max-width:52ch;line-height:1.55}
+
+/* story: what happens on attack day */
+.story{display:flex;flex-direction:column;border-top:1px solid var(--rule)}
+.beat{
+  display:grid;grid-template-columns:52px minmax(0,1fr);gap:22px;
+  padding:20px 0;border-bottom:1px solid var(--rule);align-items:start;
+}
+.beat .n{
+  font-family:Fraunces,serif;font-size:1.35rem;color:var(--rule-strong);
+  line-height:1;padding-top:5px;font-variant-numeric:tabular-nums;
+}
+.beat .body{display:flex;flex-direction:column;gap:5px}
+.beat .body p{color:var(--ink-2);font-size:.99rem}
+.beat.hit .n{color:var(--bad)}
+.beat.hit h3{color:var(--bad)}
+.beat.save .n{color:var(--good)}
+.beat.save h3{color:var(--good)}
+
+/* senses */
+.senses{display:grid;gap:1px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));background:var(--rule);border:1px solid var(--rule);border-radius:4px;overflow:hidden}
+.senses > div{background:var(--surface);padding:24px;display:flex;flex-direction:column;gap:8px}
+.senses .label{font-size:.72rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3)}
+.senses p{font-size:.95rem;color:var(--ink-2);line-height:1.55}
+
+/* with / without comparison */
+.compare{display:grid;gap:22px;grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
+.col{border-radius:4px;padding:26px;display:flex;flex-direction:column;gap:14px}
+.col.without{background:var(--bad-soft);border:1px solid color-mix(in srgb,var(--bad) 28%,transparent)}
+.col.with{background:var(--accent-soft);border:1px solid color-mix(in srgb,var(--accent) 32%,transparent)}
+.col h3{font-size:1.05rem}
+.col.without h3{color:var(--bad)}
+.col.with h3{color:var(--accent)}
+.col ul{margin:0;padding-left:19px;display:flex;flex-direction:column;gap:9px}
+.col li{font-size:.96rem;color:var(--ink-2);line-height:1.5}
+.col .outcome{
+  font-family:Fraunces,serif;font-size:1.06rem;line-height:1.4;
+  padding-top:14px;border-top:1px solid color-mix(in srgb,var(--ink) 14%,transparent);
+}
+.col.without .outcome{color:var(--bad)}
+.col.with .outcome{color:var(--accent)}
+
+/* how it runs — 7 steps */
+.steps{display:flex;flex-direction:column;gap:2px}
+.step{
+  display:grid;grid-template-columns:44px minmax(0,1fr);gap:20px;
+  background:var(--surface);border:1px solid var(--rule);border-radius:4px;
+  padding:20px 22px;align-items:start;
+}
+.step .k{
+  width:30px;height:30px;border-radius:50%;
+  background:var(--accent);color:var(--ground);
+  display:flex;align-items:center;justify-content:center;
+  font-weight:700;font-size:.9rem;font-family:Karla,sans-serif;
+}
+.step .body{display:flex;flex-direction:column;gap:5px}
+.step p{font-size:.99rem;color:var(--ink-2);line-height:1.55}
+.step .plain{
+  font-size:.9rem;color:var(--ink-3);font-style:italic;
+}
+
+/* key insight callout */
+.key{
+  border-left:4px solid var(--accent);
+  background:var(--surface);
+  padding:24px 28px;
+  display:flex;flex-direction:column;gap:9px;
+  border-radius:0 4px 4px 0;
+  box-shadow:var(--shadow);
+}
+.key h3{color:var(--accent)}
+.key p{color:var(--ink-2);font-size:1.02rem;line-height:1.6}
+
+/* money */
+.money{display:grid;gap:18px;grid-template-columns:repeat(auto-fit,minmax(230px,1fr))}
+.money > div{background:var(--surface);border:1px solid var(--rule);border-radius:4px;padding:22px;display:flex;flex-direction:column;gap:8px}
+.money .who{font-family:Fraunces,serif;font-size:1.08rem}
+.money p{font-size:.94rem;color:var(--ink-2);line-height:1.55}
+
+.plainbox{background:var(--surface-2);border-radius:4px;padding:24px 26px;display:flex;flex-direction:column;gap:10px}
+.plainbox p{color:var(--ink-2);font-size:1rem;line-height:1.6}
+.plainbox b{color:var(--ink)}
+
+:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+footer{padding:36px 0 64px;color:var(--ink-3);font-size:.88rem;border-top:1px solid var(--rule)}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+@media (max-width:640px){
+  body{font-size:17px}
+  .beat{grid-template-columns:38px minmax(0,1fr);gap:16px}
+  .analogy{padding:28px 24px}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap head-inner">
+    <span class="badge">PS 18 · Explained simply</span>
+    <h1>Someone can lie to a drone about where it is</h1>
+    <p class="lead narrow">And the drone will believe it completely. This page explains the problem, the attack, and what we are building — in plain language, with no technical background needed.</p>
+  </div>
+</header>
+
+<main>
+
+<!-- PROBLEM -->
+<section>
+  <div class="wrap">
+    <div class="sec-head narrow">
+      <span class="eyebrow">The problem</span>
+      <h2>GPS is a whisper, and anyone can shout over it</h2>
+    </div>
+    <div class="stack narrow" style="margin-bottom:30px">
+      <p>A drone knows where it is by listening to satellites in space. Those satellites are extremely far away, so their signal arrives <b>very weak</b> — like someone whispering to you from across a field.</p>
+      <p>A person on the ground with a cheap radio box can simply <b>shout louder than the whisper</b>, pretending to be the satellite. The drone listens to the louder, clearer voice — and now believes a completely fake location.</p>
+    </div>
+    <div class="analogy">
+      <span class="eyebrow">Think of it this way</span>
+      <p>Someone swapped all the road signs. You follow every sign perfectly — and still end up in the wrong city.</p>
+      <p class="after">You did not make a mistake. You trusted the sign, and the sign lied. That is exactly what happens to the drone. And the worst part: it has no idea. It is completely confident, and completely wrong.</p>
+    </div>
+  </div>
+</section>
+
+<!-- THE STORY -->
+<section>
+  <div class="wrap">
+    <div class="sec-head narrow">
+      <span class="eyebrow">A real situation</span>
+      <h2>A hospital sends medicine by drone to a village 12 km away</h2>
+      <p class="lead">On a normal day: it takes off, follows GPS, delivers, comes back. Here is what happens on the day someone attacks it.</p>
+    </div>
+    <div class="story">
+      <div class="beat">
+        <span class="n">1</span>
+        <div class="body">
+          <h3>The attacker switches on his box</h3>
+          <p>He parks somewhere near the flight route. No special skill needed — the equipment is cheap and easy to get now.</p>
+        </div>
+      </div>
+      <div class="beat">
+        <span class="n">2</span>
+        <div class="body">
+          <h3>The lie starts small</h3>
+          <p>The fake location is only a few metres off at first. Nothing looks wrong. No alarm anywhere. This is deliberate — a small lie is not noticed.</p>
+        </div>
+      </div>
+      <div class="beat">
+        <span class="n">3</span>
+        <div class="body">
+          <h3>The drone corrects itself — in the wrong direction</h3>
+          <p>The drone thinks it has drifted off route, so it steers to fix it. But because the position is fake, "correcting" actually pushes it further away from the real route. The drone is now flying itself off course, and doing it carefully.</p>
+        </div>
+      </div>
+      <div class="beat hit">
+        <span class="n">4</span>
+        <div class="body">
+          <h3>Five minutes later it is 2 km away</h3>
+          <p>It is far from where it believes it is. It still reports everything as normal, because as far as it knows, everything <em>is</em> normal.</p>
+        </div>
+      </div>
+      <div class="beat hit">
+        <span class="n">5</span>
+        <div class="body">
+          <h3>It lands in an empty field</h3>
+          <p>The attacker walks over and picks it up. The medicine is gone. The drone is gone — lakhs of rupees.</p>
+        </div>
+      </div>
+      <div class="beat hit">
+        <span class="n">6</span>
+        <div class="body">
+          <h3>Nobody can even prove what happened</h3>
+          <p>The flight log recorded the <b>fake</b> positions too. So the record shows a normal flight. No evidence for the company, and none for the insurance claim.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- THE IDEA -->
+<section>
+  <div class="wrap">
+    <div class="sec-head narrow">
+      <span class="eyebrow">Our idea</span>
+      <h2>The drone has other senses. We just ask them.</h2>
+      <p class="lead">GPS is not the drone's only way of knowing things about itself. It already carries three more sensors — and nobody is using them to check whether GPS is telling the truth.</p>
+    </div>
+    <div class="senses">
+      <div>
+        <span class="label">Sense 1</span>
+        <h3>An inner ear</h3>
+        <p>Feels speed, turning and tilting. Like walking across a dark room with your eyes closed — you still roughly know where you have reached.</p>
+      </div>
+      <div>
+        <span class="label">Sense 2</span>
+        <h3>A pressure sensor</h3>
+        <p>Measures air pressure, which tells it how high it is. Completely separate from GPS, and it does not listen to any radio.</p>
+      </div>
+      <div>
+        <span class="label">Sense 3</span>
+        <h3>A compass</h3>
+        <p>Knows which direction the drone is facing, using the Earth's magnetic field.</p>
+      </div>
+    </div>
+    <div class="key" style="margin-top:28px">
+      <h3>The one question our software keeps asking</h3>
+      <p>GPS says <b>"you are here."</b> Do the other senses agree?</p>
+      <p>Normally they all agree. But when someone fakes the GPS, the GPS starts describing movements the drone never actually felt. GPS claims <em>"you just moved 50 metres east"</em> — but the inner ear felt no eastward movement at all. <b>That disagreement is the proof.</b></p>
+      <p>And this is the part that makes it work: an attacker can fake a radio signal coming from far away. He <b>cannot fake what the drone physically feels inside its own body.</b> To beat us, he would have to fool every sensor at once, in a way that stays perfectly consistent — which is a far harder problem than shouting over a whisper.</p>
+    </div>
+  </div>
+</section>
+
+<!-- 7 STEPS -->
+<section>
+  <div class="wrap">
+    <div class="sec-head narrow">
+      <span class="eyebrow">How our software runs</span>
+      <h2>Seven steps, repeating every second</h2>
+    </div>
+    <div class="steps">
+      <div class="step">
+        <span class="k">1</span>
+        <div class="body">
+          <h3>Listen</h3>
+          <p>Read all the sensors continuously — GPS, inner ear, pressure, compass.</p>
+        </div>
+      </div>
+      <div class="step">
+        <span class="k">2</span>
+        <div class="body">
+          <h3>Predict</h3>
+          <p>Using <em>only</em> the inner ear, work out separately: "based on what I actually felt, where should I be right now?"</p>
+          <p class="plain">This is a second opinion that owes nothing to GPS.</p>
+        </div>
+      </div>
+      <div class="step">
+        <span class="k">3</span>
+        <div class="body">
+          <h3>Compare</h3>
+          <p>Measure the gap between the place GPS claims, and the place the drone's own body says.</p>
+        </div>
+      </div>
+      <div class="step">
+        <span class="k">4</span>
+        <div class="body">
+          <h3>Judge</h3>
+          <p>A small gap is completely normal — no sensor is perfect. But a gap that keeps <b>growing steadily</b> in one direction is not noise. That is someone pulling.</p>
+        </div>
+      </div>
+      <div class="step">
+        <span class="k">5</span>
+        <div class="body">
+          <h3>Score</h3>
+          <p>Give GPS a trust score that moves gradually: 100% → 70% → 20%. Not a simple yes or no.</p>
+          <p class="plain">A yes/no alarm that fires wrongly mid-flight is as dangerous as the attack itself.</p>
+        </div>
+      </div>
+      <div class="step">
+        <span class="k">6</span>
+        <div class="body">
+          <h3>React</h3>
+          <p>When trust falls too low, <b>stop believing GPS.</b> Navigate using the inner ear instead, hold the correct route, and alert the operator that the drone is under attack.</p>
+        </div>
+      </div>
+      <div class="step">
+        <span class="k">7</span>
+        <div class="body">
+          <h3>Record</h3>
+          <p>Save the proof of what happened — when it started, how it was detected, what the real path was. For the company, and for the insurance claim.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- COMPARISON -->
+<section>
+  <div class="wrap">
+    <div class="sec-head narrow">
+      <span class="eyebrow">The difference</span>
+      <h2>Same attack, same drone, one has our software</h2>
+    </div>
+    <div class="compare">
+      <div class="col without">
+        <h3>Without SensorSentry</h3>
+        <ul>
+          <li>GPS lies, and is believed completely</li>
+          <li>Drone steers itself off the route</li>
+          <li>No warning at any point</li>
+          <li>Lands where the attacker wants it</li>
+          <li>Flight log stores the fake path</li>
+        </ul>
+        <p class="outcome">Drone lost. Cargo lost. No evidence of what happened.</p>
+      </div>
+      <div class="col with">
+        <h3>With SensorSentry</h3>
+        <ul>
+          <li>GPS lies — and the other senses disagree</li>
+          <li>The gap is spotted within seconds, while the error is still small</li>
+          <li>GPS is switched off; the drone flies on its own senses</li>
+          <li>Operator is warned immediately</li>
+          <li>The real path and the attack are both recorded</li>
+        </ul>
+        <p class="outcome">Drone completes the delivery, or returns safely. With proof.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- NOVELTY -->
+<section>
+  <div class="wrap">
+    <div class="sec-head narrow">
+      <span class="eyebrow">Why this is new</span>
+      <h2>Everyone else solves it by selling you hardware</h2>
+    </div>
+    <div class="stack narrow">
+      <p>Today, the real protection against this attack is a <b>special antenna</b> fitted to each drone. It works — and almost nobody has it.</p>
+      <p>Because it means opening up every single drone, fitting a new part, and paying for that part on every unit. So in practice, the lakhs of drones already flying today stay completely unprotected. The hardware answer protects the fleet you buy <em>next year</em>.</p>
+    </div>
+    <div class="plainbox narrow" style="margin-top:26px">
+      <p><b>Ours is only software.</b> You install it into drones that are already flying. Nothing to buy, nothing to open, nothing to fit. It works using the sensors the drone already has.</p>
+      <p>That single difference is the whole business. It is why a company can exist around this, and it is the first sentence to say to a judge.</p>
+    </div>
+  </div>
+</section>
+
+<!-- MONEY -->
+<section>
+  <div class="wrap">
+    <div class="sec-head narrow">
+      <span class="eyebrow">The business</span>
+      <h2>Who pays for this, and why they say yes</h2>
+    </div>
+    <div class="money">
+      <div>
+        <span class="who">Delivery drone companies</span>
+        <p>Medicine, food, e-commerce. Losing one drone hurts them immediately and directly.</p>
+      </div>
+      <div>
+        <span class="who">Agriculture drone operators</span>
+        <p>Large fleets spraying and surveying fields. They own many units and feel every loss.</p>
+      </div>
+      <div>
+        <span class="who">Logistics &amp; transport fleets</span>
+        <p>A faked location breaks proof-of-delivery and vehicle tracking, not just navigation.</p>
+      </div>
+      <div>
+        <span class="who">Later: shipping &amp; defence</span>
+        <p>Bigger money, but slower to buy. Not where you start.</p>
+      </div>
+    </div>
+    <div class="plainbox" style="margin-top:26px">
+      <p><b>How we charge:</b> a yearly fee for each drone protected, plus a fee for the monitoring dashboard the fleet manager uses.</p>
+      <p><b>Why the numbers work:</b> once the software is built, adding one more drone costs us almost nothing. And the customer says yes easily, because losing a single drone costs far more than a year of the software.</p>
+    </div>
+  </div>
+</section>
+
+<!-- WHAT WE BUILD -->
+<section>
+  <div class="wrap">
+    <div class="sec-head narrow">
+      <span class="eyebrow">For the hackathon</span>
+      <h2>What we actually build in two days</h2>
+      <p class="lead">No drone. No hardware. Everything runs on one laptop — which is the point, not a shortcut.</p>
+    </div>
+    <div class="senses">
+      <div>
+        <span class="label">Piece 1</span>
+        <h3>A pretend drone</h3>
+        <p>A program that flies an imaginary route and produces the sensor readings a real drone would produce. We also use it to launch the attack, whenever we want.</p>
+      </div>
+      <div>
+        <span class="label">Piece 2</span>
+        <h3>The detector</h3>
+        <p>The actual product. It watches those readings and works out whether the GPS is lying — the seven steps above.</p>
+      </div>
+      <div>
+        <span class="label">Piece 3</span>
+        <h3>The screen</h3>
+        <p>A live map showing two paths — where GPS claims the drone is, and where it really is — with the trust score falling as the attack proceeds.</p>
+      </div>
+    </div>
+    <div class="plainbox narrow" style="margin-top:26px">
+      <p><b>One sentence to say in the demo:</b> the pretend drone is only our testing tool, not our product. The detector accepts normal drone data, so pointing it at a real flight changes nothing about how it works.</p>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <div class="wrap">SensorSentry · PS 18 — Spoofing Detection &amp; Sensor Fusion · plain-language explainer, 7 September 2026. A separate technical brief covers the detection methods and build plan.</div>
+</footer>
+
+</body>
+</html>

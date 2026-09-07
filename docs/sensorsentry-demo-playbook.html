@@ -1,0 +1,576 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SensorSentry Demo Playbook</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chivo:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Literata:opsz,wght@7..72,400;7..72,600&display=swap">
+<style>
+:root{
+  --ground:#F1F4F6;--surface:#FFFFFF;--surface-2:#E6EBEF;
+  --ink:#0F1C25;--ink-2:#4A5C69;--ink-3:#788894;
+  --rule:#D5DDE3;--rule-strong:#B3C0C9;
+  --accent:#0B5C7A;--accent-soft:#DBEBF1;
+  --ok:#2C7A55;--ok-soft:#DEEEE6;
+  --warn:#A66A0E;--warn-soft:#F6EBD8;
+  --bad:#AE3529;--bad-soft:#F7E4E1;
+  --shadow:0 1px 2px rgba(15,28,37,.06),0 12px 30px -18px rgba(15,28,37,.28);
+  --maxw:1080px;--prose:66ch;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --ground:#0A1219;--surface:#101C24;--surface-2:#17242D;
+    --ink:#E7EEF3;--ink-2:#A2B4C0;--ink-3:#758794;
+    --rule:#213039;--rule-strong:#33474F;
+    --accent:#4FAECC;--accent-soft:#0F2E3A;
+    --ok:#57B287;--ok-soft:#122C22;
+    --warn:#D5A051;--warn-soft:#2E2416;
+    --bad:#DF7264;--bad-soft:#31201D;
+    --shadow:0 1px 2px rgba(0,0,0,.45),0 14px 34px -18px rgba(0,0,0,.8);
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#0A1219;--surface:#101C24;--surface-2:#17242D;
+  --ink:#E7EEF3;--ink-2:#A2B4C0;--ink-3:#758794;
+  --rule:#213039;--rule-strong:#33474F;
+  --accent:#4FAECC;--accent-soft:#0F2E3A;
+  --ok:#57B287;--ok-soft:#122C22;
+  --warn:#D5A051;--warn-soft:#2E2416;
+  --bad:#DF7264;--bad-soft:#31201D;
+  --shadow:0 1px 2px rgba(0,0,0,.45),0 14px 34px -18px rgba(0,0,0,.8);
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--ground);color:var(--ink);font-family:Literata,Georgia,serif;font-size:17px;line-height:1.62}
+.wrap{max-width:var(--maxw);margin:0 auto;padding:0 26px}
+.prose{max-width:var(--prose)}
+h1,h2,h3,h4{font-family:Chivo,"Helvetica Neue",Arial,sans-serif;margin:0;text-wrap:balance}
+h1{font-size:clamp(2.2rem,5.4vw,3.3rem);font-weight:700;line-height:1.04;letter-spacing:-.026em}
+h2{font-size:clamp(1.5rem,3.2vw,1.95rem);font-weight:600;line-height:1.16;letter-spacing:-.017em}
+h3{font-size:1.06rem;font-weight:600;line-height:1.32;letter-spacing:-.005em}
+p{margin:0}
+.lead{font-size:1.13rem;color:var(--ink-2);line-height:1.55}
+.eyebrow{font-family:Chivo,sans-serif;font-size:.69rem;font-weight:700;letter-spacing:.17em;text-transform:uppercase;color:var(--accent)}
+.mono{font-family:"JetBrains Mono",ui-monospace,Consolas,monospace}
+
+header{background:var(--surface);border-bottom:1px solid var(--rule);padding:54px 0 40px}
+.mast{display:flex;flex-direction:column;gap:18px}
+.badge{align-self:flex-start;font-family:Chivo,sans-serif;font-size:.69rem;font-weight:700;letter-spacing:.14em;text-transform:uppercase;background:var(--accent);color:var(--surface);padding:6px 13px;border-radius:3px}
+.facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));border-top:1px solid var(--rule);border-bottom:1px solid var(--rule);background:var(--surface-2)}
+.facts > div{padding:13px 26px;border-right:1px solid var(--rule)}
+.facts > div:last-child{border-right:0}
+.facts dt{font-family:Chivo,sans-serif;font-size:.63rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);margin:0 0 3px}
+.facts dd{margin:0;font-family:"JetBrains Mono",monospace;font-size:.87rem;font-weight:500;color:var(--ink)}
+
+section{padding:52px 0;border-bottom:1px solid var(--rule)}
+section:last-of-type{border-bottom:0}
+.sec-head{display:flex;flex-direction:column;gap:9px;margin-bottom:26px}
+.stack{display:flex;flex-direction:column;gap:16px}
+
+/* two-program diagram */
+.arch{display:grid;gap:16px;grid-template-columns:1fr auto 1fr;align-items:stretch}
+.box{background:var(--surface);border:2px solid var(--rule-strong);border-radius:4px;padding:22px;display:flex;flex-direction:column;gap:8px}
+.box.prod{border-color:var(--accent);box-shadow:var(--shadow)}
+.box .tag{font-family:"JetBrains Mono",monospace;font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3)}
+.box.prod .tag{color:var(--accent)}
+.box p{font-size:.91rem;color:var(--ink-2);line-height:1.5}
+.pipe{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:0 4px}
+.pipe .arrow{font-family:"JetBrains Mono",monospace;font-size:1.5rem;color:var(--accent);line-height:1}
+.pipe .cap{font-family:Chivo,sans-serif;font-size:.62rem;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);text-align:center}
+@media (max-width:760px){.arch{grid-template-columns:1fr}.pipe{flex-direction:row;padding:4px 0}.pipe .arrow{transform:rotate(90deg)}}
+
+.feed{background:var(--surface);border:1px solid var(--rule);border-radius:4px;overflow:hidden;margin-top:18px}
+.feed .bar{background:var(--surface-2);padding:9px 16px;font-family:Chivo,sans-serif;font-size:.65rem;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-3);font-weight:700;border-bottom:1px solid var(--rule)}
+.feed pre{margin:0;padding:18px;overflow-x:auto;font-family:"JetBrains Mono",monospace;font-size:.8rem;line-height:1.85;color:var(--ink-2)}
+.feed .miss{display:flex;gap:10px;padding:14px 18px;border-top:1px solid var(--rule);background:var(--bad-soft);font-family:Chivo,sans-serif;font-size:.88rem;color:var(--bad);font-weight:600;align-items:baseline}
+
+/* screen layout */
+.screen{border:2px solid var(--rule-strong);border-radius:6px;overflow:hidden;background:var(--surface-2)}
+.screen .row{display:grid;gap:2px;background:var(--rule)}
+.screen .row.top{grid-template-columns:2fr 1fr}
+.screen .row.bot{grid-template-columns:1fr 1fr 1fr}
+.pane{background:var(--surface);padding:18px;min-height:96px;display:flex;flex-direction:column;gap:5px}
+.pane .t{font-family:Chivo,sans-serif;font-size:.76rem;font-weight:700;letter-spacing:.04em;color:var(--ink)}
+.pane .d{font-size:.85rem;color:var(--ink-3);line-height:1.45}
+.pane.key{background:var(--accent-soft)}
+.pane.key .t{color:var(--accent)}
+@media (max-width:700px){.screen .row.top,.screen .row.bot{grid-template-columns:1fr}}
+
+/* run of show */
+.run{display:flex;flex-direction:column;gap:20px}
+.scene{background:var(--surface);border:1px solid var(--rule);border-radius:4px;overflow:hidden}
+.scene > .head{display:flex;flex-wrap:wrap;align-items:center;gap:11px;padding:15px 20px;background:var(--surface-2);border-bottom:1px solid var(--rule)}
+.scene .clock{font-family:"JetBrains Mono",monospace;font-size:.8rem;font-weight:600;color:var(--accent)}
+.scene .goal{margin-left:auto;font-family:Chivo,sans-serif;font-size:.8rem;color:var(--ink-3)}
+.scene .body{padding:20px;display:flex;flex-direction:column;gap:14px}
+.beat{display:grid;grid-template-columns:58px minmax(0,1fr);gap:16px;align-items:start}
+.beat .lbl{font-family:Chivo,sans-serif;font-size:.63rem;font-weight:700;letter-spacing:.13em;text-transform:uppercase;padding-top:4px}
+.beat.do .lbl{color:var(--ink-3)}
+.beat.say .lbl{color:var(--accent)}
+.beat.do p{font-size:.95rem;color:var(--ink-2);line-height:1.55}
+.beat.say .quote{
+  font-family:Literata,Georgia,serif;font-size:1rem;line-height:1.6;color:var(--ink);
+  border-left:3px solid var(--accent);padding:2px 0 2px 16px;
+}
+.beat.say .quote + .quote{margin-top:10px}
+@media (max-width:640px){.beat{grid-template-columns:1fr;gap:6px}.beat .lbl{padding-top:0}}
+.cut{background:var(--warn-soft);border-left:3px solid var(--warn);padding:14px 18px;border-radius:0 4px 4px 0;font-family:Chivo,sans-serif;font-size:.86rem;color:var(--warn);font-weight:600}
+
+/* proofs */
+.proofs{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
+.proof{background:var(--surface);border:1px solid var(--rule);border-top:3px solid var(--accent);border-radius:0 0 4px 4px;padding:20px;display:flex;flex-direction:column;gap:8px}
+.proof .k{font-family:"JetBrains Mono",monospace;font-size:.71rem;letter-spacing:.07em;text-transform:uppercase;color:var(--accent)}
+.proof p{font-size:.93rem;color:var(--ink-2);line-height:1.55}
+.proof b{color:var(--ink);font-weight:600}
+
+/* tables */
+.tablewrap{overflow-x:auto;border:1px solid var(--rule);border-radius:4px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;min-width:520px;font-size:.91rem}
+th,td{text-align:left;padding:12px 15px;border-bottom:1px solid var(--rule);vertical-align:top}
+th{font-family:Chivo,sans-serif;font-size:.63rem;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-3);font-weight:700;background:var(--surface-2);white-space:nowrap}
+tr:last-child td{border-bottom:0}
+td{color:var(--ink-2)}
+td strong{color:var(--ink);font-weight:600}
+td.mono{font-family:"JetBrains Mono",monospace;font-size:.85rem;color:var(--ink);white-space:nowrap}
+td.fail{color:var(--bad);font-weight:600}
+
+/* Q&A */
+.qa{display:flex;flex-direction:column;gap:16px}
+.q{background:var(--surface);border:1px solid var(--rule);border-radius:4px;padding:20px 22px;display:flex;flex-direction:column;gap:11px}
+.q .ask{font-family:Chivo,sans-serif;font-weight:600;font-size:1rem;color:var(--ink)}
+.q .ask::before{content:"Q  ";font-family:"JetBrains Mono",monospace;color:var(--ink-3);font-weight:500}
+.q .ans{border-left:3px solid var(--ok);padding-left:16px;font-size:.97rem;line-height:1.6;color:var(--ink-2)}
+.q .ans b{color:var(--ink);font-weight:600}
+
+/* checklist */
+.check{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(250px,1fr))}
+.check > div{background:var(--surface);border:1px solid var(--rule);border-radius:4px;padding:18px 20px;display:flex;flex-direction:column;gap:9px}
+.check h3{font-size:.95rem}
+.check ul{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px}
+.check li{font-size:.9rem;color:var(--ink-2);line-height:1.5}
+
+.plainbox{background:var(--surface-2);border-radius:4px;padding:21px 25px;display:flex;flex-direction:column;gap:9px}
+.plainbox p{color:var(--ink-2);font-size:.97rem;line-height:1.58}
+.plainbox b{color:var(--ink);font-weight:600}
+.note{background:var(--surface);border-left:3px solid var(--warn);padding:17px 21px;border-radius:0 4px 4px 0}
+.note p{color:var(--ink-2);font-size:.94rem;line-height:1.55}
+.note b{color:var(--ink);font-weight:600}
+.big{background:var(--accent);color:var(--surface);border-radius:4px;padding:30px 34px;display:flex;flex-direction:column;gap:12px;box-shadow:var(--shadow)}
+.big .eyebrow{color:var(--surface);opacity:.72}
+.big p{font-family:Literata,Georgia,serif;font-size:1.18rem;line-height:1.55;max-width:52ch}
+
+:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+footer{padding:32px 0 60px;color:var(--ink-3);font-size:.85rem;border-top:1px solid var(--rule)}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap mast">
+    <span class="badge">PS 18 · Demo playbook</span>
+    <h1>How to run the demo</h1>
+    <p class="lead prose">Exactly what is on screen, exactly what you do, exactly what you say — and how to prove, live and on demand, that none of it is hardcoded.</p>
+  </div>
+</header>
+
+<dl class="facts">
+  <div><dt>Full run</dt><dd>≈ 6 minutes</dd></div>
+  <div><dt>Short cut</dt><dd>90 seconds</dd></div>
+  <div><dt>Scenarios</dt><dd>6 live</dd></div>
+  <div><dt>Internet needed</dt><dd>None</dd></div>
+  <div><dt>Rehearsals before</dt><dd>5 minimum</dd></div>
+</dl>
+
+<main>
+
+<!-- ============ WHY IT CANNOT BE HARDCODED ============ -->
+<section>
+  <div class="wrap">
+    <div class="sec-head prose">
+      <span class="eyebrow">Start here</span>
+      <h2>The demo cannot be hardcoded, and here is the reason</h2>
+      <p class="lead">This is an architecture decision, not a talking point. Build it this way and the proof is structural — you point at the screen instead of arguing.</p>
+    </div>
+    <div class="arch">
+      <div class="box">
+        <span class="tag">Program A · our test tool</span>
+        <h3>The simulator</h3>
+        <p>Knows the true position. Generates the sensor readings a real vehicle would produce. Runs whatever attack you trigger.</p>
+        <p><b>Runs in its own window.</b></p>
+      </div>
+      <div class="pipe">
+        <span class="cap">sends only</span>
+        <span class="arrow">→</span>
+        <span class="cap">sensor<br>numbers</span>
+      </div>
+      <div class="box prod">
+        <span class="tag">Program B · the product</span>
+        <h3>The detector</h3>
+        <p>Receives sensor readings over a network connection. Has never been told the true position, and has no idea an attack exists.</p>
+        <p><b>Runs in its own window.</b></p>
+      </div>
+    </div>
+
+    <div class="feed">
+      <div class="bar">Everything the detector receives — show this panel live on screen</div>
+<pre>timestamp        1725701482.40
+gps_lat          11.024891
+gps_lon          76.955203
+gps_alt          412.7
+accel_x/y/z      0.184   -0.037   9.792
+gyro_x/y/z       0.002    0.011   -0.004
+baro_pressure    964.31
+compass_heading  71.4
+wheel_speed      13.8</pre>
+      <div class="miss"><span>✕</span><span>No "attack" field. No true position. Nothing the detector could cheat with.</span></div>
+    </div>
+
+    <div class="plainbox" style="margin-top:20px">
+      <p><b>Keep that panel visible in a corner of the screen for the whole demo.</b> When somebody asks whether it is hardcoded, you do not argue — you point at it and say: <em>"That is everything the detector gets. Show me the field that tells it an attack is happening."</em></p>
+      <p>That usually ends the question in one sentence, because there is nothing to debate.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SCREEN LAYOUT ============ -->
+<section>
+  <div class="wrap">
+    <div class="sec-head prose">
+      <span class="eyebrow">Setup</span>
+      <h2>What is on the screen</h2>
+      <p class="lead">One laptop, one layout, never changed during the demo. Plus a phone in a judge's hand.</p>
+    </div>
+    <div class="screen">
+      <div class="row top">
+        <div class="pane key">
+          <span class="t">THE MAP · biggest panel</span>
+          <span class="d">Two paths drawn live — the position GPS is claiming, and the position the vehicle's own sensors say. The gap between them is the whole story.</span>
+        </div>
+        <div class="pane">
+          <span class="t">VERDICT PANEL</span>
+          <span class="d">Which sensor is guilty · attack, fault or interference · the recommended action in one sentence.</span>
+        </div>
+      </div>
+      <div class="row bot">
+        <div class="pane">
+          <span class="t">TRUST BARS</span>
+          <span class="d">One bar per sensor, sliding smoothly. Never jumping.</span>
+        </div>
+        <div class="pane key">
+          <span class="t">RAW FEED</span>
+          <span class="d">The incoming sensor message, scrolling. Your proof panel — always visible.</span>
+        </div>
+        <div class="pane">
+          <span class="t">CONTROLS</span>
+          <span class="d">Scenario list · attack type · strength slider · direction · Start · Reset.</span>
+        </div>
+      </div>
+    </div>
+    <div class="note" style="margin-top:20px">
+      <p><b>Hand the phone to a judge before you begin</b>, showing the fleet app. Say nothing about it. When the attack fires and it buzzes in their hand, that lands harder than anything you could say about it.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ RUN OF SHOW ============ -->
+<section>
+  <div class="wrap">
+    <div class="sec-head prose">
+      <span class="eyebrow">Run of show</span>
+      <h2>Six scenes, in this order</h2>
+      <p class="lead">The order is deliberate. Credibility first, cleverness second, the finale last.</p>
+    </div>
+    <div class="run">
+
+      <!-- OPEN -->
+      <div class="scene">
+        <div class="head"><span class="clock">0:00 – 0:20</span><h3>Open</h3><span class="goal">Kill the hardcoding question before it is asked</span></div>
+        <div class="body">
+          <div class="beat do"><span class="lbl">Do</span><p>Point at the two windows, then at the raw feed panel.</p></div>
+          <div class="beat say"><span class="lbl">Say</span><div>
+            <p class="quote">"Two separate programs. On the left, a simulated vehicle producing sensor readings. On the right, our detector."</p>
+            <p class="quote">"They talk over a network connection, and this panel here is everything the detector receives. There is no field in it that says an attack is happening, and it never sees the true position. So it cannot cheat — the information isn't there."</p>
+          </div></div>
+        </div>
+      </div>
+
+      <!-- SCENE 1 -->
+      <div class="scene">
+        <div class="head"><span class="clock">0:20 – 1:05</span><h3>Scene 1 · Normal flight, no attack</h3><span class="goal">Prove it does not cry wolf</span></div>
+        <div class="body">
+          <div class="beat do"><span class="lbl">Do</span><p>Run the clean scenario. Deliberately fly hard — sharp turns, a climb, a hard brake. Let it run a full 45 seconds with nothing happening.</p></div>
+          <div class="beat say"><span class="lbl">Say</span><div>
+            <p class="quote">"Normal flight first. I'm turning hard, climbing, braking. Watch the trust bars — they dip and they recover. No alarm."</p>
+            <p class="quote">"Before I show you it catching anything, I want you to see it staying quiet. A detector that fires during ordinary manoeuvres gets switched off by its operator in a week, and then it protects nobody."</p>
+          </div></div>
+          <div class="note"><p><b>Do not rush this scene.</b> Every judge is silently wondering whether you built an alarm that goes off constantly. Answering that before they ask puts everything after it on solid ground.</p></div>
+        </div>
+      </div>
+
+      <!-- SCENE 2 -->
+      <div class="scene">
+        <div class="head"><span class="clock">1:05 – 2:05</span><h3>Scene 2 · Slow GPS spoofing</h3><span class="goal">The core catch — and hand over control</span></div>
+        <div class="body">
+          <div class="beat do"><span class="lbl">Do</span><p>Turn the laptop toward a judge. Let <b>them</b> pick the direction and press Start.</p></div>
+          <div class="beat say"><span class="lbl">Say</span><div>
+            <p class="quote">"You start it. Pick a direction — north, south, east, west. And you choose when."</p>
+          </div></div>
+          <div class="beat do"><span class="lbl">Do</span><p>Say nothing for the first 8 seconds. Let them watch nothing happening.</p></div>
+          <div class="beat say"><span class="lbl">Say</span><div>
+            <p class="quote">"Nothing looks wrong yet — and that's the point. This attack moves the position a couple of metres a second, so every individual reading looks completely reasonable."</p>
+          </div></div>
+          <div class="beat do"><span class="lbl">Do</span><p>The paths separate on the map. The alarm fires. The phone buzzes in the judge's hand.</p></div>
+          <div class="beat say"><span class="lbl">Say</span><div>
+            <p class="quote">"There. GPS named as the liar. Classified as an attack, not a fault. And look at the map — the vehicle is still on the real route. It stopped believing GPS and switched to its own motion sensors."</p>
+          </div></div>
+        </div>
+      </div>
+
+      <!-- SCENE 3 -->
+      <div class="scene">
+        <div class="head"><span class="clock">2:05 – 2:50</span><h3>Scene 3 · A broken sensor</h3><span class="goal">Your strongest moment — do not skip it</span></div>
+        <div class="body">
+          <div class="beat do"><span class="lbl">Do</span><p>Run the fault scenario. Same kind of symptom as scene 2. Point at the verdict panel as it changes.</p></div>
+          <div class="beat say"><span class="lbl">Say</span><div>
+            <p class="quote">"Same kind of symptom — a sensor disagreeing with the others. But watch the verdict: sensor fault, not an attack. Complete the trip, service the vehicle tonight."</p>
+            <p class="quote">"That's a completely different instruction. If we'd called this an attack, you'd have grounded a healthy fleet for a failing compass. Every other system I know of stops at 'anomaly detected' and leaves that decision to a human."</p>
+          </div></div>
+        </div>
+      </div>
+
+      <!-- SCENE 4 -->
+      <div class="scene">
+        <div class="head"><span class="clock">2:50 – 3:20</span><h3>Scene 4 · A magnet near the compass</h3><span class="goal">Cover the third problem in the PS</span></div>
+        <div class="body">
+          <div class="beat do"><span class="lbl">Do</span><p>Run the interference scenario. Point at the compass trust bar falling while the others hold.</p></div>
+          <div class="beat say"><span class="lbl">Say</span><div>
+            <p class="quote">"The compass swung — but the gyroscope felt no turn at all. So the vehicle did not rotate. The magnetic field around it changed. Somebody put a magnet next to the sensor."</p>
+            <p class="quote">"That's the third thing the problem statement asks for — manipulated environmental inputs. Same engine, no special case for it."</p>
+          </div></div>
+        </div>
+      </div>
+
+      <!-- SCENE 5 -->
+      <div class="scene">
+        <div class="head"><span class="clock">3:20 – 4:05</span><h3>Scene 5 · A cargo truck</h3><span class="goal">It is not a drone project</span></div>
+        <div class="body">
+          <div class="beat do"><span class="lbl">Do</span><p>Switch vehicle profile to truck. Run the theft scenario. The fake path stays neatly on the road; the real path stops at a warehouse behind it.</p></div>
+          <div class="beat say"><span class="lbl">Say</span><div>
+            <p class="quote">"Different vehicle. I changed nothing in the detector — I only told it this vehicle has wheels and a road map instead of a barometer."</p>
+            <p class="quote">"The control room screen shows the truck still driving normally. The real truck stopped at a warehouse three kilometres back and is being unloaded. This is how cargo actually gets stolen — the tracking system becomes the thief's best tool."</p>
+          </div></div>
+        </div>
+      </div>
+
+      <!-- SCENE 6 -->
+      <div class="scene">
+        <div class="head"><span class="clock">4:05 – 5:05</span><h3>Scene 6 · Four vehicles at once</h3><span class="goal">The finale — nobody else will show this</span></div>
+        <div class="body">
+          <div class="beat do"><span class="lbl">Do</span><p>Run the fleet scenario. Four trucks in one area, hit together. Wait for the attack-zone circle to appear on the map.</p></div>
+          <div class="beat say"><span class="lbl">Say</span><div>
+            <p class="quote">"Four trucks in the same area. Individually, any one of them could be a faulty sensor. All four at the same moment in the same place — that is an attack, and now we're certain."</p>
+            <p class="quote">"And here is the part a single-vehicle system cannot do at all. That circle is roughly where the transmitter is standing. Every other vehicle heading toward it has just been warned to reroute."</p>
+            <p class="quote">"One vehicle can be fooled. A fleet can't."</p>
+          </div></div>
+        </div>
+      </div>
+
+      <!-- CLOSE -->
+      <div class="scene">
+        <div class="head"><span class="clock">5:05 – 5:30</span><h3>Close</h3><span class="goal">Land on numbers, then on the business</span></div>
+        <div class="body">
+          <div class="beat do"><span class="lbl">Do</span><p>Bring up the results card.</p></div>
+          <div class="beat say"><span class="lbl">Say</span><div>
+            <p class="quote">"Six scenarios, one engine, nothing special-cased for any of them. Six attacks out of six caught, average detection fourteen seconds, and zero false alarms across the clean runs."</p>
+            <p class="quote">"Everyone else solves this by fitting a special antenna to every vehicle, which is why almost nobody has it. Ours is software. It installs into the vehicles that are already on the road today."</p>
+          </div></div>
+        </div>
+      </div>
+
+      <div class="cut">If you only get 90 seconds: run the Open, Scene 1 (shortened to 20 s), Scene 2, then Scene 6. Skip everything else.</div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ============ PROOFS ON DEMAND ============ -->
+<section>
+  <div class="wrap">
+    <div class="sec-head prose">
+      <span class="eyebrow">Proofs on demand</span>
+      <h2>Six things you can do live if they still doubt it</h2>
+      <p class="lead">Each takes under thirty seconds. Offer them before you are asked — volunteering a proof is far more convincing than defending one.</p>
+    </div>
+    <div class="proofs">
+      <div class="proof">
+        <span class="k">Proof 01</span>
+        <h3>Run the same attack twice</h3>
+        <p>The detection time comes out slightly different each run — 14 seconds, then 16 — because the sensor noise is randomly generated. <b>A hardcoded demo gives the identical number every time.</b> This is your cheapest and strongest proof.</p>
+      </div>
+      <div class="proof">
+        <span class="k">Proof 02</span>
+        <h3>Set the attack strength to zero</h3>
+        <p>Press Start with the slider at zero. Nothing happens, no alarm, ever. If the alarm were on a timer it would fire anyway.</p>
+      </div>
+      <div class="proof">
+        <span class="k">Proof 03</span>
+        <h3>Let them choose everything</h3>
+        <p>When it starts, which direction, how strong. <b>Hand them the mouse.</b> A script cannot respond to a moment somebody else picks.</p>
+      </div>
+      <div class="proof">
+        <span class="k">Proof 04</span>
+        <h3>Slide the strength up and down</h3>
+        <p>Detection time changes smoothly with attack strength. Strong attacks are caught fast, gentle ones slowly. That continuous relationship is physics — scripts do not behave like that.</p>
+      </div>
+      <div class="proof">
+        <span class="k">Proof 05</span>
+        <h3>Show the code</h3>
+        <p>Open the detection function for ten seconds and let them read it. It is short arithmetic. There is no <span class="mono">if time == 90</span> anywhere in it.</p>
+      </div>
+      <div class="proof">
+        <span class="k">Proof 06</span>
+        <h3>Turn the wifi off</h3>
+        <p>Do it at the start, in front of them. Nothing calls out to anything. The whole system is on that laptop.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ FAILURE BOUNDARY ============ -->
+<section>
+  <div class="wrap">
+    <div class="sec-head prose">
+      <span class="eyebrow">The move that wins the argument</span>
+      <h2>Show them where you fail</h2>
+      <p class="lead">A sharp judge will still say: <em>"but you wrote the simulator — you could have made the attack easy to catch."</em> The answer is not a defence. It is an offer.</p>
+    </div>
+    <div class="stack prose" style="margin-bottom:22px">
+      <p>Turn the attack strength down step by step, live, and narrate what happens:</p>
+    </div>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Attack strength</th><th>Result</th><th>What it means</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">5 m/s drift</td><td><strong>Caught in ~3 s</strong></td><td>Aggressive attack, immediately obvious</td></tr>
+          <tr><td class="mono">2 m/s</td><td><strong>Caught in ~9 s</strong></td><td>Still comfortably inside our band</td></tr>
+          <tr><td class="mono">1 m/s</td><td><strong>Caught in ~18 s</strong></td><td>Slow, but the error accumulates faster than sensor drift</td></tr>
+          <tr><td class="mono">0.5 m/s</td><td><strong>Caught in ~40 s</strong></td><td>Approaching our limit</td></tr>
+          <tr><td class="mono">0.2 m/s</td><td class="fail">Not reliably caught</td><td>Slower than our own sensors drift — we cannot separate the two</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="big" style="margin-top:24px">
+      <span class="eyebrow">Say this out loud</span>
+      <p>"Below about 0.2 metres per second, the attack is slower than our own sensors drift, and we genuinely cannot separate the two. That is our limit, and it is the physical limit of this approach — not a bug we will fix later."</p>
+      <p>"It's also worth saying what that limit costs an attacker: at that speed, he needs about three hours to move the vehicle one kilometre."</p>
+    </div>
+    <div class="plainbox" style="margin-top:22px">
+      <p><b>Nobody fakes a demo that shows its own failure boundary.</b> A team claiming they catch everything is obviously overselling, and experienced judges know it. A team that names the exact point where their system stops working is obviously real.</p>
+      <p>This is the single most credible thing you can do in that room. Volunteer it — do not wait to be pushed into it.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ Q&A ============ -->
+<section>
+  <div class="wrap">
+    <div class="sec-head prose">
+      <span class="eyebrow">Questions you will get</span>
+      <h2>Answers, close to word for word</h2>
+    </div>
+    <div class="qa">
+
+      <div class="q">
+        <p class="ask">Is this hardcoded? Did you just script the alarm?</p>
+        <p class="ans">"The detector is a separate program. It only receives sensor numbers — that panel there is the live feed. Nothing in it says an attack is happening, and it never sees the true position. <b>You</b> pick when the attack starts, how strong, and which direction. Run the same one twice and you'll get a different detection time, because the noise is random. Want to try it?"</p>
+      </div>
+
+      <div class="q">
+        <p class="ask">But you wrote the simulator. You could have made this easy.</p>
+        <p class="ans">"Yes — which is why let me show you where we fail." <b>Then run the strength ladder above.</b> "Below 0.2 metres per second we can't catch it, because that's slower than our own sensors drift. That's the physical limit of the method."</p>
+      </div>
+
+      <div class="q">
+        <p class="ask">What if the vehicle just turns sharply? Won't that fool it?</p>
+        <p class="ans">"That was scene one — I flew it hard on purpose and nothing fired. Trust falls gradually and needs sustained disagreement before it acts, so a single manoeuvre can't trip it. Want me to run it again and turn harder?"</p>
+      </div>
+
+      <div class="q">
+        <p class="ask">What if the attacker fakes all the sensors, not just GPS?</p>
+        <p class="ans">"He'd need physical access to the vehicle. A radio only reaches GPS — the motion sensor, the barometer and the wheels are inside the machine and don't listen to anything. And if he already has physical access to the vehicle, he doesn't need to spoof it, he can just take it."</p>
+      </div>
+
+      <div class="q">
+        <p class="ask">Why not use AI or machine learning for this?</p>
+        <p class="ans">"Two reasons. It has to run on the vehicle at sensor rate, offline, and give the same answer every time it's replayed for an investigator — physics does that, a model doesn't. And training would need a large set of real spoofing attacks, which nobody has. An AI model does have one job here: writing the incident report afterwards, and there's a switch to turn that off."</p>
+      </div>
+
+      <div class="q">
+        <p class="ask">Does it work on real data, or only your simulator?</p>
+        <p class="ans">"The detector takes an ordinary sensor stream — the same fields any flight log or telematics box produces. The simulator is our test tool, not our product. Point it at a real log and nothing about the detector changes."</p>
+      </div>
+
+      <div class="q">
+        <p class="ask">What if GPS is fine and it's your motion sensor that's drifting?</p>
+        <p class="ans">"That's exactly why we don't compare GPS against one reference — we score every sensor pair and look for the one that disagrees with everyone. If the motion sensor were the bad one, it would be the one outvoted. And when two sensors are in conflict at once, the system says 'cannot isolate' rather than guessing. It's allowed to admit it doesn't know."</p>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ============ BEFORE / IF IT BREAKS ============ -->
+<section>
+  <div class="wrap">
+    <div class="sec-head prose">
+      <span class="eyebrow">Preparation</span>
+      <h2>Before you walk in, and if it breaks</h2>
+    </div>
+    <div class="check">
+      <div>
+        <h3>Night before</h3>
+        <ul>
+          <li>Run all six scenarios end to end, five times, without stopping.</li>
+          <li>Confirm Reset returns to clean state in under two seconds.</li>
+          <li>Confirm the clean run still shows zero false alarms.</li>
+          <li>Charge the phone. Load the fleet app on it and leave it open.</li>
+          <li>Open the code file in a tab, ready to show.</li>
+        </ul>
+      </div>
+      <div>
+        <h3>Minutes before</h3>
+        <ul>
+          <li>Turn wifi off — in front of them if you can.</li>
+          <li>Close every notification, chat app and email client.</li>
+          <li>Increase font sizes; the back row must read the verdict panel.</li>
+          <li>Plug in power. Do not trust the battery.</li>
+          <li>Start both programs and leave them at the clean scenario.</li>
+        </ul>
+      </div>
+      <div>
+        <h3>If something breaks</h3>
+        <ul>
+          <li>Press Reset and keep talking. Do not apologise repeatedly.</li>
+          <li>Move to the next scene; come back if there is time.</li>
+          <li>If the whole thing dies, explain the architecture at the screen — the diagram carries the idea on its own.</li>
+          <li>Have a screen recording as backup, but <b>never present a recording as if it were live.</b> Say plainly that it is a recording.</li>
+        </ul>
+      </div>
+    </div>
+    <div class="note" style="margin-top:22px">
+      <p><b>Rehearse the whole thing five times minimum, out loud, including the words.</b> A demo that has never been run start to finish will break in the room — that is not bad luck, it is the normal outcome. And knowing your lines is what lets you stay calm enough to hand a judge the mouse.</p>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <div class="wrap">SensorSentry · PS 18 — Spoofing Detection &amp; Sensor Fusion · demo playbook, 7 September 2026. Timings in the strength ladder are targets to measure and replace with your own results.</div>
+</footer>
+
+</body>
+</html>

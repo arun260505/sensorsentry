@@ -1,0 +1,756 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SensorSentry Build Requirements</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chivo:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Literata:opsz,wght@7..72,400;7..72,600&display=swap">
+<style>
+:root{
+  --ground:#F1F4F6;--surface:#FFFFFF;--surface-2:#E6EBEF;
+  --ink:#0F1C25;--ink-2:#4A5C69;--ink-3:#788894;
+  --rule:#D5DDE3;--rule-strong:#B3C0C9;
+  --accent:#0B5C7A;--accent-soft:#DBEBF1;
+  --ok:#2C7A55;--ok-soft:#DEEEE6;
+  --warn:#A66A0E;--warn-soft:#F6EBD8;
+  --bad:#AE3529;--bad-soft:#F7E4E1;
+  --shadow:0 1px 2px rgba(15,28,37,.06),0 12px 30px -18px rgba(15,28,37,.28);
+  --maxw:1080px;--prose:66ch;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --ground:#0A1219;--surface:#101C24;--surface-2:#17242D;
+    --ink:#E7EEF3;--ink-2:#A2B4C0;--ink-3:#758794;
+    --rule:#213039;--rule-strong:#33474F;
+    --accent:#4FAECC;--accent-soft:#0F2E3A;
+    --ok:#57B287;--ok-soft:#122C22;
+    --warn:#D5A051;--warn-soft:#2E2416;
+    --bad:#DF7264;--bad-soft:#31201D;
+    --shadow:0 1px 2px rgba(0,0,0,.45),0 14px 34px -18px rgba(0,0,0,.8);
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#0A1219;--surface:#101C24;--surface-2:#17242D;
+  --ink:#E7EEF3;--ink-2:#A2B4C0;--ink-3:#758794;
+  --rule:#213039;--rule-strong:#33474F;
+  --accent:#4FAECC;--accent-soft:#0F2E3A;
+  --ok:#57B287;--ok-soft:#122C22;
+  --warn:#D5A051;--warn-soft:#2E2416;
+  --bad:#DF7264;--bad-soft:#31201D;
+  --shadow:0 1px 2px rgba(0,0,0,.45),0 14px 34px -18px rgba(0,0,0,.8);
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--ground);color:var(--ink);font-family:Literata,Georgia,serif;font-size:17px;line-height:1.62}
+.wrap{max-width:var(--maxw);margin:0 auto;padding:0 26px}
+.prose{max-width:var(--prose)}
+h1,h2,h3,h4{font-family:Chivo,"Helvetica Neue",Arial,sans-serif;margin:0;text-wrap:balance}
+h1{font-size:clamp(2.2rem,5.4vw,3.3rem);font-weight:700;line-height:1.04;letter-spacing:-.026em}
+h2{font-size:clamp(1.5rem,3.2vw,1.95rem);font-weight:600;line-height:1.16;letter-spacing:-.017em}
+h3{font-size:1.06rem;font-weight:600;line-height:1.32;letter-spacing:-.005em}
+h4{font-size:.92rem;font-weight:600}
+p{margin:0}
+.lead{font-size:1.13rem;color:var(--ink-2);line-height:1.55}
+.eyebrow{font-family:Chivo,sans-serif;font-size:.69rem;font-weight:700;letter-spacing:.17em;text-transform:uppercase;color:var(--accent)}
+.mono{font-family:"JetBrains Mono",ui-monospace,Consolas,monospace}
+
+header{background:var(--surface);border-bottom:1px solid var(--rule);padding:54px 0 40px}
+.mast{display:flex;flex-direction:column;gap:18px}
+.badge{align-self:flex-start;font-family:Chivo,sans-serif;font-size:.69rem;font-weight:700;letter-spacing:.14em;text-transform:uppercase;background:var(--accent);color:var(--surface);padding:6px 13px;border-radius:3px}
+.facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));border-top:1px solid var(--rule);border-bottom:1px solid var(--rule);background:var(--surface-2)}
+.facts > div{padding:13px 26px;border-right:1px solid var(--rule)}
+.facts > div:last-child{border-right:0}
+.facts dt{font-family:Chivo,sans-serif;font-size:.63rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);margin:0 0 3px}
+.facts dd{margin:0;font-family:"JetBrains Mono",monospace;font-size:.87rem;font-weight:500;color:var(--ink)}
+
+section{padding:52px 0;border-bottom:1px solid var(--rule)}
+section:last-of-type{border-bottom:0}
+.sec-head{display:flex;flex-direction:column;gap:9px;margin-bottom:26px}
+.stack{display:flex;flex-direction:column;gap:16px}
+
+/* actors */
+.actors{display:grid;gap:1px;grid-template-columns:repeat(auto-fit,minmax(215px,1fr));background:var(--rule);border:1px solid var(--rule);border-radius:4px;overflow:hidden}
+.actors > div{background:var(--surface);padding:21px;display:flex;flex-direction:column;gap:7px}
+.actors .code{font-family:"JetBrains Mono",monospace;font-size:.71rem;letter-spacing:.08em;color:var(--accent);text-transform:uppercase}
+.actors p{font-size:.92rem;color:var(--ink-2);line-height:1.52}
+
+/* tables */
+.tablewrap{overflow-x:auto;border:1px solid var(--rule);border-radius:4px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;min-width:660px;font-size:.9rem}
+th,td{text-align:left;padding:12px 15px;border-bottom:1px solid var(--rule);vertical-align:top}
+th{font-family:Chivo,sans-serif;font-size:.63rem;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-3);font-weight:700;background:var(--surface-2);white-space:nowrap}
+tr:last-child td{border-bottom:0}
+td{color:var(--ink-2)}
+td strong{color:var(--ink);font-weight:600;font-family:Chivo,sans-serif;font-size:.91rem}
+td.id{font-family:"JetBrains Mono",monospace;font-size:.82rem;color:var(--accent);white-space:nowrap;font-weight:500}
+
+.chip{display:inline-block;font-family:Chivo,sans-serif;font-size:.63rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:3px 9px;border-radius:11px;white-space:nowrap}
+.chip.p0{background:var(--bad-soft);color:var(--bad)}
+.chip.p1{background:var(--warn-soft);color:var(--warn)}
+.chip.p2{background:var(--surface-2);color:var(--ink-3)}
+.chip.uniq{background:var(--accent-soft);color:var(--accent)}
+
+/* epics */
+.epic{margin-bottom:34px}
+.epic-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:12px;padding-bottom:11px;border-bottom:2px solid var(--accent);margin-bottom:18px}
+.epic-head .n{font-family:"JetBrains Mono",monospace;font-size:.78rem;color:var(--accent);font-weight:600;letter-spacing:.06em}
+.epic-head .goal{font-size:.92rem;color:var(--ink-3);font-family:Chivo,sans-serif;margin-left:auto}
+
+/* story cards */
+.stories{display:flex;flex-direction:column;gap:14px}
+.us{background:var(--surface);border:1px solid var(--rule);border-radius:4px;padding:20px 22px;display:flex;flex-direction:column;gap:11px}
+.us.star{border-color:var(--accent);border-left:4px solid var(--accent);box-shadow:var(--shadow)}
+.us-top{display:flex;flex-wrap:wrap;align-items:center;gap:9px}
+.us-id{font-family:"JetBrains Mono",monospace;font-size:.79rem;font-weight:600;color:var(--accent)}
+.us .say{font-size:1rem;line-height:1.55;color:var(--ink)}
+.us .say b{font-weight:600}
+.us .say em{color:var(--ink-2);font-style:normal}
+.ac{display:flex;flex-direction:column;gap:6px;padding-top:11px;border-top:1px solid var(--rule)}
+.ac .lbl{font-family:Chivo,sans-serif;font-size:.63rem;font-weight:700;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-3)}
+.ac ul{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:5px}
+.ac li{font-size:.9rem;color:var(--ink-2);line-height:1.5}
+.ac code{font-family:"JetBrains Mono",monospace;font-size:.83rem;background:var(--surface-2);padding:1px 5px;border-radius:3px;color:var(--ink)}
+
+/* detailed use case */
+.uc{background:var(--surface);border:1px solid var(--rule);border-radius:4px;padding:24px;display:flex;flex-direction:column;gap:14px}
+.uc-grid{display:grid;gap:20px;grid-template-columns:repeat(auto-fit,minmax(290px,1fr))}
+.uc .meta{display:flex;flex-wrap:wrap;gap:18px;font-size:.86rem;color:var(--ink-3);font-family:Chivo,sans-serif}
+.uc .meta b{color:var(--ink-2);font-weight:600}
+.uc ol{margin:0;padding-left:19px;display:flex;flex-direction:column;gap:6px}
+.uc li{font-size:.92rem;color:var(--ink-2);line-height:1.5}
+.uc .result{font-size:.93rem;padding-top:12px;border-top:1px solid var(--rule);color:var(--ok);font-family:Chivo,sans-serif;font-weight:600}
+.uc .alt{font-size:.88rem;color:var(--ink-3);line-height:1.5}
+
+.plainbox{background:var(--surface-2);border-radius:4px;padding:21px 25px;display:flex;flex-direction:column;gap:9px}
+.plainbox p{color:var(--ink-2);font-size:.97rem;line-height:1.58}
+.plainbox b{color:var(--ink);font-weight:600}
+.note{background:var(--surface);border-left:3px solid var(--warn);padding:17px 21px;border-radius:0 4px 4px 0}
+.note p{color:var(--ink-2);font-size:.94rem;line-height:1.55}
+.note b{color:var(--ink);font-weight:600}
+
+:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+footer{padding:32px 0 60px;color:var(--ink-3);font-size:.85rem;border-top:1px solid var(--rule)}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+@media (max-width:640px){body{font-size:16.5px}.epic-head .goal{margin-left:0;flex-basis:100%}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap mast">
+    <span class="badge">PS 18 · Build requirements</span>
+    <h1>Use Cases &amp; User Stories</h1>
+    <p class="lead prose">What we are building, written as things people need to do. Every story has acceptance criteria you can test against, and a priority. Build every <span class="mono">P0</span> before touching anything else.</p>
+  </div>
+</header>
+
+<dl class="facts">
+  <div><dt>Actors</dt><dd>6</dd></div>
+  <div><dt>Use cases</dt><dd>22</dd></div>
+  <div><dt>User stories</dt><dd>24</dd></div>
+  <div><dt>P0 — the MVP</dt><dd>15 stories</dd></div>
+  <div><dt>Marked unique</dt><dd>5 stories</dd></div>
+</dl>
+
+<main>
+
+<!-- ACTORS -->
+<section>
+  <div class="wrap">
+    <div class="sec-head prose">
+      <span class="eyebrow">Actors</span>
+      <h2>Who uses the system</h2>
+      <p class="lead">Two of these are people in the field, one is the software itself, and the rest appear only after an incident.</p>
+    </div>
+    <div class="actors">
+      <div>
+        <span class="code">A1</span>
+        <h3>Onboard detector</h3>
+        <p>The software running on the vehicle. Not a person — it acts on its own every cycle, and most core stories belong to it.</p>
+      </div>
+      <div>
+        <span class="code">A2</span>
+        <h3>Fleet operator</h3>
+        <p>Sits in the control room watching many vehicles. Receives alerts, decides responses. Our primary human user.</p>
+      </div>
+      <div>
+        <span class="code">A3</span>
+        <h3>Driver / pilot</h3>
+        <p>In the cab or at the controls of one vehicle. Needs short, clear instructions, not data.</p>
+      </div>
+      <div>
+        <span class="code">A4</span>
+        <h3>Fleet manager</h3>
+        <p>Owns the vehicles and the budget. Cares about incident history, losses avoided, and evidence.</p>
+      </div>
+      <div>
+        <span class="code">A5</span>
+        <h3>Insurer / investigator</h3>
+        <p>Appears only after an incident. Needs a record they can independently verify.</p>
+      </div>
+      <div>
+        <span class="code">A6</span>
+        <h3>Integrator</h3>
+        <p>Installs the software and registers vehicles with their sensor sets. One-time setup role.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- USE CASE LIST -->
+<section>
+  <div class="wrap">
+    <div class="sec-head prose">
+      <span class="eyebrow">Use cases</span>
+      <h2>Everything the system does</h2>
+      <p class="lead">Grouped by area. The stage column ties each one back to the ten-stage workflow.</p>
+    </div>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>ID</th><th>Use case</th><th>Actor</th><th>Stage</th><th>Priority</th></tr></thead>
+        <tbody>
+          <tr><td class="id">UC-01</td><td><strong>Ingest and time-align sensor data</strong></td><td>A1</td><td class="mono">1</td><td><span class="chip p0">P0</span></td></tr>
+          <tr><td class="id">UC-02</td><td><strong>Check each sensor's own health</strong></td><td>A1</td><td class="mono">2</td><td><span class="chip p0">P0</span></td></tr>
+          <tr><td class="id">UC-03</td><td><strong>Build a GPS-free position estimate</strong></td><td>A1</td><td class="mono">3</td><td><span class="chip p0">P0</span></td></tr>
+          <tr><td class="id">UC-04</td><td><strong>Cross-validate every sensor pair</strong></td><td>A1</td><td class="mono">4</td><td><span class="chip p0">P0</span></td></tr>
+          <tr><td class="id">UC-05</td><td><strong>Identify which sensor is lying</strong></td><td>A1</td><td class="mono">5</td><td><span class="chip p0">P0</span> <span class="chip uniq">Unique</span></td></tr>
+          <tr><td class="id">UC-06</td><td><strong>Classify attack, fault or interference</strong></td><td>A1</td><td class="mono">6</td><td><span class="chip p0">P0</span> <span class="chip uniq">Unique</span></td></tr>
+          <tr><td class="id">UC-07</td><td><strong>Maintain trust scores with hysteresis</strong></td><td>A1</td><td class="mono">7</td><td><span class="chip p0">P0</span></td></tr>
+          <tr><td class="id">UC-08</td><td><strong>Re-fuse navigation without the bad sensor</strong></td><td>A1</td><td class="mono">8</td><td><span class="chip p0">P0</span></td></tr>
+          <tr><td class="id">UC-09</td><td><strong>Report a growing accuracy budget</strong></td><td>A1</td><td class="mono">8</td><td><span class="chip p1">P1</span></td></tr>
+          <tr><td class="id">UC-10</td><td><strong>Take an automatic safe action</strong></td><td>A1, A3</td><td class="mono">8</td><td><span class="chip p1">P1</span></td></tr>
+          <tr><td class="id">UC-11</td><td><strong>Raise an alert to the operator</strong></td><td>A1 → A2</td><td class="mono">10</td><td><span class="chip p0">P0</span></td></tr>
+          <tr><td class="id">UC-12</td><td><strong>Show claimed path against real path</strong></td><td>A2</td><td class="mono">10</td><td><span class="chip p0">P0</span></td></tr>
+          <tr><td class="id">UC-13</td><td><strong>Recommend an action in plain words</strong></td><td>A2, A3</td><td class="mono">10</td><td><span class="chip p1">P1</span></td></tr>
+          <tr><td class="id">UC-14</td><td><strong>Acknowledge or dismiss an alert</strong></td><td>A2</td><td class="mono">10</td><td><span class="chip p1">P1</span></td></tr>
+          <tr><td class="id">UC-15</td><td><strong>Group simultaneous incidents into one event</strong></td><td>A2</td><td class="mono">fleet</td><td><span class="chip p0">P0</span> <span class="chip uniq">Unique</span></td></tr>
+          <tr><td class="id">UC-16</td><td><strong>Draw the estimated attack zone</strong></td><td>A2</td><td class="mono">fleet</td><td><span class="chip p0">P0</span> <span class="chip uniq">Unique</span></td></tr>
+          <tr><td class="id">UC-17</td><td><strong>Warn vehicles heading into the zone</strong></td><td>A3</td><td class="mono">fleet</td><td><span class="chip p1">P1</span> <span class="chip uniq">Unique</span></td></tr>
+          <tr><td class="id">UC-18</td><td><strong>Record the incident evidence</strong></td><td>A1, A4</td><td class="mono">9</td><td><span class="chip p0">P0</span></td></tr>
+          <tr><td class="id">UC-19</td><td><strong>Replay a past incident</strong></td><td>A5</td><td class="mono">9</td><td><span class="chip p1">P1</span></td></tr>
+          <tr><td class="id">UC-20</td><td><strong>Write the incident report in plain language</strong></td><td>A4</td><td class="mono">9</td><td><span class="chip p2">P2</span></td></tr>
+          <tr><td class="id">UC-21</td><td><strong>Run, inject into and reset a scenario</strong></td><td>presenter</td><td class="mono">demo</td><td><span class="chip p0">P0</span></td></tr>
+          <tr><td class="id">UC-22</td><td><strong>Register a vehicle and learn its baseline</strong></td><td>A6, A1</td><td class="mono">setup</td><td><span class="chip p1">P1</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- DETAILED USE CASES -->
+<section>
+  <div class="wrap">
+    <div class="sec-head prose">
+      <span class="eyebrow">In detail</span>
+      <h2>The three that matter most</h2>
+      <p class="lead">These are the ones judges will probe, so they are written out step by step — including what happens when things are not clear-cut.</p>
+    </div>
+    <div class="uc-grid">
+
+      <div class="uc">
+        <div>
+          <h3>UC-05 · Identify which sensor is lying</h3>
+          <div class="meta" style="margin-top:8px"><span><b>Actor:</b> onboard detector</span><span><b>Trigger:</b> any pair disagrees beyond its normal band</span></div>
+        </div>
+        <ol>
+          <li>Collect the agreement score for every checkable pair this cycle.</li>
+          <li>For each sensor, count how many others it disagrees with.</li>
+          <li>Check whether the remaining sensors still agree among themselves.</li>
+          <li>If exactly one sensor disagrees with all the rest while they agree with each other, name it as the guilty sensor.</li>
+          <li>Attach the supporting evidence: which pairs failed, by how much, for how long.</li>
+        </ol>
+        <p class="result">Result: a named sensor with evidence, not a generic alarm.</p>
+        <p class="alt"><b>If it is not clear-cut:</b> when two or more sensors disagree with the group, the system reports <em>"cannot isolate — multiple sensors in conflict"</em> and lowers trust on all of them. It must never guess. Guessing wrong is worse than admitting uncertainty, and judges will ask about this exact case.</p>
+      </div>
+
+      <div class="uc">
+        <div>
+          <h3>UC-06 · Classify attack, fault or interference</h3>
+          <div class="meta" style="margin-top:8px"><span><b>Actor:</b> onboard detector</span><span><b>Trigger:</b> a guilty sensor has been named</span></div>
+        </div>
+        <ol>
+          <li>Look at the shape of the error over the last window, not just its size.</li>
+          <li>Is it steady and pointing consistently one way? That is purposeful — an <b>attack</b>.</li>
+          <li>Is it erratic, jumpy, or did the sensor also fail its own health check? That is a <b>fault</b>.</li>
+          <li>Does one physical measurement shift while the motion sensors say nothing moved? That is <b>interference</b> in the environment.</li>
+          <li>Publish the label with a confidence value and the reason behind it.</li>
+        </ol>
+        <p class="result">Result: the operator learns what kind of problem this is, not just that there is one.</p>
+        <p class="alt"><b>If it is not clear-cut:</b> below the confidence threshold, report <em>"unclassified anomaly"</em> and default to the safest response — treat it as an attack for safety purposes, but say plainly that the cause is undetermined.</p>
+      </div>
+
+      <div class="uc">
+        <div>
+          <h3>UC-16 · Draw the estimated attack zone</h3>
+          <div class="meta" style="margin-top:8px"><span><b>Actor:</b> fleet operator</span><span><b>Trigger:</b> two or more vehicles report attacks close together in time and place</span></div>
+        </div>
+        <ol>
+          <li>Group incidents that fall within the same time window and the same area.</li>
+          <li>Take the real positions of the affected vehicles at the moment each was hit.</li>
+          <li>Estimate a centre and a radius covering those positions.</li>
+          <li>Draw the zone on the fleet map and label it with how many vehicles are affected.</li>
+          <li>Keep updating the estimate as more vehicles report or recover.</li>
+        </ol>
+        <p class="result">Result: a place on a map to send someone — the attacker's rough location.</p>
+        <p class="alt"><b>If it is not clear-cut:</b> with only one affected vehicle, no zone is drawn. One vehicle could be a fault, and a wrongly drawn zone would send people to the wrong place.</p>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- USER STORIES -->
+<section>
+  <div class="wrap">
+    <div class="sec-head prose">
+      <span class="eyebrow">User stories</span>
+      <h2>Written as the person who needs it</h2>
+      <p class="lead">Seven epics. Stories with a blue edge are the ones that make this project different from a threshold alarm — protect them when time runs short.</p>
+    </div>
+
+    <!-- EPIC 1 -->
+    <div class="epic">
+      <div class="epic-head">
+        <span class="n">EPIC 1</span>
+        <h3>Sensor Trust Engine</h3>
+        <span class="goal">Work out who is telling the truth</span>
+      </div>
+      <div class="stories">
+
+        <div class="us">
+          <div class="us-top"><span class="us-id">US-01</span><span class="chip p0">P0</span><span class="mono" style="font-size:.78rem;color:var(--ink-3)">UC-02</span></div>
+          <p class="say">As the <b>onboard detector</b>, I want to check each sensor's own health every cycle, <em>so that obviously broken sensors are caught before they corrupt any comparison.</em></p>
+          <div class="ac">
+            <span class="lbl">Accepted when</span>
+            <ul>
+              <li>A value frozen for more than <code>N</code> cycles is flagged as stuck.</li>
+              <li>Readings outside physical limits are flagged as out-of-range.</li>
+              <li>A sensor that stops sending is flagged as dropped within one cycle.</li>
+              <li>Noise beyond the sensor's rated band is flagged as degraded.</li>
+              <li>Every flag carries a reason code, never a bare boolean.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="us">
+          <div class="us-top"><span class="us-id">US-02</span><span class="chip p0">P0</span><span class="mono" style="font-size:.78rem;color:var(--ink-3)">UC-03</span></div>
+          <p class="say">As the <b>onboard detector</b>, I want a position estimate built without ever reading GPS, <em>so that I have a witness the attacker cannot reach.</em></p>
+          <div class="ac">
+            <span class="lbl">Accepted when</span>
+            <ul>
+              <li>An estimate is produced every cycle from motion, compass, pressure and wheels.</li>
+              <li>The estimate carries an uncertainty value that grows over time.</li>
+              <li>Code review confirms GPS is never an input to this path.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="us">
+          <div class="us-top"><span class="us-id">US-03</span><span class="chip p0">P0</span><span class="mono" style="font-size:.78rem;color:var(--ink-3)">UC-04</span></div>
+          <p class="say">As the <b>onboard detector</b>, I want an agreement score for every checkable sensor pair, <em>so that disagreement can be located and not merely noticed.</em></p>
+          <div class="ac">
+            <span class="lbl">Accepted when</span>
+            <ul>
+              <li>At least five pairs are scored every cycle for a drone; the truck profile scores its own set.</li>
+              <li>Each pair yields both a raw difference and a normalised score.</li>
+              <li>The full set of scores is available to the console, not hidden inside the engine.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="us star">
+          <div class="us-top"><span class="us-id">US-04</span><span class="chip p0">P0</span><span class="chip uniq">Unique</span><span class="mono" style="font-size:.78rem;color:var(--ink-3)">UC-05</span></div>
+          <p class="say">As a <b>fleet operator</b>, I want to be told <b>which sensor</b> is wrong, <em>so that I get a diagnosis instead of an alarm with no subject.</em></p>
+          <div class="ac">
+            <span class="lbl">Accepted when</span>
+            <ul>
+              <li>A sensor disagreeing with all others, while those others agree among themselves, is named as guilty.</li>
+              <li>The verdict lists the failing pairs and their magnitudes as evidence.</li>
+              <li>With two or more sensors in conflict the system reports <code>cannot isolate</code> and never guesses.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="us star">
+          <div class="us-top"><span class="us-id">US-05</span><span class="chip p0">P0</span><span class="chip uniq">Unique</span><span class="mono" style="font-size:.78rem;color:var(--ink-3)">UC-06</span></div>
+          <p class="say">As a <b>fleet operator</b>, I want to know whether this is an attack, a breakdown, or interference, <em>so that I take the right action instead of the safe-looking one.</em></p>
+          <div class="ac">
+            <span class="lbl">Accepted when</span>
+            <ul>
+              <li>Output is one of <code>attack</code>, <code>fault</code>, <code>interference</code>, or <code>unclassified</code>, with a confidence value.</li>
+              <li>A steady one-directional error over the window classifies as attack.</li>
+              <li>An erratic error, or one alongside a failed health check, classifies as fault.</li>
+              <li>A single measurement shifting while the motion sensors report no movement classifies as interference.</li>
+              <li>Below the confidence threshold the label is <code>unclassified</code> and the response defaults to the safest option.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="us">
+          <div class="us-top"><span class="us-id">US-06</span><span class="chip p0">P0</span><span class="mono" style="font-size:.78rem;color:var(--ink-3)">UC-07</span></div>
+          <p class="say">As a <b>fleet operator</b>, I want trust to fall gradually and only on sustained evidence, <em>so that a sharp turn never triggers a false alarm.</em></p>
+          <div class="ac">
+            <span class="lbl">Accepted when</span>
+            <ul>
+              <li>Each sensor carries a trust value from 0 to 100, moving smoothly.</li>
+              <li>A downgrade needs <code>N</code> consecutive cycles of disagreement; recovery needs <code>M</code>.</li>
+              <li>No single reading can change the trust state on its own.</li>
+              <li>The hard-manoeuvre scenario completes with zero alerts.</li>
+            </ul>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- EPIC 2 -->
+    <div class="epic">
+      <div class="epic-head">
+        <span class="n">EPIC 2</span>
+        <h3>Keep Running Safely</h3>
+        <span class="goal">Detection is worthless without a response</span>
+      </div>
+      <div class="stories">
+
+        <div class="us">
+          <div class="us-top"><span class="us-id">US-07</span><span class="chip p0">P0</span><span class="mono" style="font-size:.78rem;color:var(--ink-3)">UC-08</span></div>
+          <p class="say">As the <b>onboard detector</b>, I want to drop the untrusted sensor and navigate on the rest, <em>so that the vehicle stays on its true route while under attack.</em></p>
+          <div class="ac">
+            <span class="lbl">Accepted when</span>
+            <ul>
+              <li>Fusion re-weights within one cycle of the trust drop.</li>
+              <li>Navigation continues without interruption, using the remaining sensors.</li>
+              <li>In the spoofing scenario the vehicle holds the real route while the reported position walks away.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="us">
+          <div class="us-top"><span class="us-id">US-08</span><span class="chip p1">P1</span><span class="mono" style="font-size:.78rem;color:var(--ink-3)">UC-09</span></div>
+          <p class="say">As a <b>driver</b>, I want to see how fast our accuracy is decaying, <em>so that I know how long we can keep going before we must stop.</em></p>
+          <div class="ac">
+            <span class="lbl">Accepted when</span>
+            <ul>
+              <li>An error budget in metres is published every cycle and grows visibly over time.</li>
+              <li>The display shows the remaining time until the budget exceeds a configured safe limit.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="us">
+          <div class="us-top"><span class="us-id">US-09</span><span class="chip p1">P1</span><span class="mono" style="font-size:.78rem;color:var(--ink-3)">UC-10</span></div>
+          <p class="say">As a <b>drone pilot</b>, I want the vehicle to take a safe action by itself when trust collapses, <em>so that it does not keep flying into danger while waiting for me.</em></p>
+          <div class="ac">
+            <span class="lbl">Accepted when</span>
+            <ul>
+              <li>The action is configurable per vehicle: hold, return, land, or reroute.</li>
+              <li>The action taken is written to the incident record.</li>
+              <li>The operator can override it at any time.</li>
+            </ul>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- EPIC 3 -->
+    <div class="epic">
+      <div class="epic-head">
+        <span class="n">EPIC 3</span>
+        <h3>Tell the Human</h3>
+        <span class="goal">A detection nobody sees protects nobody</span>
+      </div>
+      <div class="stories">
+
+        <div class="us">
+          <div class="us-top"><span class="us-id">US-10</span><span class="chip p0">P0</span><span class="mono" style="font-size:.78rem;color:var(--ink-3)">UC-11</span></div>
+          <p class="say">As a <b>fleet operator</b>, I want an alert within seconds naming the vehicle, the sensor and the cause, <em>so that I can act while it still matters.</em></p>
+          <div class="ac">
+            <span class="lbl">Accepted when</span>
+            <ul>
+              <li>The alert reaches the console and the phone within 3 seconds of the verdict.</li>
+              <li>It contains vehicle id, guilty sensor, cause label, and the distance between claimed and real position.</li>
+              <li>It is written in plain words, with no jargon and no raw numbers as the headline.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="us">
+          <div class="us-top"><span class="us-id">US-11</span><span class="chip p0">P0</span><span class="mono" style="font-size:.78rem;color:var(--ink-3)">UC-12</span></div>
+          <p class="say">As a <b>fleet operator</b>, I want both paths drawn on one map, <em>so that I can see at a glance how far the deception has gone.</em></p>
+          <div class="ac">
+            <span class="lbl">Accepted when</span>
+            <ul>
+              <li>Claimed path and real path are drawn in distinct colours with a visible legend.</li>
+              <li>The separation distance is shown in metres and updates live.</li>
+              <li>Both paths remain visible after the incident ends, for review.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="us">
+          <div class="us-top"><span class="us-id">US-12</span><span class="chip p1">P1</span><span class="mono" style="font-size:.78rem;color:var(--ink-3)">UC-13</span></div>
+          <p class="say">As a <b>driver</b>, I want to be told what to do, <em>so that I am not interpreting numbers during the worst minute of my day.</em></p>
+          <div class="ac">
+            <span class="lbl">Accepted when</span>
+            <ul>
+              <li>Each cause label maps to one clear instruction.</li>
+              <li>Attack and fault produce visibly different instructions.</li>
+              <li>The instruction is one sentence a non-technical person can follow.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="us">
+          <div class="us-top"><span class="us-id">US-13</span><span class="chip p1">P1</span><span class="mono" style="font-size:.78rem;color:var(--ink-3)">UC-14</span></div>
+          <p class="say">As a <b>fleet operator</b>, I want to acknowledge an alert, <em>so that the rest of the team knows it is being handled.</em></p>
+          <div class="ac">
+            <span class="lbl">Accepted when</span>
+            <ul>
+              <li>Acknowledgement records who and when.</li>
+              <li>The alert changes state and stops repeating.</li>
+              <li>Dismissing an alert requires a reason, and the reason is stored.</li>
+            </ul>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- EPIC 4 -->
+    <div class="epic">
+      <div class="epic-head">
+        <span class="n">EPIC 4</span>
+        <h3>Fleet Attack Intelligence</h3>
+        <span class="goal">One vehicle can be fooled — a fleet cannot</span>
+      </div>
+      <div class="stories">
+
+        <div class="us star">
+          <div class="us-top"><span class="us-id">US-14</span><span class="chip p0">P0</span><span class="chip uniq">Unique</span><span class="mono" style="font-size:.78rem;color:var(--ink-3)">UC-15</span></div>
+          <p class="say">As a <b>fleet operator</b>, I want several vehicles hit at once in one area shown as a single attack event, <em>so that I know it is a deliberate attack and not a run of coincidental faults.</em></p>
+          <div class="ac">
+            <span class="lbl">Accepted when</span>
+            <ul>
+              <li>Two or more incidents inside the same radius and time window group into one event.</li>
+              <li>The event lists its member vehicles and when each was hit.</li>
+              <li>Grouping raises the confidence of the attack classification for every member.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="us star">
+          <div class="us-top"><span class="us-id">US-15</span><span class="chip p0">P0</span><span class="chip uniq">Unique</span><span class="mono" style="font-size:.78rem;color:var(--ink-3)">UC-16</span></div>
+          <p class="say">As a <b>fleet operator</b>, I want the likely attack area drawn on the map, <em>so that I can tell the authorities where to look.</em></p>
+          <div class="ac">
+            <span class="lbl">Accepted when</span>
+            <ul>
+              <li>A centre and radius are estimated from the real positions of affected vehicles.</li>
+              <li>The zone is drawn on the fleet map with the number of vehicles affected.</li>
+              <li>The estimate tightens as more vehicles report.</li>
+              <li>No zone is drawn when only one vehicle is affected.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="us star">
+          <div class="us-top"><span class="us-id">US-16</span><span class="chip p1">P1</span><span class="chip uniq">Unique</span><span class="mono" style="font-size:.78rem;color:var(--ink-3)">UC-17</span></div>
+          <p class="say">As a <b>driver</b>, I want a warning before I drive into a known attack area, <em>so that I can avoid it rather than survive it.</em></p>
+          <div class="ac">
+            <span class="lbl">Accepted when</span>
+            <ul>
+              <li>Any vehicle whose route crosses an active zone receives an advisory.</li>
+              <li>The advisory suggests holding or rerouting.</li>
+              <li>The advisory clears automatically when the zone goes inactive.</li>
+            </ul>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- EPIC 5 -->
+    <div class="epic">
+      <div class="epic-head">
+        <span class="n">EPIC 5</span>
+        <h3>Evidence</h3>
+        <span class="goal">In both our stories, the missing piece was proof</span>
+      </div>
+      <div class="stories">
+
+        <div class="us">
+          <div class="us-top"><span class="us-id">US-17</span><span class="chip p0">P0</span><span class="mono" style="font-size:.78rem;color:var(--ink-3)">UC-18</span></div>
+          <p class="say">As a <b>fleet manager</b>, I want every incident recorded in full, <em>so that I can prove what happened to my vehicle.</em></p>
+          <div class="ac">
+            <span class="lbl">Accepted when</span>
+            <ul>
+              <li>The record holds the timeline, the sensor readings around the event, the checks that fired, the verdict, both paths, and the actions taken.</li>
+              <li>Records are append-only — nothing can be edited after the fact.</li>
+              <li>A record can be exported as a single file.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="us">
+          <div class="us-top"><span class="us-id">US-18</span><span class="chip p1">P1</span><span class="mono" style="font-size:.78rem;color:var(--ink-3)">UC-19</span></div>
+          <p class="say">As an <b>investigator</b>, I want to replay an incident, <em>so that I can verify the conclusion myself instead of trusting it.</em></p>
+          <div class="ac">
+            <span class="lbl">Accepted when</span>
+            <ul>
+              <li>Replay feeds the stored raw readings back through the engine.</li>
+              <li>The replayed verdict is identical to the original, every time.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="us">
+          <div class="us-top"><span class="us-id">US-19</span><span class="chip p2">P2</span><span class="mono" style="font-size:.78rem;color:var(--ink-3)">UC-20</span></div>
+          <p class="say">As a <b>fleet manager</b>, I want the incident written up in plain language, <em>so that I can send it to the insurer without rewriting it.</em></p>
+          <div class="ac">
+            <span class="lbl">Accepted when</span>
+            <ul>
+              <li>The report is generated only from the stored structured record.</li>
+              <li>A visible switch disables it, and detection is completely unaffected when it is off.</li>
+              <li>It never invents a fact that is not in the record.</li>
+            </ul>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- EPIC 6 -->
+    <div class="epic">
+      <div class="epic-head">
+        <span class="n">EPIC 6</span>
+        <h3>Demo Control</h3>
+        <span class="goal">The judges drive, not us</span>
+      </div>
+      <div class="stories">
+
+        <div class="us">
+          <div class="us-top"><span class="us-id">US-20</span><span class="chip p0">P0</span><span class="mono" style="font-size:.78rem;color:var(--ink-3)">UC-21</span></div>
+          <p class="say">As a <b>presenter</b>, I want a list of scenarios the judges can choose from, <em>so that the demo is theirs to direct and clearly not a recording.</em></p>
+          <div class="ac">
+            <span class="lbl">Accepted when</span>
+            <ul>
+              <li>At least six scenarios are selectable, covering drone and truck, attack and fault and interference, plus one clean run.</li>
+              <li>A scenario starts within two seconds of selection.</li>
+              <li>The same engine serves every scenario — nothing is special-cased per scenario.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="us">
+          <div class="us-top"><span class="us-id">US-21</span><span class="chip p0">P0</span><span class="mono" style="font-size:.78rem;color:var(--ink-3)">UC-21</span></div>
+          <p class="say">As a <b>presenter</b>, I want to launch an attack at the moment I choose and reset instantly, <em>so that I can respond to whatever the judges ask for.</em></p>
+          <div class="ac">
+            <span class="lbl">Accepted when</span>
+            <ul>
+              <li>Each injection type has its own control, with adjustable strength.</li>
+              <li>The injection takes effect on the next cycle.</li>
+              <li>Reset returns to a clean state in under two seconds and clears all paths and alerts.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="us">
+          <div class="us-top"><span class="us-id">US-22</span><span class="chip p1">P1</span><span class="mono" style="font-size:.78rem;color:var(--ink-3)">UC-21</span></div>
+          <p class="say">As a <b>presenter</b>, I want a results card across all scenarios, <em>so that I close with measured numbers rather than claims.</em></p>
+          <div class="ac">
+            <span class="lbl">Accepted when</span>
+            <ul>
+              <li>It shows attacks caught out of attacks run.</li>
+              <li>It shows average detection time in seconds.</li>
+              <li>It shows false alarms during clean runs — and the target for that number is zero.</li>
+            </ul>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- EPIC 7 -->
+    <div class="epic">
+      <div class="epic-head">
+        <span class="n">EPIC 7</span>
+        <h3>Setup &amp; Self-Calibration</h3>
+        <span class="goal">Different vehicles, different sensors</span>
+      </div>
+      <div class="stories">
+
+        <div class="us">
+          <div class="us-top"><span class="us-id">US-23</span><span class="chip p1">P1</span><span class="mono" style="font-size:.78rem;color:var(--ink-3)">UC-22</span></div>
+          <p class="say">As an <b>integrator</b>, I want to register a vehicle with the sensors it actually has, <em>so that the engine only runs checks that make sense for it.</em></p>
+          <div class="ac">
+            <span class="lbl">Accepted when</span>
+            <ul>
+              <li>A vehicle profile lists its available sensors.</li>
+              <li>Only applicable pairs are scored — a truck adds wheels and the road map, a drone adds pressure.</li>
+              <li>Switching profile requires no code change.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="us star">
+          <div class="us-top"><span class="us-id">US-24</span><span class="chip p2">P2</span><span class="chip uniq">Unique</span><span class="mono" style="font-size:.78rem;color:var(--ink-3)">UC-22</span></div>
+          <p class="say">As the <b>onboard detector</b>, I want to learn each vehicle's own normal behaviour over time, <em>so that thresholds fit that vehicle instead of being guessed by us.</em></p>
+          <div class="ac">
+            <span class="lbl">Accepted when</span>
+            <ul>
+              <li>Normal drift and noise levels are learned over a number of clean trips.</li>
+              <li>Thresholds are derived per vehicle from that baseline.</li>
+              <li>Sensible defaults apply when no baseline exists yet.</li>
+              <li>Learning never runs while an incident is active, so an attack cannot teach the system to accept itself.</li>
+            </ul>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- MVP CUT -->
+<section>
+  <div class="wrap">
+    <div class="sec-head prose">
+      <span class="eyebrow">The cut line</span>
+      <h2>What must exist, and in what order</h2>
+    </div>
+    <div class="stack prose">
+      <p>Fifteen stories are marked <span class="mono">P0</span>. Build them in this order, because each one makes the next testable:</p>
+    </div>
+    <div class="tablewrap" style="margin-top:20px">
+      <table>
+        <thead><tr><th>Order</th><th>Stories</th><th>Why here</th></tr></thead>
+        <tbody>
+          <tr><td class="id">1</td><td><strong>US-20, US-21</strong> — scenarios and injection</td><td>Nothing can be tested until data exists and attacks can be triggered</td></tr>
+          <tr><td class="id">2</td><td><strong>US-01, US-02</strong> — health checks and the GPS-free witness</td><td>The witness is the foundation everything else compares against</td></tr>
+          <tr><td class="id">3</td><td><strong>US-03</strong> — pair scoring</td><td>Turns raw data into evidence</td></tr>
+          <tr><td class="id">4</td><td><strong>US-11</strong> — the two-path map</td><td>The moment the project becomes demonstrable; do this before adding cleverness</td></tr>
+          <tr><td class="id">5</td><td><strong>US-04, US-06</strong> — name the sensor, hold trust steady</td><td>The first unique capability, plus the thing that stops false alarms</td></tr>
+          <tr><td class="id">6</td><td><strong>US-05</strong> — attack or fault</td><td>The second unique capability and the strongest demo moment</td></tr>
+          <tr><td class="id">7</td><td><strong>US-07, US-10</strong> — keep flying, raise the alert</td><td>Closes the loop from detection to response</td></tr>
+          <tr><td class="id">8</td><td><strong>US-14, US-15</strong> — group incidents, draw the zone</td><td>The finale of the demo</td></tr>
+          <tr><td class="id">9</td><td><strong>US-17</strong> — evidence record</td><td>Needed for the story, cheap once the rest exists</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="note" style="margin-top:22px">
+      <p><b>US-06 is the story teams skip, and it is the one that decides whether this is credible.</b> Without hysteresis the detector fires during ordinary manoeuvres, and every judge asks about exactly that. Build the clean-run scenario early and keep its false-alarm count at zero the whole way through — if that number ever leaves zero, stop and fix it before adding anything new.</p>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <div class="wrap">SensorSentry · PS 18 — Spoofing Detection &amp; Sensor Fusion · use cases and user stories, 7 September 2026.</div>
+</footer>
+
+</body>
+</html>
