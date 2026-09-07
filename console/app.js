@@ -724,13 +724,17 @@ async function post(path, body) {
  * nothing is staged: the list comes from the other process.
  */
 
-const NOTES = {
-  drone_clean:     "no attack",
-  drone_manoeuvre: "hard flying, no attack",
-  drone_walkoff:   "GPS spoofing",
-  drone_magnet:    "magnet on compass",
-  drone_fault:     "sensor failure",
-  truck_theft:     "cargo theft",
+/* Two words each: what it is, and what it is for. The vehicle has to be in
+   the name — stripping the prefix left a "clean" button for the drone and
+   another for the truck, side by side and indistinguishable. */
+const SCENARIOS = {
+  drone_clean:     ["drone · clean",     "no attack"],
+  drone_manoeuvre: ["drone · manoeuvre", "hard flying, no attack"],
+  drone_walkoff:   ["drone · walkoff",   "GPS spoofing"],
+  drone_fault:     ["drone · fault",     "sensor failure"],
+  drone_magnet:    ["drone · magnet",    "magnet on compass"],
+  truck_clean:     ["truck · clean",     "no attack"],
+  truck_theft:     ["truck · theft",     "cargo theft"],
 };
 
 let running = null;
@@ -751,15 +755,16 @@ async function loadScenarios() {
     box.innerHTML = "";
     for (const name of data.scenarios || []) {
       const b = document.createElement("button");
-      b.textContent = name.replace(/^drone_|^truck_/, "").replace(/_/g, " ");
-      b.dataset.note = NOTES[name] || "";
+      const [label, note] = SCENARIOS[name] || [name.replace(/_/g, " "), ""];
+      b.textContent = label;
+      b.dataset.note = note;
       b.addEventListener("click", () => startScenario(name, b));
       box.appendChild(b);
     }
     // The fleet finale is not a simulator scenario — it needs four vehicles
     // at once — but on stage it should be one more button, not a terminal.
     const fleetBtn = document.createElement("button");
-    fleetBtn.textContent = "fleet";
+    fleetBtn.textContent = "fleet · attack zone";
     fleetBtn.dataset.note = "4 vehicles, 3 attacked";
     fleetBtn.addEventListener("click", async () => {
       await post("/control/reset");
