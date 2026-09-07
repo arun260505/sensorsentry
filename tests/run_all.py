@@ -688,6 +688,36 @@ def the_operator_is_told_to_stop_once_the_budget_runs_out() -> None:
     assert "stop" in nav.note.lower() or "land" in nav.note.lower()
 
 
+@test
+def positions_leave_the_detector_as_lat_lon_too() -> None:
+    """The fleet map depends on this and cannot detect its absence.
+
+    Every vehicle anchors its own local origin on its own first fix, so local
+    metres from two vehicles mean different things. Drawing a fleet from them
+    stacks four vehicles on one spot and puts one three kilometres away next
+    door — which is exactly what happened. lat/lon is the only frame they
+    share.
+    """
+    stream = FrameStream()
+    reckoner = DeadReckoner(profiles.DRONE)
+    tracker = ResidualTracker(profiles.DRONE.accel_bias_sigma)
+    pipeline = None
+    from detector.pipeline import Pipeline
+    pipeline = Pipeline()
+    payload = None
+    for raw in fixtures.frames(duration_s=30.0, seed=5):
+        state = pipeline.accept(raw)
+        if state is not None and state.gnss_enu is not None:
+            payload = state.to_json()
+    assert payload is not None, "never anchored"
+    for key in ("gnss", "witness"):
+        assert payload[key].get("lat") is not None, f"{key} has no lat"
+        assert payload[key].get("lon") is not None, f"{key} has no lon"
+    # And they must be real coordinates, not zeros left by a missing origin.
+    assert abs(payload["gnss"]["lat"]) > 1.0
+    assert abs(payload["gnss"]["lon"]) > 1.0
+
+
 # --- fleet ----------------------------------------------------------------
 
 def _incident(vid, t, lat, lon, cause="attack"):

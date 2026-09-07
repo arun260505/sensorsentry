@@ -20,7 +20,7 @@ from .classify import Classifier, Cause
 from .crossvalidate import CrossValidator, PairScore
 from .fusion import Fusion, Navigation
 from .deadreckon import DeadReckoner, Witness
-from .geo import ENU, llh_from_enu
+from .geo import ENU, Origin, llh_from_enu
 from .ingest import Frame, FrameStream, RunHeader
 from .residual import Residual, ResidualTracker
 from .trust import PairTrust
@@ -80,9 +80,25 @@ class State:
 
     gnss_enu: Optional[ENU] = None
     witness_enu: Optional[ENU] = None
+    origin: Optional[Origin] = None
+    """The anchor these local metres are measured from.
+
+    Every vehicle anchors on its own first GNSS fix, so local metres from two
+    vehicles are *not* comparable — which is why positions leave here as
+    lat/lon as well. Drawing a fleet without this stacks them on top of one
+    another and a vehicle three kilometres away appears next door.
+    """
 
     frames_seen: int = 0
     frames_dropped: int = 0
+
+    def _llh(self, pos: ENU) -> dict[str, float]:
+        """Local metres to lat/lon, so other vehicles can be drawn beside this
+        one. Without a shared frame a fleet map is meaningless."""
+        if self.origin is None:
+            return {}
+        lat, lon, _alt = llh_from_enu(pos, self.origin)
+        return {"lat": round(lat, 7), "lon": round(lon, 7)}
 
     def to_json(self) -> dict[str, Any]:
         """Shape sent to the console. See docs/schema.md."""
@@ -135,6 +151,7 @@ class State:
                 "e": round(self.witness_enu.e, 2) if self.witness_enu else None,
                 "n": round(self.witness_enu.n, 2) if self.witness_enu else None,
                 "u": round(self.witness_enu.u, 2) if self.witness_enu else None,
+                **(self._llh(self.witness_enu) if self.witness_enu else {}),
                 "speed_mps": round(
                     (self.witness.velocity.e ** 2 + self.witness.velocity.n ** 2) ** 0.5, 2
                 ),
@@ -146,6 +163,7 @@ class State:
                 "e": round(self.gnss_enu.e, 2),
                 "n": round(self.gnss_enu.n, 2),
                 "u": round(self.gnss_enu.u, 2),
+                **self._llh(self.gnss_enu),
             },
             "pairs": [
                 {
@@ -224,6 +242,7 @@ class Pipeline:
         if self.tracker.anchored and residual is not None:
             state.gnss_enu = residual.gnss_pos
             state.witness_enu = residual.witness_pos
+            state.origin = self.tracker.origin
             instant = self._instant_state(pairs)
             if instant is not None:
                 state.instant_state = instant

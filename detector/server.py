@@ -26,6 +26,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Optional
 
+from fleet.advisory import VehicleState, advise
+from fleet.cluster import Incident, find_zones
+
 from .ingest import DEFAULT_PORT, SchemaViolation, UdpReceiver
 from .pipeline import Pipeline
 
@@ -36,46 +39,151 @@ TRAIL_LIMIT = 4000
 demo, bounded so a forgotten run cannot eat memory."""
 
 
+class VehicleView:
+    """Everything the console needs about one vehicle."""
+
+    def __init__(self, vehicle_id: str) -> None:
+        self.vehicle_id = vehicle_id
+        self.latest = None
+        self.gnss_trail: list[tuple[float, float]] = []
+        self.witness_trail: list[tuple[float, float]] = []
+        self.run_id = None
+
+    def update(self, payload: dict) -> None:
+        if payload["run_id"] != self.run_id:
+            self.run_id = payload["run_id"]
+            self.gnss_trail.clear()
+            self.witness_trail.clear()
+        gnss = payload.get("gnss") or {}
+        witness = payload.get("witness") or {}
+        # Stored as lat/lon, not local metres. Each vehicle anchors its own
+        # origin, so its metres mean nothing to any other vehicle — a fleet
+        # map built from them draws everyone on top of everyone else.
+        if gnss.get("lat") is not None and witness.get("lat") is not None:
+            self.gnss_trail.append((gnss["lat"], gnss["lon"]))
+            self.witness_trail.append((witness["lat"], witness["lon"]))
+            del self.gnss_trail[:-TRAIL_LIMIT]
+            del self.witness_trail[:-TRAIL_LIMIT]
+        self.latest = payload
+
+    def trails(self) -> dict:
+        return {"gnss": self.gnss_trail[-TRAIL_LIMIT:],
+                "witness": self.witness_trail[-TRAIL_LIMIT:]}
+
+
 class Shared:
-    """State the UDP thread writes and HTTP threads read."""
+    """State the UDP thread writes and HTTP threads read.
+
+    Keyed by vehicle, because one attacker hits several at once and locating
+    him is the whole point of the fleet view. A single-vehicle console can
+    never show the thing that makes this product different.
+    """
 
     def __init__(self) -> None:
         self.lock = threading.Lock()
-        self.latest: Optional[dict[str, Any]] = None
-        self.raw: Optional[dict[str, Any]] = None
-        self.gnss_trail: list[tuple[float, float]] = []
-        self.witness_trail: list[tuple[float, float]] = []
-        self.run_id: Optional[str] = None
-        self.violation: Optional[str] = None
+        self.vehicles: dict[str, VehicleView] = {}
+        self.focus = None
+        """Which vehicle the detail panels describe. The first one seen, unless
+        one is under attack — then that is what the operator wants."""
+
+        self.raw = None
+        self.violation = None
+        self.incidents: list[Incident] = []
+        self.zones: list = []
+        self.advisories: list = []
         self.version = 0
 
-    def update(self, payload: dict[str, Any], raw: dict[str, Any]) -> None:
+    def update(self, payload: dict, raw: dict) -> None:
         with self.lock:
-            if payload["run_id"] != self.run_id:
-                self.run_id = payload["run_id"]
-                self.gnss_trail.clear()
-                self.witness_trail.clear()
-                self.violation = None
-            if payload.get("gnss") and payload.get("witness", {}).get("e") is not None:
-                self.gnss_trail.append((payload["gnss"]["e"], payload["gnss"]["n"]))
-                self.witness_trail.append((payload["witness"]["e"], payload["witness"]["n"]))
-                del self.gnss_trail[:-TRAIL_LIMIT]
-                del self.witness_trail[:-TRAIL_LIMIT]
-            self.latest = payload
+            vid = payload["vehicle_id"]
+            view = self.vehicles.get(vid)
+            if view is None:
+                view = self.vehicles[vid] = VehicleView(vid)
+            view.update(payload)
+
+            self._record_incident(payload)
+            self._recompute()
+
+            if self.focus is None or self.focus not in self.vehicles:
+                self.focus = vid
+            attacked = [v for v, w in self.vehicles.items()
+                        if w.latest and w.latest.get("state") == "ALERT"]
+            if attacked and self.focus not in attacked:
+                self.focus = attacked[0]
+
             self.raw = raw
             self.version += 1
 
-    def snapshot(self) -> dict[str, Any]:
+    def _record_incident(self, payload: dict) -> None:
+        """Keep one report per vehicle: the newest.
+
+        A vehicle alerting every frame must not outvote three other vehicles
+        when the zone is worked out.
+        """
+        blame = payload.get("blame") or {}
+        cause = payload.get("cause") or {}
+        nav = payload.get("navigation")
+        if (payload.get("state") != "ALERT" or not nav
+                or not blame.get("guilty") or blame["guilty"] == "cannot_isolate"
+                or cause.get("label") in (None, "unclassified")):
+            return
+
+        vid = payload["vehicle_id"]
+        self.incidents = [i for i in self.incidents if i.vehicle_id != vid]
+        self.incidents.append(Incident(
+            vehicle_id=vid, t=payload["t"],
+            # The vehicle's own estimate, never the reported fix — under a
+            # spoof the reported fix is the attacker's choice.
+            lat=nav["lat"], lon=nav["lon"],
+            guilty=blame["guilty"], cause=cause["label"],
+            confidence=float(cause.get("confidence") or 0.0),
+        ))
+
+    def _recompute(self) -> None:
+        self.zones = find_zones(self.incidents)
+        states = []
+        for vid, view in self.vehicles.items():
+            payload = view.latest
+            nav = (payload or {}).get("navigation")
+            if not nav:
+                continue
+            witness = payload.get("witness") or {}
+            states.append(VehicleState(
+                vehicle_id=vid, lat=nav["lat"], lon=nav["lon"],
+                speed_mps=float(witness.get("speed_mps") or 0.0),
+                under_attack=payload.get("state") == "ALERT",
+            ))
+        self.advisories = advise(states, self.zones)
+
+    def snapshot(self) -> dict:
         with self.lock:
+            focus = self.vehicles.get(self.focus) if self.focus else None
             return {
                 "version": self.version,
-                "state": self.latest,
+                # Flat, for the single-vehicle detail panels.
+                "state": focus.latest if focus else None,
+                "trails": focus.trails() if focus else {"gnss": [], "witness": []},
                 "raw": self.raw,
                 "violation": self.violation,
-                "trails": {
-                    "gnss": self.gnss_trail[-TRAIL_LIMIT:],
-                    "witness": self.witness_trail[-TRAIL_LIMIT:],
+                "focus": self.focus,
+                "vehicles": {
+                    v: {"state": w.latest, "trails": w.trails()}
+                    for v, w in self.vehicles.items()
                 },
+                "zones": [
+                    {"lat": z.lat, "lon": z.lon, "radius_m": round(z.radius_m),
+                     "vehicles": list(z.vehicles),
+                     "confidence": round(z.confidence, 2),
+                     "describe": z.describe()}
+                    for z in self.zones
+                ],
+                "advisories": [
+                    {"vehicle_id": a.vehicle_id, "distance_m": round(a.distance_m),
+                     "seconds_away": (None if a.seconds_away is None
+                                      else round(a.seconds_away)),
+                     "inside": a.inside, "message": a.message()}
+                    for a in self.advisories
+                ],
             }
 
     def fail(self, message: str) -> None:
@@ -85,29 +193,43 @@ class Shared:
 
     def clear(self) -> None:
         with self.lock:
-            self.latest = None
+            self.vehicles.clear()
+            self.focus = None
             self.raw = None
-            self.run_id = None
             self.violation = None
-            self.gnss_trail.clear()
-            self.witness_trail.clear()
+            self.incidents.clear()
+            self.zones = []
+            self.advisories = []
             self.version += 1
 
 
 def detector_loop(shared: Shared, port: int, vehicle_type: Optional[str]) -> None:
+    """One detector per vehicle, all reading the same socket.
+
+    Vehicles are told apart by `vehicle_id`, so several simulators can share
+    the port and each still gets its own independent pipeline. That
+    independence matters: the fleet argument only holds if the vehicles really
+    did reach their conclusions separately.
+    """
     receiver = UdpReceiver(port=port)
-    pipeline = Pipeline(vehicle_type)
+    pipelines: dict[str, Pipeline] = {}
+
     while True:
         try:
             for message in receiver.messages():
+                vid = message.get("vehicle_id")
+                if not vid:
+                    continue
+                if vid not in pipelines:
+                    pipelines[vid] = Pipeline(vehicle_type)
                 try:
-                    state = pipeline.accept(message)
+                    state = pipelines[vid].accept(message)
                 except SchemaViolation as exc:
                     # Surfaced to the console rather than killed silently: a
                     # forbidden field invalidates the demo and the operator
                     # needs to see that, loudly.
                     shared.fail(str(exc))
-                    pipeline = Pipeline(vehicle_type)
+                    pipelines.pop(vid, None)
                     continue
                 if state is not None:
                     shared.update(state.to_json(), message)

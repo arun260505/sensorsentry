@@ -26,6 +26,10 @@ const CANVAS_BG = "#ffffff";
 
 let latest = null;
 let trails = { gnss: [], witness: [] };
+let fleet = {};
+let zones = [];
+let advisories = [];
+let focus = null;
 
 /* --- canvas sizing ------------------------------------------------------ */
 
@@ -44,9 +48,19 @@ window.addEventListener("resize", resize);
  * scale bar can never disagree about how long a metre is.
  */
 
+/* Every vehicle shares one origin-relative frame, so their local metres are
+ * directly comparable and the whole fleet fits in one view. */
 function computeView(w, h) {
   const pts = trails.gnss.concat(trails.witness);
-  if (latest && latest.gnss) pts.push([latest.gnss.e, latest.gnss.n]);
+  for (const v of Object.values(fleet)) {
+    if (v.trails) pts.push(...v.trails.gnss, ...v.trails.witness);
+  }
+  // Keep the whole zone in view, not just its centre.
+  for (const z of zones) {
+    if (z.e === undefined) continue;
+    pts.push([z.e - z.radius_m, z.n - z.radius_m],
+             [z.e + z.radius_m, z.n + z.radius_m]);
+  }
 
   if (pts.length === 0) {
     return { cx: 0, cy: 0, scale: 1.2 };
@@ -92,6 +106,8 @@ function draw() {
 
   const view = computeView(w, h);
   drawGrid(w, h, view);
+  drawZones(view, w, h);
+  drawFleet(view, w, h);
   drawPath(trails.gnss, COLOR.claimed, view, w, h);
   drawPath(trails.witness, COLOR.witness, view, w, h);
   drawSeparation(view, w, h);
@@ -124,10 +140,61 @@ function drawGrid(w, h, view) {
   }
 }
 
-function drawPath(points, color, view, w, h) {
+/* The other vehicles, drawn thin and pale so the focused one stays readable.
+ * Under attack they take the alert colour, because on this screen the answer
+ * to "how many are being hit" has to be countable at a glance. */
+function drawFleet(view, w, h) {
+  for (const [id, v] of Object.entries(fleet)) {
+    if (id === focus || !v.trails) continue;
+    const attacked = v.state && v.state.state === "ALERT";
+    ctx.save();
+    ctx.globalAlpha = 0.55;
+    drawPath(v.trails.witness, attacked ? COLOR.link : COLOR.witness, view, w, h, 1.5);
+    ctx.restore();
+
+    const last = v.trails.witness[v.trails.witness.length - 1];
+    if (!last) continue;
+    const [x, y] = project(last[0], last[1], view, w, h);
+    ctx.fillStyle = attacked ? COLOR.link : COLOR.witness;
+    ctx.beginPath();
+    ctx.arc(x, y, 4.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = COLOR.text;
+    ctx.font = "500 11px system-ui, sans-serif";
+    ctx.textAlign = "left";
+    ctx.fillText(id, x + 8, y + 3);
+  }
+}
+
+/* Where the attacker probably is. Drawn soft on purpose — a hard-edged circle
+ * looks like a measurement, and this is an estimate from three witnesses. */
+function drawZones(view, w, h) {
+  for (const z of zones) {
+    if (z.e === undefined) continue;
+    const [x, y] = project(z.e, z.n, view, w, h);
+    const r = z.radius_m * view.scale;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(179,53,42,.10)";
+    ctx.fill();
+    ctx.strokeStyle = COLOR.link;
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([7, 5]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.fillStyle = COLOR.link;
+    ctx.font = "600 12px system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText(`likely transmitter · ${z.vehicles.length} vehicles hit`,
+                 x, y - r - 8);
+  }
+}
+
+function drawPath(points, color, view, w, h, width) {
   if (points.length < 2) return;
   ctx.strokeStyle = color;
-  ctx.lineWidth = 2.5;
+  ctx.lineWidth = width || 2.5;
   ctx.lineJoin = "round";
   ctx.lineCap = "round";
   ctx.beginPath();
@@ -142,12 +209,14 @@ function drawPath(points, color, view, w, h) {
  * put it. This gap is the entire product, so it is drawn explicitly rather
  * than left for the viewer to estimate between two curves. */
 function drawSeparation(view, w, h) {
-  if (!latest || !latest.gnss || latest.witness.e === null) return;
-  const gap = latest.residual ? latest.residual.horizontal_m : 0;
+  const g = trails.gnss[trails.gnss.length - 1];
+  const wit = trails.witness[trails.witness.length - 1];
+  if (!g || !wit) return;
+  const gap = latest && latest.residual ? latest.residual.horizontal_m : 0;
   if (gap < 8) return;
 
-  const [x1, y1] = project(latest.gnss.e, latest.gnss.n, view, w, h);
-  const [x2, y2] = project(latest.witness.e, latest.witness.n, view, w, h);
+  const [x1, y1] = project(g[0], g[1], view, w, h);
+  const [x2, y2] = project(wit[0], wit[1], view, w, h);
 
   ctx.strokeStyle = COLOR.link;
   ctx.lineWidth = 1.5;
@@ -165,11 +234,10 @@ function drawSeparation(view, w, h) {
 }
 
 function drawHeads(view, w, h) {
-  if (!latest) return;
-  if (latest.gnss) head(latest.gnss.e, latest.gnss.n, COLOR.claimed, "GPS says", view, w, h);
-  if (latest.witness.e !== null) {
-    head(latest.witness.e, latest.witness.n, COLOR.witness, "actually here", view, w, h);
-  }
+  const g = trails.gnss[trails.gnss.length - 1];
+  const wit = trails.witness[trails.witness.length - 1];
+  if (g) head(g[0], g[1], COLOR.claimed, "GPS says", view, w, h);
+  if (wit) head(wit[0], wit[1], COLOR.witness, "actually here", view, w, h);
 }
 
 function head(e, n, color, label, view, w, h) {
@@ -255,6 +323,22 @@ function renderPanels(snapshot) {
     box.appendChild(row);
   }
 
+  // --- the fleet: how many are hit, and where the attacker is ----------
+  el("fleetpanel").hidden = zones.length === 0;
+  if (zones.length) {
+    const z = zones[0];
+    el("zoneline").textContent = z.describe;
+    el("zonevehicles").textContent = z.vehicles.join(", ");
+    el("zoneradius").textContent = `${(z.radius_m / 1000).toFixed(1)} km across`;
+    const list = el("advisories");
+    list.innerHTML = "";
+    for (const a of advisories) {
+      const li = document.createElement("li");
+      li.innerHTML = `<b>${a.vehicle_id}</b> — ${a.message}`;
+      list.appendChild(li);
+    }
+  }
+
   // --- what the vehicle is actually steering by ------------------------
   const nav = s.navigation;
   el("navpanel").hidden = !nav;
@@ -301,6 +385,30 @@ function renderPanels(snapshot) {
   }
 }
 
+/* One frame for the whole page.
+ *
+ * Everything arrives as lat/lon, because every vehicle anchors its own local
+ * origin and their metres are not comparable — a fleet map built from raw
+ * local metres stacks four vehicles on the same spot and puts one three
+ * kilometres away next door. So the page picks a single reference and
+ * converts everything against it.
+ */
+const EARTH_R = 6378137;
+let reference = null;
+
+function toLocal(lat, lon) {
+  if (reference === null) reference = { lat, lon };
+  const latRad = (reference.lat * Math.PI) / 180;
+  return [
+    ((lon - reference.lon) * Math.PI / 180) * EARTH_R * Math.cos(latRad),
+    ((lat - reference.lat) * Math.PI / 180) * EARTH_R,
+  ];
+}
+
+function pathToLocal(points) {
+  return (points || []).map(([lat, lon]) => toLocal(lat, lon));
+}
+
 /* --- stream ------------------------------------------------------------- */
 
 function connect() {
@@ -309,7 +417,33 @@ function connect() {
   source.onmessage = (event) => {
     const snapshot = JSON.parse(event.data);
     latest = snapshot.state;
-    trails = snapshot.trails;
+    focus = snapshot.focus;
+    advisories = snapshot.advisories || [];
+
+    // Anchor the page frame on the focused vehicle, once.
+    if (reference === null && latest && latest.witness && latest.witness.lat != null) {
+      reference = { lat: latest.witness.lat, lon: latest.witness.lon };
+    }
+
+    trails = {
+      gnss: pathToLocal(snapshot.trails.gnss),
+      witness: pathToLocal(snapshot.trails.witness),
+    };
+    fleet = {};
+    for (const [id, v] of Object.entries(snapshot.vehicles || {})) {
+      fleet[id] = {
+        state: v.state,
+        trails: {
+          gnss: pathToLocal(v.trails.gnss),
+          witness: pathToLocal(v.trails.witness),
+        },
+      };
+    }
+    zones = (snapshot.zones || []).map((z) => {
+      const [e, n] = toLocal(z.lat, z.lon);
+      return { ...z, e, n };
+    });
+
     renderPanels(snapshot);
     draw();
   };
@@ -390,6 +524,7 @@ async function startScenario(name, button) {
   await post("/control/clear");
   latest = null;
   trails = { gnss: [], witness: [] };
+  fleet = {}; zones = []; advisories = []; reference = null;
   draw();
 
   const ok = await post("/control/start", { scenario: name });
@@ -410,6 +545,7 @@ el("reset").addEventListener("click", async () => {
   }
   latest = null;
   trails = { gnss: [], witness: [] };
+  fleet = {}; zones = []; advisories = []; reference = null;
   draw();
   el("hint").textContent = "stopped";
 });

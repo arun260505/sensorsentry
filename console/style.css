@@ -106,7 +106,7 @@ body {
 
 main {
   display: grid;
-  grid-template-columns: 1fr 320px;
+  grid-template-columns: minmax(0, 1fr) 380px;
   min-height: 0;
 }
 
@@ -171,11 +171,16 @@ main {
 .sub { font-size: .78rem; color: var(--ink-3); margin-top: 6px; }
 
 .rows { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; }
-.rows > div { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
-.rows span { font-size: .84rem; color: var(--ink-2); }
+.rows > div {
+  display: flex; justify-content: space-between; align-items: baseline;
+  gap: 12px; min-width: 0;
+}
+.rows span { font-size: .84rem; color: var(--ink-2); flex: 0 1 auto; }
 .rows b {
-  font-family: var(--mono); font-size: .88rem; font-weight: 500;
+  font-family: var(--mono); font-size: .86rem; font-weight: 500;
   font-variant-numeric: tabular-nums;
+  text-align: right; min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .sensors { display: flex; flex-direction: column; gap: 8px; }
@@ -317,3 +322,33 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .navnote {
   margin: 12px 0 0; font-size: .82rem; line-height: 1.5; color: var(--ink-2);
 }
+
+/* --- fleet: several vehicles, and where the attacker is ------------------ */
+
+.panel.fleet { background: rgba(179,53,42,.06); }
+.zoneline {
+  font-size: .95rem; font-weight: 600; line-height: 1.4; color: var(--alert);
+}
+.advisories {
+  margin: 12px 0 0; padding-left: 16px;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.advisories li { font-size: .8rem; line-height: 1.45; color: var(--ink-2); }
+.advisories li b { color: var(--ink); }
+
+/* Nothing in the side column may push the page sideways. Long sensor lists
+   and metre readings both did, and clipped the text they were reporting. */
+.side, .panel, .panel * { min-width: 0; }
+.panel { overflow-wrap: anywhere; }
+
+/* The big separation figure is the one number read from across a room, but it
+   must not be the reason the panel overflows. */
+.big { font-size: clamp(1.6rem, 5vw, 2.4rem); overflow-wrap: anywhere; }
+
+.advisories li, .evidence li, .reason, .action, .navnote, .zoneline {
+  overflow-wrap: anywhere;
+}
+
+/* Give the side column its own scrollbar rather than hiding what will not
+   fit — the verdict must never be below an invisible fold. */
+.side { scrollbar-gutter: stable; }

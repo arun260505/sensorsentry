@@ -206,3 +206,26 @@ for `walkoff`; each injector documents its own units.
 
 Append-only JSON lines in `evidence/<run_id>.jsonl`. Written when state leaves
 `OK`. Must include the `seed` from the stream header so replay is exact.
+
+### Fleet fields, added 7 Sep 2026
+
+Positions now leave the detector as **lat/lon as well as local metres**, and
+the snapshot carries every vehicle rather than one:
+
+```json
+{
+  "focus": "DRONE-11",
+  "vehicles": { "DRONE-11": { "state": {...}, "trails": {...} }, ... },
+  "zones":    [ { "lat":..., "lon":..., "radius_m": 948,
+                  "vehicles": ["DRONE-11","DRONE-12","DRONE-13"],
+                  "confidence": 0.6, "describe": "..." } ],
+  "advisories": [ { "vehicle_id": "DRONE-14", "distance_m": 1097,
+                    "seconds_away": 94, "inside": false, "message": "..." } ]
+}
+```
+
+Trails are **lat/lon pairs**, not metres. Each vehicle anchors its own local
+origin on its own first fix, so its metres mean nothing to any other vehicle —
+a fleet map built from them draws four vehicles on top of each other and puts
+one three kilometres away next door. lat/lon is the only frame they share, and
+the console converts everything into one reference of its own.
