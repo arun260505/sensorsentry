@@ -46,32 +46,61 @@ class SimState:
     """
 
     def __init__(self):
-        self._lock          = threading.Lock()
-        self._injector      = None   # current active attack/fault/interference
-        self._injector_kind = None   # 'attack', 'fault', 'interference'
-        self._inject_t      = None   # sim time when injection started
-        self._stop_event    = threading.Event()
-        self._run_thread    = None
-        self._scenario      = None
-        self._seed          = None
+        self._lock       = threading.Lock()
+        # slot -> [injector, t_start, kind]. A slot is what the judge is
+        # holding: "attack" for the GPS, "interference:magnet" for the
+        # compass, "fault:baro" for a broken barometer. Keyed this way rather
+        # than by kind so picking up a second weapon does not put the first
+        # one down — two hands on the vehicle at once is the hardest case we
+        # have, and the one worth letting them try.
+        self._injectors: dict = {}
+        self._stop_event = threading.Event()
+        self._run_thread = None
+        self._scenario   = None
+        self._seed       = None
 
     # -- Injector access (read by run loop) --
-    @property
-    def injector(self):
+    def injectors(self):
+        """Every live injector as (injector, kind, t_start, slot)."""
         with self._lock:
-            return self._injector, self._injector_kind, self._inject_t
+            return [(inj, kind, t0, slot)
+                    for slot, (inj, t0, kind) in self._injectors.items()]
 
-    def set_injector(self, injector, kind: str, t_start: float):
+    def get_injector(self, slot: str):
+        """The injector in a slot, or the first one of that kind."""
         with self._lock:
-            self._injector      = injector
-            self._injector_kind = kind
-            self._inject_t      = t_start
+            entry = self._injectors.get(slot)
+            if entry:
+                return entry[0]
+            for held_slot, (inj, _t0, kind) in self._injectors.items():
+                if kind == slot or held_slot.startswith(f"{slot}:"):
+                    return inj
+            return None
 
-    def clear_injector(self):
+    def set_injector(self, injector, kind: str, t_start, slot: str | None = None):
         with self._lock:
-            self._injector      = None
-            self._injector_kind = None
-            self._inject_t      = None
+            self._injectors[slot or kind] = [injector, t_start, kind]
+
+    def latch(self, slot: str, t_start: float) -> None:
+        """Record the sim time an injector first took effect."""
+        with self._lock:
+            if slot in self._injectors:
+                self._injectors[slot][1] = t_start
+
+    def clear_injector(self, which: str | None = None):
+        """Put down one weapon, or all of them.
+
+        `which` matches a slot exactly ("interference:magnet") or every slot
+        of a kind ("interference"), so the console can drop the spoof and keep
+        the magnet, or the reverse.
+        """
+        with self._lock:
+            if which is None:
+                self._injectors.clear()
+                return
+            for slot in [s for s in self._injectors
+                         if s == which or s.split(":")[0] == which]:
+                self._injectors.pop(slot, None)
 
     # -- Run control --
     def is_running(self) -> bool:
@@ -102,6 +131,19 @@ class SimState:
 # ---------------------------------------------------------------------------
 # HTTP handler
 # ---------------------------------------------------------------------------
+TARGET_SLOT = {
+    "gps":      "attack",
+    "compass":  "interference:magnet",
+    "altitude": "interference:pressure",
+}
+"""What the console calls a target, and which slot it steers.
+
+The judge picks one and drives it with the arrow keys. Keeping the mapping
+here rather than in the browser means the page cannot ask for something the
+simulator does not have.
+"""
+
+
 def _make_handler(state: SimState, run_fn, default_seed_fn):
     """Build a handler class that closes over the shared state."""
 
@@ -146,12 +188,13 @@ def _make_handler(state: SimState, run_fn, default_seed_fn):
             if self.path == "/scenarios":
                 self._send(200, {"scenarios": list_scenarios()})
             elif self.path == "/status":
-                inj, kind, t_inj = state.injector
+                live = state.injectors()
                 self._send(200, {
                     "running":   state.is_running(),
                     "scenario":  state._scenario,
-                    "injecting": inj is not None,
-                    "inject_kind": kind,
+                    "injecting": bool(live),
+                    "inject_kind":  live[0][1] if live else None,
+                    "holding": sorted(slot for _, _, _, slot in live),
                 })
             else:
                 self._send(404, {"error": "not found"})
@@ -166,6 +209,8 @@ def _make_handler(state: SimState, run_fn, default_seed_fn):
                 self._handle_reset()
             elif self.path == "/inject":
                 self._handle_inject(body)
+            elif self.path == "/steer":
+                self._handle_steer(body)
             else:
                 self._send(404, {"error": "not found"})
 
@@ -188,6 +233,44 @@ def _make_handler(state: SimState, run_fn, default_seed_fn):
             elapsed = time.monotonic() - t0
             self._send(200, {"reset": True, "elapsed_s": round(elapsed, 3)})
 
+        # ---- /steer ----
+        def _handle_steer(self, body: dict):
+            """Change a live attack's direction or speed without restarting it.
+
+            This is the arrow keys. It exists as its own endpoint because
+            re-injecting would build a fresh injector, whose clock starts at
+            zero — the fake position would snap back onto the truth every time
+            the judge turned. Steering keeps the distance already stolen.
+            """
+            slot = TARGET_SLOT.get(body.get("target", "gps"))
+            if slot is None:
+                self._bad(f"unknown target {body.get('target')!r} — "
+                          f"use one of {sorted(TARGET_SLOT)}")
+                return
+            inj = state.get_injector(slot)
+            if inj is None or not hasattr(inj, "steer"):
+                self._bad("that one is not in your hands yet — take it first")
+                return
+            try:
+                inj.steer(
+                    speed_mps=(float(body["speed_mps"]) if "speed_mps" in body else None),
+                    bearing_deg=(float(body["bearing_deg"]) if "bearing_deg" in body else None),
+                    offset=(float(body["offset"]) if "offset" in body else None),
+                )
+            except (ValueError, TypeError) as exc:
+                self._bad(str(exc))
+                return
+
+            out = {"steering": True, "target": body.get("target", "gps")}
+            for name in ("speed_mps", "bearing_deg"):
+                if hasattr(inj, name):
+                    out[name] = getattr(inj, name)
+            if hasattr(inj, "offset_m"):
+                out["offset_m"] = round(inj.offset_m, 1)
+            if hasattr(inj, "offset"):
+                out["offset"] = round(inj.offset, 1)
+            self._send(200, out)
+
         # ---- /inject ----
         def _handle_inject(self, body: dict):
             if not state.is_running():
@@ -209,8 +292,11 @@ def _make_handler(state: SimState, run_fn, default_seed_fn):
                 elif kind == "interference":
                     inj = make_interference(itype, strength)
                 elif kind == "clear":
-                    state.clear_injector()
-                    self._send(200, {"injecting": False})
+                    # "which" clears one hand and leaves the other running:
+                    # drop the spoof but keep the magnet, or the reverse.
+                    which = body.get("which")
+                    state.clear_injector(which)
+                    self._send(200, {"injecting": False, "cleared": which or "all"})
                     return
                 else:
                     self._bad(f"unknown kind {kind!r} — use attack/fault/interference/clear")
@@ -219,14 +305,24 @@ def _make_handler(state: SimState, run_fn, default_seed_fn):
                 self._bad(str(exc))
                 return
 
+            # Each weapon gets its own slot, so taking hold of the compass
+            # does not make them let go of the GPS.
+            if kind == "fault":
+                slot = f"fault:{sensor}"
+            elif kind == "interference":
+                slot = f"interference:{itype.lower()}"
+            else:
+                slot = "attack"
+
             # t_start will be filled by the run loop on the next frame
-            state.set_injector(inj, kind, t_start=None)
+            state.set_injector(inj, kind, t_start=None, slot=slot)
             self._send(200, {
                 "injecting": True,
                 "kind": kind,
                 "type": itype,
                 "strength": strength,
                 "bearing_deg": bearing,
+                "slot": slot,
             })
 
     return Handler
@@ -332,42 +428,41 @@ def _make_run_fn(vehicle_id_fn, truth_log_path, quiet):
                         }) + "\n")
                         truth_file.flush()
 
-            # --- API injector overrides schedule injector ---
-            inj, inj_kind, inj_t = state.injector
-            if inj is not None:
-                # API injector: latch start time on first frame
-                if inj_t is None:
-                    state.set_injector(inj, inj_kind, t_start=t_sim)
+            # --- API injectors override the scheduled one, per kind ---
+            #
+            # Several can be live at once now. A judge steering the GPS while
+            # holding a magnet on the compass is two separate lies arriving
+            # together, which is the hardest case we have and the one worth
+            # letting them try.
+            active = []
+            api_kinds = set()
+            for inj, kind, inj_t, slot in state.injectors():
+                if inj_t is None:          # latch the start time on first frame
+                    state.latch(slot, t_sim)
                     inj_t = t_sim
                     if truth_file:
                         truth_file.write(json.dumps({
                             "event": "inject_start",
                             "t": round(t_sim, 3),
-                            "kind": inj_kind,
+                            "kind": kind,
                             "type": type(inj).__name__,
                         }) + "\n")
                         truth_file.flush()
-                t_since = t_sim - inj_t
-                active_inj  = inj
-                active_kind = inj_kind
-                active_t    = inj_t
-            elif sched_active_inj is not None:
-                t_since = t_sim - sched_active_t
-                active_inj  = sched_active_inj
-                active_kind = sched_active_kind
-                active_t    = sched_active_t
-            else:
-                active_inj = None
+                api_kinds.add(kind)
+                active.append((inj, kind, t_sim - inj_t))
 
-            if active_inj is not None:
-                t_since = t_sim - active_t
-                if active_kind == "attack":
+            if sched_active_inj is not None and sched_active_kind not in api_kinds:
+                active.append((sched_active_inj, sched_active_kind,
+                               t_sim - sched_active_t))
+
+            for inj, kind, t_since in active:
+                if kind == "attack":
                     if sensor_data["gnss"] is not None:
-                        sensor_data["gnss"] = active_inj.apply(sensor_data["gnss"], t_since)
-                elif active_kind == "fault":
-                    sensor_data = active_inj.apply(sensor_data, t_since, rng)
-                elif active_kind == "interference":
-                    sensor_data = active_inj.apply(sensor_data, t_since)
+                        sensor_data["gnss"] = inj.apply(sensor_data["gnss"], t_since)
+                elif kind == "fault":
+                    sensor_data = inj.apply(sensor_data, t_since, rng)
+                elif kind == "interference":
+                    sensor_data = inj.apply(sensor_data, t_since)
 
             pub.send_frame(t_sim, seq, sensor_data)
 

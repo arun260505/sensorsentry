@@ -521,3 +521,156 @@ main { min-height: 0; overflow: hidden; }
 .spacer { display: none; }
 #reset, #reporttoggle, #reportopen { order: 3; }
 .hint { order: 4; flex: 1 1 100%; }
+
+/* ---------------------------------------------------------------------------
+   "You are the attacker"
+
+   The single most persuasive thing on the page, so it is allowed to look like
+   the main event rather than a settings box. A judge who spoofs the GPS
+   themselves, at a moment nobody could have scripted, and watches it get
+   caught, has run the experiment. Nothing said from a slide competes.
+--------------------------------------------------------------------------- */
+.panel.attack {
+  border: 1px solid var(--claimed);
+  box-shadow: 0 1px 0 rgba(163, 93, 7, .12), 0 6px 22px -14px rgba(163, 93, 7, .5);
+}
+.panel.attack h2 { color: var(--claimed); }
+.attacknote {
+  margin: 0 0 12px; font-size: .78rem; line-height: 1.5; color: var(--ink-2);
+}
+.attacknote b { color: var(--claimed); }
+
+/* scoreboard */
+.score {
+  display: grid; grid-template-columns: 1fr auto 1fr; align-items: center;
+  gap: 8px; padding: 10px 8px; margin-bottom: 12px;
+  background: var(--panel-2); border-radius: 6px;
+}
+.score-side { display: flex; flex-direction: column; align-items: center; gap: 1px; }
+.score-side b {
+  font-family: var(--mono); font-size: 1.45rem; font-weight: 700;
+  line-height: 1; color: var(--ink);
+}
+.score-side span {
+  font-size: .62rem; letter-spacing: .04em; text-transform: uppercase;
+  color: var(--ink-3); text-align: center;
+}
+.score-side:first-child b { color: var(--claimed); }
+.score-side:last-child  b { color: var(--ok); }
+.score-v { font-size: .7rem; color: var(--ink-3); font-style: italic; }
+
+/* the controls themselves */
+.atk-block { margin-bottom: 10px; }
+.atk-head {
+  display: flex; justify-content: space-between; align-items: baseline;
+  font-size: .74rem; color: var(--ink-2); margin: 8px 0 3px;
+}
+.atk-head b { font-family: var(--mono); font-size: .82rem; color: var(--ink); }
+.panel.attack input[type="range"] {
+  width: 100%; margin: 0; accent-color: var(--claimed); cursor: pointer;
+}
+.atk-row { display: flex; gap: 6px; margin-bottom: 6px; }
+.atk-row.fault select {
+  flex: 1; min-width: 0; font: inherit; font-size: .74rem; padding: 5px 4px;
+  border: 1px solid var(--rule); border-radius: 4px;
+  background: var(--panel); color: var(--ink);
+}
+button.atk {
+  font: inherit; font-size: .78rem; font-weight: 600; padding: 7px 10px;
+  border: 1px solid var(--rule); border-radius: 4px;
+  background: var(--panel); color: var(--ink); cursor: pointer;
+  white-space: nowrap; transition: background .12s, border-color .12s;
+}
+button.atk:hover:not(:disabled) { background: var(--panel-2); }
+button.atk.primary {
+  width: 100%; margin-top: 9px; padding: 10px;
+  font-size: .92rem; letter-spacing: .02em;
+  background: var(--claimed); border-color: var(--claimed); color: #fff;
+}
+button.atk.primary:hover:not(:disabled) { background: #8d4f06; }
+button.atk.ghost {
+  width: 100%; margin-top: 2px; color: var(--ink-3);
+  background: transparent; border-style: dashed;
+}
+button.atk:disabled { opacity: .4; cursor: not-allowed; }
+.atk-row .atk { flex: 1; }
+
+/* the stopwatch — started by the judge's own click, timed in this browser,
+   never sent to the detector */
+.stopwatch {
+  display: flex; justify-content: space-between; align-items: baseline;
+  gap: 8px; margin-top: 10px; padding: 9px 11px; border-radius: 5px;
+  background: var(--panel-2); border-left: 3px solid var(--ink-3);
+}
+.stopwatch .sw-label { font-size: .72rem; color: var(--ink-2); }
+.stopwatch .sw-time {
+  font-family: var(--mono); font-size: 1.05rem; font-weight: 700; color: var(--ink);
+}
+.stopwatch[data-state="hunting"] { border-left-color: var(--claimed); }
+.stopwatch[data-state="hunting"] .sw-time { color: var(--claimed); }
+.stopwatch[data-state="caught"] { border-left-color: var(--ok); background: #e7f3ec; }
+.stopwatch[data-state="caught"] .sw-time,
+.stopwatch[data-state="caught"] .sw-label { color: var(--ok); }
+.stopwatch[data-state="away"] { border-left-color: var(--alert); background: #fbeceb; }
+.stopwatch[data-state="away"] .sw-time,
+.stopwatch[data-state="away"] .sw-label { color: var(--alert); }
+
+.atk-hint {
+  margin: 8px 0 0; font-size: .7rem; line-height: 1.45; color: var(--ink-3);
+}
+
+/* aiming: the map becomes a target while a spoof is armed */
+.mapwrap.aiming { cursor: crosshair; }
+.mapwrap.aiming::after {
+  content: "click where you want the GPS to drift";
+  position: absolute; left: 50%; top: 14px; transform: translateX(-50%);
+  padding: 6px 12px; border-radius: 999px; pointer-events: none;
+  background: var(--claimed); color: #fff;
+  font-size: .74rem; font-weight: 600; letter-spacing: .01em;
+}
+
+/* the D-pad: the judge drives the fake GPS while the vehicle drives its real
+   route. Deliberately looks like a game controller — that framing is what
+   makes people try to win, and a judge who spends four minutes trying to beat
+   it has spent four minutes proving our case. */
+.drive {
+  margin-top: 10px; padding: 10px; border-radius: 6px;
+  background: #fff7ec; border: 1px solid #e5c99a;
+}
+.drivehead, .drivefoot {
+  display: flex; justify-content: space-between; align-items: baseline;
+  font-size: .72rem; color: var(--ink-2);
+}
+.drivehead { margin-bottom: 8px; font-weight: 600; }
+.drivehead b { font-family: var(--mono); font-size: .95rem; color: var(--claimed); }
+.drivefoot { margin-top: 8px; color: var(--ink-3); font-size: .66rem; }
+.drivefoot span:last-child { font-family: var(--mono); color: var(--claimed); }
+
+.dpad { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.dpad-mid { display: flex; gap: 4px; }
+button.key {
+  width: 42px; height: 34px; font-size: .8rem; line-height: 1;
+  border: 1px solid #d9b787; border-radius: 5px; background: #fff;
+  color: var(--claimed); cursor: pointer;
+  transition: background .1s, transform .05s;
+}
+button.key:hover  { background: #fdf0dc; }
+button.key:active { transform: translateY(1px); }
+button.key.on     { background: var(--claimed); border-color: var(--claimed); color: #fff; }
+button.key:disabled { opacity: .4; cursor: not-allowed; }
+#driveoff { color: var(--ink-3); }
+
+/* target selector: pick what you want to lie with */
+.targets { display: flex; gap: 4px; margin-bottom: 10px; }
+button.target {
+  flex: 1; min-width: 0; font: inherit; font-size: .72rem; font-weight: 600;
+  padding: 6px 2px; cursor: pointer; color: var(--ink-2);
+  background: var(--panel-2); border: 1px solid var(--rule); border-radius: 4px;
+  transition: background .12s, color .12s, border-color .12s;
+}
+button.target:hover:not(:disabled) { color: var(--ink); }
+button.target.on {
+  background: var(--claimed); border-color: var(--claimed); color: #fff;
+}
+button.target:disabled { opacity: .4; cursor: not-allowed; }
+.tpane { margin-bottom: 4px; }

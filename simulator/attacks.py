@@ -53,6 +53,69 @@ def _bearing_to_en(bearing_deg: float):
 
 
 # ---------------------------------------------------------------------------
+# ManualDrift — a walk-off the attacker steers while it is running
+# ---------------------------------------------------------------------------
+class ManualDrift:
+    """A walk-off whose direction can be changed mid-attack.
+
+    `WalkOff` commits to a bearing when it is built and computes its offset
+    from the time elapsed. That makes re-aiming impossible: building a new one
+    restarts its clock at zero, which snaps the fake position back onto the
+    truth. On screen the spoofed track jumps home every time you turn — and it
+    is wrong as well as ugly. An attacker who turns the wheel does not undo the
+    distance already covered.
+
+    So the offset lives here and only ever accumulates. Steering changes where
+    the next metre goes, never where the last one went.
+
+    This is what a judge drives with the arrow keys.
+    """
+
+    def __init__(self, speed_mps: float = 3.0, bearing_deg: float = 90.0):
+        if speed_mps < 0:
+            raise ValueError("speed_mps must be >= 0")
+        self.speed_mps   = float(speed_mps)
+        self.bearing_deg = float(bearing_deg) % 360.0
+        self._east  = 0.0
+        self._north = 0.0
+        self._last_t: float | None = None
+
+    def steer(self, *, speed_mps: float | None = None,
+              bearing_deg: float | None = None, **_ignored) -> None:
+        """Change where the drift is heading, keeping what it has already built."""
+        if speed_mps is not None:
+            if speed_mps < 0:
+                raise ValueError("speed_mps must be >= 0")
+            self.speed_mps = float(speed_mps)
+        if bearing_deg is not None:
+            self.bearing_deg = float(bearing_deg) % 360.0
+
+    @property
+    def offset_m(self) -> float:
+        return math.hypot(self._east, self._north)
+
+    def apply(self, gnss: dict, t_since_start: float) -> dict:
+        # Integrate against elapsed time rather than counting frames, so the
+        # drift is the same distance whether the loop ran fast or slow.
+        dt = 0.0 if self._last_t is None else max(0.0, t_since_start - self._last_t)
+        self._last_t = t_since_start
+
+        self._east  += self.speed_mps * dt * _bearing_to_en(self.bearing_deg)[0]
+        self._north += self.speed_mps * dt * _bearing_to_en(self.bearing_deg)[1]
+
+        if self._east == 0.0 and self._north == 0.0:
+            return gnss  # nothing applied yet — provably identical
+
+        new_lat, new_lon = _offset_latlon(gnss["lat"], gnss["lon"],
+                                          self._east, self._north)
+        out = dict(gnss)
+        out["lat"] = round(new_lat, 6)
+        out["lon"] = round(new_lon, 6)
+        out["cn0_mean"] = round(min(gnss["cn0_mean"] + _SPOOF_CN0_BOOST, 55.0), 1)
+        return out
+
+
+# ---------------------------------------------------------------------------
 # WalkOff — slow drag attack
 # ---------------------------------------------------------------------------
 class WalkOff:
@@ -202,6 +265,8 @@ def make_attack(kind_type: str, strength: float, bearing_deg: float,
     t = kind_type.lower().replace("-", "_")
     if t == "walkoff":
         return WalkOff(speed_mps=strength, bearing_deg=bearing_deg)
+    elif t == "manual":
+        return ManualDrift(speed_mps=strength, bearing_deg=bearing_deg)
     elif t == "teleport":
         return Teleport(offset_m=strength, bearing_deg=bearing_deg)
     elif t in ("altitude_only", "altitudeonly"):

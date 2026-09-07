@@ -38,6 +38,21 @@ class Magnet:
     def __init__(self, offset_deg: float):
         self._offset = float(offset_deg)
 
+    def steer(self, *, offset: float | None = None, **_ignored) -> None:
+        """Turn the magnet while it is being held there.
+
+        A magnet is a constant offset rather than something that accumulates,
+        so unlike a walk-off it can simply be set — but it goes through the
+        same steering call as everything else, because on the console it is
+        the same pair of arrow keys.
+        """
+        if offset is not None:
+            self._offset = float(offset)
+
+    @property
+    def offset(self) -> float:
+        return self._offset
+
     def apply(self, sensor_data: dict, t_since_start: float) -> dict:
         out = dict(sensor_data)
         if out.get("mag") is None:
@@ -69,6 +84,15 @@ class Pressure:
 
     def __init__(self, offset_hpa: float):
         self._offset = float(offset_hpa)
+
+    def steer(self, *, offset: float | None = None, **_ignored) -> None:
+        """Raise or lower the apparent altitude while the run continues."""
+        if offset is not None:
+            self._offset = float(offset)
+
+    @property
+    def offset(self) -> float:
+        return self._offset
 
     def apply(self, sensor_data: dict, t_since_start: float) -> dict:
         out = dict(sensor_data)

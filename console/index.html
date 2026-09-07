@@ -44,6 +44,107 @@
   </section>
 
   <aside class="side">
+    <!-- The answer to "is this hardcoded?" is not an argument, it is this
+         panel. A judge picks a sensor, takes hold of it, and drives it with
+         the arrow keys at a moment nobody scripted. The detector is never
+         told that any of it happened. -->
+    <div class="panel attack" id="attackpanel">
+      <h2>You are the attacker</h2>
+      <p class="attacknote">
+        Pick what you want to lie with, take hold of it, and drive it with the
+        <b>arrow keys</b>. The detector is never told you did.
+      </p>
+
+      <!-- Judges try to win. Letting them keep score is the whole demo: it
+           turns "do you believe me?" into "go on, then." -->
+      <div class="score" id="score">
+        <div class="score-side"><b id="scoreyou">0</b><span>you got away with</span></div>
+        <div class="score-v">v</div>
+        <div class="score-side"><b id="scoreus">0</b><span>we caught</span></div>
+      </div>
+
+      <div class="targets" id="targets">
+        <button class="target on" data-target="gps">GPS</button>
+        <button class="target" data-target="compass">Compass</button>
+        <button class="target" data-target="altitude">Altitude</button>
+        <button class="target" data-target="break">Break one</button>
+      </div>
+
+      <!-- GPS: steer a drift that keeps the ground it has already stolen -->
+      <div class="tpane" id="pane-gps">
+        <div class="atk-head"><span>Drag it away at</span><b id="walkoffout">3.0 m/s</b></div>
+        <input type="range" id="walkoff" min="0.5" max="10" step="0.5" value="3">
+        <input type="hidden" id="bearing" value="90">
+        <span id="bearingout" hidden>090°</span>
+        <button id="dowalkoff" class="atk primary">Take the wheel</button>
+        <button id="doaim" class="atk ghost">Aim on the map instead</button>
+      </div>
+
+      <!-- Compass: a constant deflection, turned live -->
+      <div class="tpane" id="pane-compass" hidden>
+        <div class="atk-head"><span>Deflect the compass</span><b id="magout">0°</b></div>
+        <input type="range" id="magdial" min="-90" max="90" step="5" value="0">
+        <button id="domagnet" class="atk primary">Hold a magnet to it</button>
+      </div>
+
+      <!-- Altitude: bias the barometer, in metres of apparent height -->
+      <div class="tpane" id="pane-altitude" hidden>
+        <div class="atk-head"><span>Shift its height by</span><b id="altout">0 m</b></div>
+        <input type="range" id="altdial" min="-120" max="120" step="10" value="0">
+        <button id="doalt" class="atk primary">Squeeze the barometer</button>
+      </div>
+
+      <!-- Break one: no steering, it is simply broken -->
+      <div class="tpane" id="pane-break" hidden>
+        <div class="atk-row fault">
+          <select id="faultsensor" aria-label="which sensor to break">
+            <option value="baro">barometer</option>
+            <option value="mag">compass</option>
+            <option value="odom">wheels</option>
+            <option value="imu">gyro / accel</option>
+          </select>
+          <select id="faulttype" aria-label="how it breaks">
+            <option value="stuck">freezes</option>
+            <option value="noisy">goes noisy</option>
+            <option value="dropout">drops out</option>
+          </select>
+        </div>
+        <button id="dofault" class="atk primary">Break it</button>
+        <button id="doteleport" class="atk ghost">Or just jump the GPS 300 m</button>
+      </div>
+
+      <!-- The arrows. One control scheme for whatever is in your hands. -->
+      <div class="drive" id="drive" hidden>
+        <div class="drivehead">
+          <span id="drivewhat">You are driving the fake GPS</span>
+          <b id="driveheading">090°</b>
+        </div>
+        <div class="dpad">
+          <button class="key" data-arrow="up">&#9650;</button>
+          <div class="dpad-mid">
+            <button class="key" data-arrow="left">&#9664;</button>
+            <button class="key" id="driveoff">&#9632;</button>
+            <button class="key" data-arrow="right">&#9654;</button>
+          </div>
+          <button class="key" data-arrow="down">&#9660;</button>
+        </div>
+        <div class="drivefoot">
+          <span>arrow keys work too</span>
+          <span id="driveoffset">0 m off</span>
+        </div>
+      </div>
+
+      <button id="doclear" class="atk ghost">Put everything down</button>
+
+      <!-- Timed in the browser, from the judge's own click. This number never
+           goes near the detector — it cannot, which is the point. -->
+      <div class="stopwatch" id="stopwatch" hidden>
+        <span class="sw-label" id="swlabel">waiting</span>
+        <span class="sw-time" id="swtime">0.0 s</span>
+      </div>
+      <p class="atk-hint" id="atkhint">Start a scenario first.</p>
+    </div>
+
     <div class="panel verdict" id="verdictpanel" hidden>
       <h2>Verdict</h2>
       <div class="guilty">
