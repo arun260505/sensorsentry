@@ -4,37 +4,48 @@ Working checklist. Tick tasks as they land. The reasoning behind each phase is
 in [docs/sensorsentry-implementation-plan.html](docs/sensorsentry-implementation-plan.html);
 this file is the version you keep open while building.
 
-**Where we are:** the detection core works. Clean flights are silent, GPS
-spoofing and compass interference are both caught, and the numbers are
-measured rather than claimed (`python -m harness.sweep`).
+**Where we are: every phase that invents anything is finished.** What remains
+is rehearsal, and the one thing no amount of rehearsal substitutes for — real
+sensor data.
 
 | | |
 |---|---|
-| **Done** | 1-8 plus **9 fleet logic** — detect, blame, classify, keep flying, locate the attacker |
-| **In progress** | 4 attack injectors (Abishek, task 2) |
-| **Next** | **rehearsal (phase 12)** — nothing else outstanding |
-| **Not started** | 8 truck · 9 fleet · 10 evidence · 12 rehearsal |
-| **Tests** | 22 passing |
+| **Done** | 0-11 — detect, blame, classify, keep driving, locate the attacker, evidence, console, phone, truck, fleet, Chennai corridor |
+| **Next** | **rehearsal (phase 12)** — five run-throughs, wifi off |
+| **After the hackathon** | real recorded sensor data — see [the honest gap](#the-honest-gap) |
+| **Tests** | 64 passing, zero false alarms |
 
-**Both of the stages that make this project different are now built.** It
-catches a spoof, a magnet or a failing sensor, names the sensor responsible,
-says whether it is an attack, a breakdown or interference, gives the operator
-a different instruction for each, and refuses to guess when the evidence does
-not support an answer.
+**Both of the stages that make this project different are built and measured.**
+It catches a spoof, a magnet or a failing sensor, names the sensor responsible,
+says whether it is an attack, a breakdown or interference, gives the operator a
+different instruction for each, and refuses to guess when the evidence does not
+support an answer.
 
-Verified against the real simulator: 8 of 8 blame cases
-(`python -m harness.blame_check`), 8 of 8 cause cases
-(`python -m harness.classify_check`), zero false alarms (`python -m harness.sweep`).
+Verified against the simulator: 8 of 8 blame cases
+(`python -m harness.blame_check`), 7 of 8 cause cases
+(`python -m harness.classify_check`), zero false alarms across nine honest runs
+(`python -m harness.results`).
 
-**It now acts on the verdict.** When GPS is distrusted the vehicle drops it and
+**It acts on the verdict.** When GPS is distrusted the vehicle drops it and
 navigates on its own sensors, holding the true route while the reported fix
 walks away — measured 34 m from truth against GPS's 91 m
 (`python -m harness.fallback_check`). The error budget grows while free-running
 and is calibrated so it never claims to be better than it is; when it runs out
 the answer is "stop", not a prettier number.
 
-What is left: the truck profile, the fleet attack-zone map, the evidence record
-and the phone view.
+<a name="the-honest-gap"></a>
+### The honest gap — the one thing to say before anybody asks
+
+**Every tolerance in the detector is calibrated against our own simulator.**
+The physics is real and the maths does not know where its numbers came from,
+but no constant in `crossvalidate.py` has ever met a real accelerometer. That
+is the single largest risk to this as a product, and the first work after the
+hackathon: take a public recorded drive (comma2k19, or the Google Smartphone
+Decimeter set), inject a walk-off into the GNSS mathematically, and re-measure
+every floor on data nobody here generated.
+
+Say this to a buyer before they find it. A team that names its own weakest
+joint is more credible than one that waits to be caught at it.
 
 **Owners:** A = simulator · B = detector core · C = unique logic · D = console
 *(fewer people? see [Team](#team) at the bottom)*

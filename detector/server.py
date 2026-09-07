@@ -392,19 +392,15 @@ class Handler(BaseHTTPRequestHandler):
             for name, points in ROADS
         ]
 
-        # Named ends of the network, so the story has landmarks rather than
-        # coordinates. Taken from the roads themselves so they cannot drift
-        # out of step with the simulator.
+        # Landmarks come from the network itself, so the map cannot name
+        # places the trucks are not driving through.
         places = []
-        by_name = {name: points for name, points in ROADS}
-        if "warehouse lane" in by_name:
-            end = by_name["warehouse lane"][-1]
-            places.append({"name": "Warehouse", "at": to_llh(*end), "kind": "building"})
-        if "NH-544" in by_name:
-            places.append({"name": "Depot", "at": to_llh(*by_name["NH-544"][0]),
-                           "kind": "building"})
-            places.append({"name": "NH-544 north", "at": to_llh(*by_name["NH-544"][-1]),
-                           "kind": "waypoint"})
+        try:
+            from simulator.roads import PLACES
+            places = [{"name": name, "at": to_llh(*at), "kind": kind}
+                      for name, at, kind in PLACES]
+        except Exception:
+            pass
         return {"roads": roads, "places": places}
 
     def _report(self) -> dict[str, Any]:

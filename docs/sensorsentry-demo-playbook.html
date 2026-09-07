@@ -115,6 +115,15 @@ section:last-of-type{border-bottom:0}
   border-left:3px solid var(--accent);padding:2px 0 2px 16px;
 }
 .beat.say .quote + .quote{margin-top:10px}
+/* "Expect" — behaviour that is correct but looks wrong if it arrives
+   unannounced. Warm rather than alarming: this is a rehearsal note. */
+.beat.warn .lbl{color:var(--warn)}
+.beat.warn p{
+  font-size:.92rem;line-height:1.55;color:var(--ink-2);
+  background:var(--warn-soft);border-left:3px solid var(--warn);
+  padding:10px 14px;border-radius:0 4px 4px 0;
+}
+.beat.warn .mono{font-family:"JetBrains Mono",monospace;font-size:.85em}
 @media (max-width:640px){.beat{grid-template-columns:1fr;gap:6px}.beat .lbl{padding-top:0}}
 .cut{background:var(--warn-soft);border-left:3px solid var(--warn);padding:14px 18px;border-radius:0 4px 4px 0;font-family:Chivo,sans-serif;font-size:.86rem;color:var(--warn);font-weight:600}
 
@@ -357,10 +366,14 @@ wheel_speed      13.8</pre>
       <div class="scene">
         <div class="head"><span class="clock">3:20 – 4:05</span><h3>Scene 5 · A cargo truck</h3><span class="goal">It is not a drone project</span></div>
         <div class="body">
-          <div class="beat do"><span class="lbl">Do</span><p>Switch vehicle profile to truck. Run the theft scenario. The fake path stays neatly on the road; the real path stops at a warehouse behind it.</p></div>
+          <div class="beat do"><span class="lbl">Do</span><p>Switch vehicle profile to truck. Run the theft scenario. The fake path carries on down NH-48 toward Bangalore; the real one turns off at the Sriperumbudur junction and stops in a yard off the Oragadam estate road.</p></div>
           <div class="beat say"><span class="lbl">Say</span><div>
             <p class="quote">"Different vehicle. I changed nothing in the detector — I only told it this vehicle has wheels and a road map instead of a barometer."</p>
-            <p class="quote">"The control room screen shows the truck still driving normally. The real truck stopped at a warehouse three kilometres back and is being unloaded. This is how cargo actually gets stolen — the tracking system becomes the thief's best tool."</p>
+            <p class="quote">"The control room screen shows a container making steady progress toward Bangalore. That lorry is parked in a yard off Oragadam Road being unloaded. Nothing in the tracking system is broken — the receiver is being lied to before the position is ever transmitted, and everything downstream is a very reliable pipe for the lie. This is how cargo actually gets stolen, and it is why the tracker is no help: it becomes the thief's best tool."</p>
+          </div></div>
+          <div class="beat warn"><span class="lbl">Expect</span><p><b>The truck alerts at about 47 seconds and says <span class="mono">cannot isolate</span> for the next twenty.</b> It settles on <span class="mono">gnss / attack</span> around 65 s. That gap is not a glitch — say it before the judges see it, or it reads as one.</p></div>
+          <div class="beat say"><span class="lbl">Say</span><div>
+            <p class="quote">"Watch what it does there. It has told you something is wrong the moment it knows something is wrong — and it is refusing to name a culprit until the evidence actually supports one. Twenty seconds later it commits: the GPS, and it is an attack. Most systems would have guessed at second one and had a 50/50 chance of blaming the wrong sensor. We would rather be slow and right, and we would rather say 'I don't know' than be confidently wrong."</p>
           </div></div>
         </div>
       </div>
@@ -458,14 +471,15 @@ wheel_speed      13.8</pre>
           <tr><td class="mono">3 m/s</td><td><strong>caught ~16 s after onset</strong></td><td>A thief in a hurry</td></tr>
           <tr><td class="mono">2 m/s</td><td><strong>caught ~17 s after onset</strong></td><td>Our limit on a drone</td></tr>
           <tr><td class="mono">1 m/s</td><td class="fail">not caught on a drone</td><td>Slower than our own inertial drift</td></tr>
-          <tr><td class="mono">1 m/s, truck</td><td><strong>caught</strong></td><td>Wheels and the road network see what a drone cannot</td></tr>
+          <tr><td class="mono">1 m/s, truck</td><td><strong>caught, but it takes 159 s</strong></td><td>Wheels and the road network see what a drone cannot</td></tr>
           <tr><td class="mono">0.5 m/s</td><td class="fail">not caught</td><td>Below the floor on either vehicle</td></tr>
         </tbody>
       </table>
     </div>
     <div class="big" style="margin-top:24px">
       <span class="eyebrow">Say this out loud</span>
-      <p>"Below about 2 metres per second on a drone, the attack is slower than our own inertial drift and we genuinely cannot separate the two. That is our floor, and it is a property of the accelerometer rather than a bug we will fix later. On a truck it is about 1, because wheels measure real distance and a lorry has to be on a road — neither of which a transmitter can reach."</p>
+      <p>"Below about 2 metres per second on a drone, the attack is slower than our own inertial drift and we genuinely cannot separate the two. That is our floor, and it is a property of the accelerometer rather than a bug we will fix later. On a truck we get down to 1, because wheels measure real distance and a lorry has to be on a road — neither of which a transmitter can reach."</p>
+      <p>"And the two floors fail differently, which is the more interesting half. Watch both for the same three and a half minutes: waiting longer catches a slower attack on a truck, and never does on a drone. A road stays where it is, so the attack eventually walks across a fixed line. A drone's only witness is inertial, and its uncertainty grows at the same time the attack does — so it never crosses. <b>The drone floor is physics. The truck floor is only patience.</b>"</p>
       <p>"It's also worth saying what that limit costs an attacker: at that speed, he needs about three hours to move the vehicle one kilometre."</p>
     </div>
     <div class="plainbox" style="margin-top:22px">

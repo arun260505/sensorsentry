@@ -1039,8 +1039,9 @@ def _truck_run(scenario: str, seed: int, secs: float = 180.0) -> list[tuple]:
 def truck_roads_answer_distance_and_name() -> None:
     """roads.py: a point on the highway is on a road; the middle of nowhere is not."""
     assert distance_to_nearest_road(0.0, 0.0) == 0.0
-    assert nearest_road_name(0.0, 0.0) == "NH-544"
-    assert distance_to_nearest_road(1200.0, 100.0) == 0.0  # highway/service junction
+    assert nearest_road_name(0.0, 0.0) == "NH-48"
+    # SIPCOT Oragadam, where the industrial road meets the estate access road.
+    assert distance_to_nearest_road(350.0, -1000.0) == 0.0
     far = (9e4, -9e4)
     assert nearest_road_name(*far) == "none"
     assert distance_to_nearest_road(*far) > 50.0
@@ -1048,8 +1049,13 @@ def truck_roads_answer_distance_and_name() -> None:
 
 @test
 def truck_parks_wheels_read_zero_then_moves_on() -> None:
-    """A truck stops (red light), its wheels read exactly 0.0 while parked, then
-    it pulls away and drives on — and it never leaves the road's shape."""
+    """A truck stops at the signal on Oragadam Road, its wheels read exactly
+    0.0 while it waits, then it pulls away and completes the delivery — and it
+    never leaves the road's shape.
+
+    A parked wheel reading exactly zero matters more than it sounds: it is
+    normal, and a health check that calls a stationary lorry a frozen sensor
+    raises an alarm at every red light in Chennai."""
     rng = np.random.default_rng(7)
     wps, _vtype, _schedule = get_scenario("truck_clean")[:3]
     vehicle = make_vehicle("truck", wps, rng)
@@ -1081,8 +1087,10 @@ def truck_parks_wheels_read_zero_then_moves_on() -> None:
         longest_wheels_zero = stop_wheels_zero
     assert longest >= 4.0, "the red-light hold never happened"
     assert longest_wheels_zero, "stopped truck wheel did not read exactly 0.0"
-    assert final_speed > 15.0, "truck never pulled away after the stop"
-    assert 500.0 < final_e < 1100.0, "truck did not round-trip past the stop"
+    assert final_speed > 8.0, "truck never pulled away after the stop"
+    # One-way delivery: it should be down the estate access road, near the
+    # yard at (650, -1200), not back where it started.
+    assert final_e > 300.0, f"truck did not get past the junction (e={final_e:.0f})"
 
 
 @test

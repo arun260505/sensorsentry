@@ -97,6 +97,8 @@ wrong, raise it with the team; don't edit it alone.
 
 ```
 simulator/   vehicle + sensor models, attack/fault injectors, scenarios
+             chennai.py — the road network and origin, kept apart so the
+             corridor can be swapped for another city without touching code
 detector/    the ten-stage pipeline — the actual product
 fleet/       incident clustering, attack-zone estimation, advisories
 console/     one responsive page: operator console and phone app
@@ -150,17 +152,27 @@ python -m harness.send_fleet                  # 4 vehicles, 3 attacked
 
 | | |
 |---|---|
-| False alarms, 8 honest flights incl. hard manoeuvres | **zero** |
+| False alarms, 9 honest flights and drives incl. hard manoeuvres | **zero** |
 | Walk-off 2 / 3 / 5 m/s | caught 15-18 s after onset |
-| Walk-off 1 m/s and below | **not detected — our floor** |
+| Drone floor: 2 m/s | caught in 18 s; below that, **not detected** |
+| Truck floor: 1 m/s | caught in 159 s — half the drone's floor |
 | Magnet on compass, 25 deg+ | caught 2 s after onset |
 | Names the guilty sensor | 8 of 8 |
 | Attack / fault / interference | 7 of 8 |
 | Drops the liar, keeps flying | 34 m from truth vs GPS's 91 m |
 | Fleet locates the attacker | 3 hit -> one zone, 4th warned |
-| Truck: honest run | silent |
-| Truck: walk-off 2 m/s and up | caught ~60 s, gnss/attack |
+| Truck: honest Sriperumbudur run | silent |
+| Truck: walk-off 3.5 m/s | alerts at 47 s; names gnss/attack at 64-70 s |
 | Incident replays to identical verdict | yes |
+
+**The two floors differ for a reason worth saying out loud.** Watch both for
+the same 220 s and the truck still catches an attack half as slow as the drone
+can. Waiting longer helps a truck and never helps a drone: a road stays where
+it is, so the road check's tolerance is a fixed wall the attack eventually
+crosses, while the drone's only witness is inertial and its uncertainty grows
+alongside the attack. **The drone floor is physics; the truck floor is
+patience.** Both windows are equal in `harness/results.py` precisely so nobody
+can say the truck was handed more time.
 
 ### Owners
 
@@ -172,16 +184,27 @@ python -m harness.send_fleet                  # 4 vehicles, 3 attacked
 
 ### Known weaknesses — say these out loud, do not hide them
 
-- **Walk-off below ~2 m/s is not detected.** Slower than our own drift. At that
-  speed an attacker needs eight minutes to move a vehicle a kilometre.
+- **Walk-off below 2 m/s is not detected on a drone**, and below 1 m/s on a
+  truck. Slower than our own drift. At 1 m/s an attacker needs a quarter of an
+  hour to move a lorry a kilometre off its route — which is the honest way to
+  put it: we do not stop the attack, we make it slow enough to notice.
 - **Dead reckoning buys about 40 seconds**, not minutes. Past that our drift
   overtakes even a 3 m/s spoof, which is why the console counts down and then
   says "stop or land".
 - **A slowly drifting compass is not reliably attributed.** As it drifts the
   course check fails and blame can migrate to GPS; settled verdicts flip-flop.
   The magnet and the noisy compass are solid; this middle case is not.
-- **Detection latency is 15-18 s** because the course check needs a straight
-  segment. The attack is caught at the next one.
+- **Detection latency is 15-18 s** on a drone because the course check needs a
+  straight segment. The attack is caught at the next one. On the truck run it
+  is 47 s, because the road check has to wait for the reported position to walk
+  the full 45 m tolerance off the carriageway.
+- **The truck alerts about 20 s before it can name the sensor.** From 47 s the
+  console reads `cannot_isolate`; the verdict settles to `gnss / attack` around
+  64-70 s. This is rule 5 behaving correctly, not a bug — but **narrate it**, or
+  it looks like one. "It is telling you something is wrong the moment it knows,
+  and refusing to name a culprit until the evidence supports one." A judge who
+  sees that gap unexplained reads it as flakiness; a judge who is told to expect
+  it reads it as restraint.
 
 ### Still to do
 
@@ -202,6 +225,7 @@ is the normal outcome, not bad luck.
 | Map | own canvas, **no online tiles** | Demo runs with wifi off; tiles would fail silently |
 | Filter | simple residuals first | Kalman innovation test is a Phase 11 upgrade — credibility, not capability |
 | Vehicles | trucks **and** drones | Logistics is the better first market; same engine either way |
+| Where the demo drives | **Sriperumbudur to Oragadam**, real names, half true scale | A buyer recognises the road their own lorries take. Half scale because at full scale a three-minute run never reaches the turn-off, which is the only part of the journey the story needs — see `simulator/chennai.py` |
 
 ---
 

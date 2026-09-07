@@ -237,71 +237,64 @@ def drone_magnet():
 # ---------------------------------------------------------------------------
 def truck_clean():
     """
-    A delivery truck working a small network called from roads.py:
-      - leaves the depot and accelerates onto NH-544 east
-      - cruises the highway, passes the service-road junction
-      - turns onto the service road, stops at a red light mid-way
-      - pulls away, returns up the service road, rejoins the highway
-      - cruises west back to the depot and parks
+    A container delivery from Sriperumbudur into the Oragadam estate, and
+    nothing goes wrong.
 
-    Junctions, a stop, a turn onto a service road and a turn back — everything
-    truck_clean is supposed to contain. No attack. Must produce no alarms for
-    the full three minutes: this is the zero-false-alarm gate for trucks.
+    Comes in on NH-48 from Chennai, slows for the junction, turns south onto
+    Oragadam Road, holds at a signal, runs down to the SIPCOT estate and
+    delivers at the yard.
+
+    A junction, a signal stop, a turn off the highway and a delivery — a
+    working afternoon. No attack, and it must pass without a single alarm.
+    This is the gate an operator will judge us on: a system that cries wolf on
+    an honest delivery gets switched off inside a week.
     """
     waypoints = [
-        _twp(   0,    0, speed=0.0),                 # depot — parked
-        _twp( 400,   20, speed=18.0),                # accelerate onto NH-544
-        _twp( 800,   60, speed=18.0),                # cruise east
-        _twp(1200,  100, speed=14.0),                # service-road junction ahead
-        _twp(1180,  -50, speed=12.0),                # turn onto the service road
-        _twp(1150, -200, speed=0.0),                 # STOP at a red light
-        _twp(1180,  -50, speed=12.0),                # pull away, back up the road
-        _twp(1200,  100, speed=14.0),                # rejoin the highway
-        _twp( 800,   60, speed=18.0),                # head west for home
-        _twp( 400,   20, speed=10.0),                # slow for the depot
-        _twp(   0,    0, speed=0.0),                 # arrive and park
+        _twp(  -700,    250, speed=0.0),    # inbound from Chennai, at rest
+        _twp(  -350,    125, speed=22.0),   # NH-48, up to speed
+        _twp(     0,      0, speed=9.0),    # Sriperumbudur junction — slow to turn
+        _twp(   100,   -350, speed=18.0),   # onto Oragadam Road
+        _twp(   225,   -700, speed=0.0),    # STOP at the signal
+        _twp(   350,  -1000, speed=16.0),   # pull away into SIPCOT
+        _twp(   525,  -1125, speed=12.0),    # estate access road
+        _twp(   650,  -1200, speed=0.0),    # deliver at the yard
     ]
     return waypoints, "truck"
 
 
-# ---------------------------------------------------------------------------
-# truck_theft — the demo: walk-off spoof, truck quietly diverted to warehouse
-# ---------------------------------------------------------------------------
 def truck_theft():
     """
-    The cargo-theft story, played out:
+    The same delivery, and somebody is spoofing the tracker.
 
-      1. Truck drives NH-544 east at ~18 m/s, running normally.
-      2. At t = 40 s a walk-off spoof starts (18 m/s along bearing 90°).
-      3. The real truck turns off at the junction, down the service road, and
-         parks at the warehouse with the engine off.
-      4. The reported GPS position keeps driving up the highway.
+    The lorry really does turn off at Sriperumbudur and park in the yard,
+    where it is unloaded. The reported position carries on down NH-48 toward
+    Bangalore at road speed, so the control room watches a container making
+    ordinary progress toward a delivery that is not happening.
 
-    The reported path runs away east along the road while the real truck sits
-    still at the warehouse — the map picture is the whole story.
+    This is how the theft works, and it is why the tracking system is no help:
+    nothing in it is broken. The receiver is lied to before the position is
+    ever transmitted, and everything downstream is a very reliable pipe for
+    the lie.
+
+    3.5 m/s of drift — a lorry's difference in speed, not a teleport. The
+    whole point is that the screen looks ordinary.
     """
     waypoints = [
-        _twp(   0,    0, speed=0.0),                 # depot — parked
-        _twp( 400,   20, speed=18.0),                # accelerate onto NH-544
-        _twp( 800,   60, speed=18.0),                # cruise east
-        _twp(1200,  100, speed=14.0),                # junction — slow for it
-        _twp(1180,  -50, speed=12.0),                # turn onto the service road
-        _twp(1150, -200, speed=10.0),                # continue south
-        _twp(1120, -350, speed= 8.0),                # bottom of the service road
-        _twp(1100, -400, speed= 6.0),                # into the warehouse lane
-        _twp(1050, -430, speed=0.0),                 # warehouse — park
+        _twp(  -700,    250, speed=0.0),
+        _twp(  -350,    125, speed=22.0),
+        _twp(     0,      0, speed=9.0),    # turns off at the junction
+        _twp(   100,   -350, speed=18.0),
+        _twp(   225,   -700, speed=16.0),
+        _twp(   350,  -1000, speed=12.0),
+        _twp(   525,  -1125, speed=9.0),
+        _twp(   650,  -1200, speed=0.0),    # parked in the yard, unloading
     ]
     schedule = [
         {
-            "t_start": 40.0,
+            "t_start": 35.0,
             "kind":    "attack",
             "cls":     "WalkOff",
-            # 3.5 m/s, not the 18 it was. Eighteen metres a second is faster
-            # than the truck drives — the reported position leaves the road
-            # immediately, drags the inertial estimate with it before the
-            # alert can fire, and stops being a walk-off at all. A thief
-            # wants the control room to see a truck making normal progress.
-            "kwargs":  {"speed_mps": 3.5, "bearing_deg": 90.0},
+            "kwargs":  {"speed_mps": 3.5, "bearing_deg": 115.0},
         }
     ]
     return waypoints, "truck", schedule

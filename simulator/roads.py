@@ -20,46 +20,12 @@ import math
 # ---------------------------------------------------------------------------
 # Road network — ENU metres from the Coimbatore origin
 # ---------------------------------------------------------------------------
-ROADS = [
-    # (name, [(east, north), (east, north), ...])
-    (
-        "NH-544",
-        [
-            (0, 0),
-            (400, 20),
-            (800, 60),
-            (1200, 100),
-            (1600, 130),
-            (2000, 150),
-            (2400, 160),
-            (2800, 165),
-            (3200, 168),
-            (3600, 170),
-        ],
-    ),
-    (
-        "service road",
-        [
-            (1200, 100),
-            (1180, -50),
-            (1150, -200),
-            (1120, -350),
-        ],
-    ),
-    (
-        "warehouse lane",
-        [
-            (1120, -350),
-            (1100, -400),
-            (1050, -430),
-        ],
-    ),
-]
+from .chennai import PLACES, ROADS  # noqa: F401  (re-exported)
 
+# The network lives in chennai.py so the corridor can be swapped for another
+# city without touching the geometry code below. A buyer in Coimbatore should
+# see Coimbatore.
 
-# ---------------------------------------------------------------------------
-# Geometry helpers
-# ---------------------------------------------------------------------------
 def _dist_point_to_segment(px, py, ax, ay, bx, by):
     """Distance from point (px, py) to the line segment (ax, ay)-(bx, by)."""
     dx, dy = bx - ax, by - ay

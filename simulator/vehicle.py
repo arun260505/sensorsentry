@@ -18,12 +18,14 @@ import numpy as np
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-ORIGIN_LAT = 11.0168   # degrees
-ORIGIN_LON = 76.9558   # degrees
-ORIGIN_ALT = 412.0     # metres ASL
+
+
+
 
 # Earth radius for small-angle lat/lon conversion (flat-earth is fine here)
 R_EARTH = 6_371_000.0  # metres
+
+from .chennai import ORIGIN_ALT, ORIGIN_LAT, ORIGIN_LON  # noqa: E402
 
 GRAVITY = 9.79  # m/s²  (local Coimbatore value, close enough)
 

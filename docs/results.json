@@ -5,7 +5,10 @@
   "attacks_caught": 9,
   "mean_latency_s": 16.1,
   "floor_mps": 2.0,
+  "floor_latency_s": 18.2,
   "truck_floor_mps": 1.0,
+  "truck_floor_latency_s": 158.8,
+  "floor_window_s": 220.0,
   "blame_correct": "8 of 8",
   "cause_correct": "7 of 8"
 }
