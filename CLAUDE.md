@@ -126,22 +126,91 @@ short.**
 
 ## Status
 
-**Current phase:** 0–1 (foundations and simulator)
+**Current phase:** 1 (simulator) · phases 0, 2, 3 done — **the project is demoable**
 **Last updated:** 7 September 2026
 
 | Owner | Area | Current task |
 |---|---|---|
 | Abishek | Simulator | Task 1 — clean flight ([handover](docs/handover/01-abishek-simulator.md)) |
-| — | Detector core | not started |
-| — | Unique logic (blame, classify) | not started |
-| — | Console | not started |
+| — | Detector core | **stages 1–3 + residual done**, 22 tests passing |
+| — | Console | **live** — canvas map, two paths, raw feed |
+| — | Unique logic (blame, classify) | not started — phases 5, 6 |
 
 Full checklist: **[PLAN.md](PLAN.md)**
 
+Run it:
+
+```bash
+python -m detector.server                                 # terminal 1
+python -m harness.send_fixture --spoof 2.5 --spoof-at 15  # terminal 2
+# open http://127.0.0.1:8080
+
+python -m tests.run_all                                   # 22 tests
+python -m detector.run                                    # terminal-only version
+```
+
+Two things about the console that are deliberate and easy to undo by accident:
+
+- **It draws its own map on a canvas — no tile server, no map library.** The
+  demo runs with wifi off in front of judges; a map that silently fails to
+  load would take the whole thing with it.
+- **The raw-feed panel stays visible.** It is the anti-hardcoding proof: point
+  at it and say *"that is everything the detector receives — show me the field
+  that tells it an attack is happening."*
+
+### Engineering findings — these cost real time, don't rediscover them
+
+**1. An accelerometer cannot tell tilting from accelerating, and getting the
+gate wrong is unrecoverable.** Correcting attitude from gravity during
+acceleration writes a false pitch, the gyro then faithfully preserves it,
+gravity leaks into the forward axis, and the witness silently under-reads
+speed forever after — it read 7.1 m/s on a 12 m/s vehicle. The gate must close
+on the *worst* sample in the last second, not the average: an averaged gate
+still opens at the start of a manoeuvre while the window is half full of the
+stationary samples before it, which is enough to do the damage.
+
+**2. Health checks must measure sample-to-sample noise, not raw spread, and
+use a median.** Real motion is smooth so it barely shows between adjacent
+samples; a failing sensor is not. And one genuine jump — a vehicle moving off
+— makes a standard deviation declare the sensor faulty for two seconds. Median
+absolute deviation ignores outliers by construction.
+
+**3. Steady horizontal accelerometer bias is *rejected*, not integrated.** The
+complementary filter absorbs it into a small pitch offset that cancels it. So
+the textbook b·t²/2 drift bound does not apply to us — our uncertainty grows
+roughly **linearly**, and the quadratic model was unusable: it claimed 80 m of
+uncertainty while the witness was 12 m off, hiding a live 2 m/s attack.
+
+### Measured detection curve
+
+Free-running witness, test fixture, straight-line motion. Peak ratio of
+residual to claimed uncertainty:
+
+| walk-off | 0.0 | 0.2 | 0.5 | 1.0 | 2.0 | 5.0 m/s |
+|---|---|---|---|---|---|---|
+| ratio | 1.18 | 1.18 | 1.29 | 1.79 | 3.09 | 7.24 |
+
+This independently reproduces the failure boundary claimed in the demo
+playbook: **below about 0.2 m/s the attack hides inside our own drift.** Say
+that on stage — showing where we fail is the most credible thing we can do.
+
 ### Open questions
 
-- IMU dead-reckoning drift after 60 s — waiting on Abishek's measurement.
-  Target band 20–120 m. **This number sets the whole system's detection floor.**
+- **`DRIFT_RATE_MPS` recalibrated 0.5 -> 1.8** against Abishek's simulator
+  (7 Sep). The fixture was the optimistic one: it flies straight, and turns are
+  where dead reckoning suffers. Worst case over five seeds — clean 60 m at 60 s,
+  manoeuvre 103 m; both inside the 20-120 m band the handover asked for.
+- **The clean-run gate now holds for ~90 s, not the full 3-minute route.**
+  Drift is not linear: the implied rate climbs 0.6 -> 4.3 m/s between 30 s and
+  120 s, so a free-running witness eventually outgrows any linear sigma. Raising
+  the constant to cover 120 s would push sigma past 200 m and make a 2 m/s
+  walk-off invisible — trading the attack we exist to catch for a passing test.
+  **Phase 7 is now a blocker, not an improvement:** while GNSS is trusted it must
+  aid the witness so drift stops growing without bound and the residual becomes
+  a filter innovation. Free-running for three minutes is a phase 2 shortcut.
+- Abishek's raw-integration drift check (target 20–120 m at 60 s) measures
+  *unfiltered* integration, so it is not the same quantity as our filtered
+  witness error (~12 m). Both are useful; don't confuse them.
 
 ---
 

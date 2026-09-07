@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SensorSentry Console</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="bar">
+  <div class="brand">
+    <span class="mark"></span>
+    <span class="name">SensorSentry</span>
+  </div>
+  <div class="runinfo">
+    <span id="vehicle">no vehicle</span>
+    <span class="sep">·</span>
+    <span id="runid">waiting for a run</span>
+    <span class="sep">·</span>
+    <span id="clock">t 0.0 s</span>
+  </div>
+  <div class="statepill" id="statepill" data-state="IDLE">IDLE</div>
+</header>
+
+<div id="violation" class="violation" hidden></div>
+
+<main>
+  <section class="mapwrap">
+    <canvas id="map"></canvas>
+    <div class="legend">
+      <span><i class="swatch claimed"></i>GPS says</span>
+      <span><i class="swatch witness"></i>Own sensors say</span>
+    </div>
+    <div class="scalebar"><span id="scaletext">100 m</span></div>
+  </section>
+
+  <aside class="side">
+    <div class="panel">
+      <h2>Separation</h2>
+      <div class="big" id="sep">—</div>
+      <div class="sub">metres between the two positions</div>
+      <div class="rows">
+        <div><span>Our uncertainty</span><b id="sigma">—</b></div>
+        <div><span>Ratio</span><b id="ratio">—</b></div>
+        <div><span>Vertical</span><b id="vert">—</b></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Sensors</h2>
+      <div id="sensors" class="sensors"><p class="empty">no run</p></div>
+    </div>
+
+    <div class="panel">
+      <h2>Own senses</h2>
+      <div class="rows">
+        <div><span>Speed</span><b id="speed">—</b></div>
+        <div><span>Distance</span><b id="dist">—</b></div>
+        <div><span>Dead reckoning for</span><b id="elapsed">—</b></div>
+        <div><span>Frames</span><b id="frames">—</b></div>
+      </div>
+    </div>
+  </aside>
+</main>
+
+<section class="feedwrap">
+  <div class="feedhead">
+    <h2>Everything the detector receives</h2>
+    <p>No true position. No attack flag. There is nothing here it could cheat with.</p>
+  </div>
+  <pre id="feed" class="feed">waiting for frames…</pre>
+</section>
+
+<footer class="controls">
+  <button id="start" class="primary">Start run</button>
+  <button id="reset">Reset</button>
+  <span class="spacer"></span>
+  <span id="hint" class="hint">Send frames with: <code>python -m harness.send_fixture --spoof 2.0</code></span>
+</footer>
+
+<script src="app.js"></script>
+</body>
+</html>

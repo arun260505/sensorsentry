@@ -1,0 +1,1028 @@
+<title>SensorSentry Review 1</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@100..125,400..900&family=JetBrains+Mono:wght@400;500;700&family=Literata:opsz,wght@7..72,400;7..72,600&display=swap">
+
+<style>
+/* ==========================================================
+   SensorSentry · Review 1
+   Visual world: a navigator's plotting sheet.
+   One encoding carried through every page and drawing:
+       MARINE = what physics says (the witness, the truth)
+       HAZARD = what GPS claims  (the lie, the alert)
+   ========================================================== */
+
+:root{
+  --paper:#FFFFFF;
+  --paper-2:#F2F7F9;
+  --grid:#EDF4F7;
+  --grid-major:#DDEAEF;
+  --rule:#C7D8DF;
+  --rule-soft:#DFE9ED;
+
+  --ink:#0B1B24;
+  --ink-2:#425C68;
+  --ink-3:#7A929C;
+
+  --marine:#0E5C7E;
+  --marine-deep:#083D55;
+  --marine-wash:#E2EFF4;
+
+  --hazard:#C8452B;
+  --hazard-wash:#F8E8E4;
+  --amber:#B57A10;
+  --amber-wash:#FAF1DC;
+  --ok:#2C7355;
+  --ok-wash:#E2F0E9;
+
+  --display:Archivo,"Arial Black",Helvetica,sans-serif;
+  --body:Literata,Georgia,"Times New Roman",serif;
+  --mono:"JetBrains Mono",ui-monospace,Consolas,monospace;
+
+  --u:clamp(13px,1.28vw,20px);
+  --pad:clamp(24px,3.6vw,70px);
+}
+
+*{box-sizing:border-box}
+
+body{
+  color:var(--ink);
+  font-family:var(--body);
+  font-size:var(--u);
+  line-height:1.56;
+  overflow:hidden;
+  background-color:var(--paper);
+  background-image:
+    linear-gradient(var(--grid) 1px,transparent 1px),
+    linear-gradient(90deg,var(--grid) 1px,transparent 1px),
+    linear-gradient(var(--grid-major) 1px,transparent 1px),
+    linear-gradient(90deg,var(--grid-major) 1px,transparent 1px);
+  background-size:26px 26px,26px 26px,130px 130px,130px 130px;
+  background-position:-1px -1px,-1px -1px,-1px -1px,-1px -1px;
+}
+
+/* ---------- deck frame ---------- */
+
+.deck{position:relative;height:100vh;height:100dvh;width:100%;overflow:hidden}
+
+.slide{
+  position:absolute;inset:0;
+  padding:calc(var(--pad) * .78) var(--pad) calc(var(--pad) * .95);
+  display:flex;flex-direction:column;
+  gap:calc(var(--u) * .9);
+  overflow-y:auto;overflow-x:hidden;
+}
+
+.slide > *{animation:lift .42s cubic-bezier(.2,.75,.3,1) both}
+.slide > *:nth-child(2){animation-delay:.05s}
+.slide > *:nth-child(3){animation-delay:.1s}
+.slide > *:nth-child(4){animation-delay:.15s}
+@keyframes lift{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+
+@media (prefers-reduced-motion:reduce){
+  .slide > *{animation:none}
+  *{transition-duration:.001s !important}
+}
+
+/* ---------- type ---------- */
+
+h1,h2,h3,h4{font-family:var(--display);margin:0;text-wrap:balance}
+p{margin:0}
+
+h1{font-size:calc(var(--u) * 3.4);font-weight:900;font-stretch:118%;line-height:.92;letter-spacing:-.035em;text-transform:uppercase}
+h2{font-size:calc(var(--u) * 2.1);font-weight:800;font-stretch:112%;line-height:1.03;letter-spacing:-.028em;max-width:24ch}
+h3{font-size:calc(var(--u) * .93);font-weight:700;font-stretch:106%;letter-spacing:-.008em;line-height:1.24}
+
+.lead{font-size:calc(var(--u) * 1.02);color:var(--ink-2);line-height:1.5;max-width:60ch}
+.note{font-size:calc(var(--u) * .77);color:var(--ink-3);line-height:1.48;max-width:82ch}
+.mono{font-family:var(--mono)}
+b,strong{color:var(--ink);font-weight:600}
+em{font-style:normal;color:var(--marine);font-weight:600}
+.haz{color:var(--hazard);font-weight:600}
+
+/* ---------- page masthead ---------- */
+
+.head{flex:0 0 auto;display:flex;flex-direction:column;gap:calc(var(--u) * .48)}
+.head .strip{display:flex;align-items:center;gap:calc(var(--u) * .7)}
+.head .idx{font-family:var(--display);font-size:calc(var(--u) * 1.1);font-weight:900;font-stretch:120%;color:var(--marine);letter-spacing:-.04em;font-variant-numeric:tabular-nums}
+.head .label{font-family:var(--mono);font-size:calc(var(--u) * .64);font-weight:500;letter-spacing:.2em;text-transform:uppercase;color:var(--ink-3);white-space:nowrap}
+.head .strip::after{content:"";flex:1 1 auto;height:1px;background:var(--rule)}
+
+/* ---------- layout ---------- */
+
+.row{display:grid;gap:calc(var(--u) * .78)}
+.row-2{grid-template-columns:repeat(2,1fr)}
+.row-3{grid-template-columns:repeat(3,1fr)}
+.row-4{grid-template-columns:repeat(4,1fr)}
+.grow{flex:1 1 auto;min-height:0;align-content:center}
+.col{display:flex;flex-direction:column;gap:calc(var(--u) * .78);min-height:0}
+
+.panel{background:var(--paper);border:1px solid var(--rule-soft);padding:calc(var(--u) * .85) calc(var(--u) * .95);display:flex;flex-direction:column;gap:calc(var(--u) * .34)}
+.panel .tag{font-family:var(--mono);font-size:calc(var(--u) * .61);letter-spacing:.13em;text-transform:uppercase;color:var(--ink-3)}
+.panel p{font-size:calc(var(--u) * .81);color:var(--ink-2);line-height:1.48}
+
+.brief{display:flex;flex-direction:column;gap:calc(var(--u) * .32);padding-top:calc(var(--u) * .55);border-top:2px solid var(--ink)}
+.brief .tag{font-family:var(--mono);font-size:calc(var(--u) * .61);letter-spacing:.13em;text-transform:uppercase;color:var(--marine)}
+.brief p{font-size:calc(var(--u) * .81);color:var(--ink-2);line-height:1.48}
+
+/* ---------- the loud slab ---------- */
+
+.slab{background:var(--marine-deep);color:#EAF4F8;padding:calc(var(--u) * 1.2) calc(var(--u) * 1.5);display:flex;flex-direction:column;gap:calc(var(--u) * .46)}
+.slab .kicker{font-family:var(--mono);font-size:calc(var(--u) * .61);letter-spacing:.2em;text-transform:uppercase;color:#7FC0D8}
+.slab .big{font-family:var(--display);font-size:calc(var(--u) * 1.58);font-weight:800;font-stretch:110%;line-height:1.14;letter-spacing:-.024em;color:#FFFFFF;max-width:34ch}
+.slab .after{font-family:var(--body);font-size:calc(var(--u) * .85);line-height:1.48;color:#B9D8E3;max-width:64ch}
+.slab .hi{color:#7FD4EE}
+
+/* ---------- page 1 ---------- */
+
+.hero{display:grid;grid-template-columns:minmax(0,1.06fr) minmax(0,1fr);gap:calc(var(--u) * 1.7);align-items:center;flex:1 1 auto;min-height:0}
+.hero h1{font-size:calc(var(--u) * 3);}
+.hero .tagline{font-size:calc(var(--u) * .98);color:var(--ink-2);line-height:1.4;max-width:40ch;margin-top:calc(var(--u) * .5)}
+
+/* the problem statement, quoted and annotated */
+.ps{border-left:3px solid var(--hazard);padding:calc(var(--u) * .5) 0 calc(var(--u) * .5) calc(var(--u) * .95);display:flex;flex-direction:column;gap:calc(var(--u) * .5)}
+.ps .src{font-family:var(--mono);font-size:calc(var(--u) * .6);letter-spacing:.15em;text-transform:uppercase;color:var(--hazard)}
+.ps blockquote{margin:0;font-family:var(--body);font-size:calc(var(--u) * 1.06);line-height:1.44;color:var(--ink)}
+.mark{color:var(--hazard);font-weight:600;box-shadow:inset 0 -.42em 0 var(--hazard-wash)}
+.keyed{display:grid;grid-template-columns:repeat(3,1fr);gap:calc(var(--u) * .55);border-top:1px solid var(--rule);padding-top:calc(var(--u) * .55)}
+.keyed div{display:flex;flex-direction:column;gap:3px}
+.keyed .n{font-family:var(--mono);font-size:calc(var(--u) * .58);letter-spacing:.12em;text-transform:uppercase;color:var(--hazard)}
+.keyed p{font-size:calc(var(--u) * .74);color:var(--ink-2);line-height:1.38}
+
+.facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(112px,1fr));border-top:2px solid var(--ink);border-bottom:1px solid var(--rule)}
+.facts div{padding:calc(var(--u) * .5) calc(var(--u) * .65) calc(var(--u) * .55) 0;display:flex;flex-direction:column;gap:2px}
+.facts dt{margin:0;font-family:var(--mono);font-size:calc(var(--u) * .55);letter-spacing:.13em;text-transform:uppercase;color:var(--ink-3)}
+.facts dd{margin:0;font-family:var(--display);font-size:calc(var(--u) * .86);font-weight:700;font-stretch:108%;color:var(--marine)}
+
+/* ---------- the live plot ---------- */
+
+.plot{position:relative;background:var(--paper);border:1px solid var(--rule);padding:calc(var(--u) * .5);display:flex;flex-direction:column;min-height:0}
+.plot canvas{width:100%;height:auto;display:block}
+.plot .replay{position:absolute;right:calc(var(--u) * .8);bottom:calc(var(--u) * .8);font-family:var(--mono);font-size:calc(var(--u) * .6);letter-spacing:.09em;text-transform:uppercase;color:var(--marine);background:var(--paper);border:1px solid var(--rule);padding:5px 11px;cursor:pointer;transition:background .18s,color .18s,border-color .18s}
+.plot .replay:hover{background:var(--marine);color:#fff;border-color:var(--marine)}
+.plot .cap{font-family:var(--mono);font-size:calc(var(--u) * .6);color:var(--ink-3);padding:calc(var(--u) * .45) 0 0 calc(var(--u) * .2);letter-spacing:.04em}
+
+/* ---------- tables ---------- */
+
+table{border-collapse:collapse;width:100%;font-size:calc(var(--u) * .78)}
+th{font-family:var(--mono);font-size:calc(var(--u) * .58);font-weight:500;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);text-align:left;padding:0 calc(var(--u) * .7) calc(var(--u) * .42) 0;border-bottom:2px solid var(--ink);white-space:nowrap}
+td{padding:calc(var(--u) * .46) calc(var(--u) * .7);border-bottom:1px solid var(--rule-soft);color:var(--ink-2);line-height:1.4;vertical-align:top}
+td:first-child{padding-left:0}
+tr:last-child td{border-bottom:0}
+td.k{font-family:var(--mono);font-size:calc(var(--u) * .72);color:var(--marine);white-space:nowrap;font-weight:500}
+td.hero-cell{color:var(--ink);font-weight:600;font-family:var(--display);font-stretch:104%}
+.scroll{overflow:auto;min-height:0}
+
+/* ---------- chips ---------- */
+
+.chip{display:inline-block;font-family:var(--mono);font-size:calc(var(--u) * .64);letter-spacing:.05em;padding:2px 9px;white-space:nowrap;border:1px solid}
+.chip-haz{background:var(--hazard-wash);color:#A8351E;border-color:#E3B6AA}
+.chip-amb{background:var(--amber-wash);color:#8A5B0B;border-color:#E7D3A4}
+.chip-mar{background:var(--marine-wash);color:var(--marine);border-color:#B5D4E0}
+.chip-ok{background:var(--ok-wash);color:#22664A;border-color:#B2D8C6}
+.chip-mut{background:var(--paper-2);color:var(--ink-3);border-color:var(--rule)}
+
+/* ---------- novelty ---------- */
+
+.claim{display:flex;flex-direction:column;gap:calc(var(--u) * .34);padding-top:calc(var(--u) * .5);border-top:3px solid var(--marine)}
+.claim .no{font-family:var(--display);font-size:calc(var(--u) * 1.45);font-weight:900;font-stretch:120%;color:var(--marine);line-height:1;letter-spacing:-.04em}
+.claim p{font-size:calc(var(--u) * .78);color:var(--ink-2);line-height:1.46}
+
+/* ---------- expectations ---------- */
+
+.expect{display:grid;grid-template-columns:repeat(2,1fr);gap:calc(var(--u) * .5) calc(var(--u) * 1.3)}
+.expect .item{display:grid;grid-template-columns:auto 1fr;gap:calc(var(--u) * .6);align-items:start;padding-bottom:calc(var(--u) * .5);border-bottom:1px solid var(--rule-soft)}
+.expect .item p{font-size:calc(var(--u) * .79);color:var(--ink-2);line-height:1.42}
+.expect .item b{display:block;font-family:var(--display);font-stretch:104%;font-size:calc(var(--u) * .84);color:var(--ink);margin-bottom:2px}
+
+/* ---------- figures ---------- */
+
+figure{margin:0;display:flex;flex-direction:column;gap:calc(var(--u) * .5);min-height:0}
+figure svg{width:100%;height:auto;max-height:52vh;display:block}
+figcaption{font-size:calc(var(--u) * .75);color:var(--ink-3);line-height:1.46;max-width:80ch}
+
+/* ---------- sensor cards ---------- */
+
+.sensors{display:grid;grid-template-columns:repeat(3,1fr);gap:calc(var(--u) * .7)}
+.scard{border:1px solid var(--rule-soft);border-top:3px solid var(--marine);background:var(--paper);padding:calc(var(--u) * .7) calc(var(--u) * .8);display:flex;flex-direction:column;gap:calc(var(--u) * .36)}
+.scard.exposed{border-top-color:var(--hazard)}
+.scard .abbr{font-family:var(--mono);font-size:calc(var(--u) * .92);font-weight:700;color:var(--marine);letter-spacing:.02em;line-height:1}
+.scard.exposed .abbr{color:var(--hazard)}
+.scard .full{font-family:var(--display);font-size:calc(var(--u) * .82);font-weight:700;font-stretch:106%;color:var(--ink);line-height:1.16;margin-top:2px}
+.scard .plain{font-size:calc(var(--u) * .86);color:var(--ink-2);line-height:1.44;flex:1 1 auto}
+.scard .where{font-family:var(--mono);font-size:calc(var(--u) * .64);color:var(--ink-3);line-height:1.4;border-top:1px solid var(--rule-soft);padding-top:calc(var(--u) * .4)}
+.scard .where span{color:var(--ink-2)}
+
+/* ---------- three steps ---------- */
+
+.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:calc(var(--u) * 1.2)}
+.step{display:flex;flex-direction:column;gap:calc(var(--u) * .4);border-top:3px solid var(--marine);padding-top:calc(var(--u) * .6)}
+.step .n{font-family:var(--display);font-size:calc(var(--u) * 2.1);font-weight:900;font-stretch:120%;color:var(--marine);line-height:.9;letter-spacing:-.05em}
+.step p{font-size:calc(var(--u) * .88);color:var(--ink-2);line-height:1.46}
+
+/* ---------- the finale ---------- */
+
+.finale{justify-content:center}
+
+.finale .quote{
+  font-family:var(--body);
+  font-weight:600;
+  font-size:calc(var(--u) * 1.85);
+  line-height:1.26;
+  letter-spacing:-.012em;
+  color:var(--ink);
+  max-width:26ch;
+  text-wrap:balance;
+}
+.finale .quote .dim{color:var(--ink-3);font-weight:400;display:block;font-size:.7em;line-height:1.42;margin-bottom:.55em;max-width:46ch}
+.finale .quote .hi{color:var(--marine)}
+
+.finale .tally{
+  display:grid;
+  grid-template-columns:repeat(4,1fr);
+  gap:calc(var(--u) * 1);
+  border-top:2px solid var(--ink);
+  border-bottom:1px solid var(--rule);
+  padding:calc(var(--u) * .75) 0;
+  max-width:58ch;
+}
+.finale .tally div{display:flex;flex-direction:column;gap:2px}
+.finale .tally .fig{font-family:var(--display);font-size:calc(var(--u) * 1.5);font-weight:900;font-stretch:118%;color:var(--marine);line-height:1;letter-spacing:-.035em}
+.finale .tally .cap{font-family:var(--mono);font-size:calc(var(--u) * .58);letter-spacing:.13em;text-transform:uppercase;color:var(--ink-3)}
+
+.finale .sign{font-family:var(--mono);font-size:calc(var(--u) * .66);letter-spacing:.14em;text-transform:uppercase;color:var(--marine)}
+
+/* ---------- chrome ---------- */
+
+.bar{position:fixed;left:0;right:0;bottom:0;height:3px;background:var(--rule-soft);z-index:20}
+.bar span{display:block;height:100%;background:var(--marine);transition:width .32s cubic-bezier(.2,.75,.3,1)}
+
+.chrome{position:fixed;left:var(--pad);right:var(--pad);bottom:calc(var(--pad) * .26);display:flex;align-items:center;justify-content:space-between;gap:calc(var(--u) * .8);z-index:21;pointer-events:none}
+.chrome > *{pointer-events:auto}
+.brandmark{font-family:var(--mono);font-size:calc(var(--u) * .6);letter-spacing:.15em;text-transform:uppercase;color:var(--ink-3)}
+
+.dots{display:flex;gap:5px;align-items:flex-end}
+.dots button{width:13px;height:8px;padding:0;border:0;background:var(--rule);cursor:pointer;transition:background .2s,height .2s}
+.dots button:hover{background:var(--ink-3)}
+.dots button[aria-current="true"]{background:var(--marine);height:15px}
+
+.controls{display:flex;align-items:center;gap:calc(var(--u) * .38)}
+.controls button{font-family:var(--mono);font-size:calc(var(--u) * .66);letter-spacing:.06em;color:var(--ink-2);background:var(--paper);border:1px solid var(--rule);padding:calc(var(--u) * .3) calc(var(--u) * .64);cursor:pointer;transition:color .18s,border-color .18s,background .18s}
+.controls button:hover{color:#fff;background:var(--marine);border-color:var(--marine)}
+.controls button:disabled{opacity:.34;cursor:default}
+.controls button:disabled:hover{color:var(--ink-2);background:var(--paper);border-color:var(--rule)}
+.counter{font-family:var(--mono);font-size:calc(var(--u) * .68);color:var(--ink-3);font-variant-numeric:tabular-nums;min-width:4.4em;text-align:right}
+
+:focus-visible{outline:2px solid var(--hazard);outline-offset:3px}
+
+@media (max-width:860px){
+  .row-2,.row-3,.row-4,.hero,.expect,.keyed{grid-template-columns:1fr}
+  .dots{display:none}
+  body{overflow:auto}
+}
+</style>
+
+<div class="deck" id="deck">
+
+<!-- ═══════════ 01 · problem statement ═══════════ -->
+<section class="slide" data-name="Problem statement">
+  <div class="head">
+    <div class="strip">
+      <span class="idx">01</span>
+      <span class="label">Problem statement</span>
+    </div>
+  </div>
+
+  <div class="hero">
+    <div class="col" style="gap:calc(var(--u) * 1);justify-content:center">
+      <div>
+        <h1>Sensor<br>Sentry</h1>
+        <p class="tagline">A trust layer for any vehicle that navigates by GPS.</p>
+      </div>
+
+      <div class="ps">
+        <span class="src">PS 18 · Spoofing Detection &amp; Sensor Fusion</span>
+        <blockquote>
+          "Create an intelligent sensor-fusion system that cross-validates simulated sensor data to
+          detect <span class="mark">GPS spoofing</span>, <span class="mark">false readings</span>, or
+          <span class="mark">manipulated environmental inputs</span>."
+        </blockquote>
+        <div class="keyed">
+          <div>
+            <span class="n">GPS spoofing</span>
+            <p>An attacker fakes the satellite signal. The vehicle believes a completely false position.</p>
+          </div>
+          <div>
+            <span class="n">False readings</span>
+            <p>No attacker at all — a sensor is failing, and reports wrong numbers with total confidence.</p>
+          </div>
+          <div>
+            <span class="n">Manipulated inputs</span>
+            <p>The attacker changes the physical world at the sensor — a magnet by the compass.</p>
+          </div>
+        </div>
+      </div>
+
+      <p class="note"><b>Three problems, not one.</b> Most teams answer only the first. All three look identical at first, and they demand opposite responses — so we answer all three.</p>
+    </div>
+
+    <div class="col" style="justify-content:center">
+      <div class="plot">
+        <canvas id="plot" width="900" height="700" aria-label="Animated plot: the true path of a vehicle and the position GPS claims, pulling apart during a spoofing walk-off until the detector raises an alert naming GNSS."></canvas>
+        <button type="button" class="replay" id="replay">↻ replay</button>
+      </div>
+      <p class="note" style="margin-top:calc(var(--u) * -.3)">A spoofing walk-off, as it happens. The vehicle's real track, the position GPS claims, and the gap between them that gives the attack away.</p>
+    </div>
+  </div>
+
+  <p class="note">Review 1 · 7 September 2026 · navigate with <span class="mono">→</span> <span class="mono">←</span> · press <span class="mono">F</span> for full screen</p>
+</section>
+
+<!-- ═══════════ 02 · solution ═══════════ -->
+<section class="slide" data-name="Proposed solution">
+  <div class="head">
+    <div class="strip"><span class="idx">02</span><span class="label">Proposed solution</span></div>
+    <h2>The vehicle has other senses. Nobody is asking them.</h2>
+  </div>
+
+  <div class="slab" style="flex:0 0 auto">
+    <span class="kicker">Our answer, in one line</span>
+    <p class="big">An attacker can fake the signal a vehicle receives. He cannot fake what the vehicle <span class="hi">physically feels</span>.</p>
+  </div>
+
+  <div class="grow steps">
+    <div class="step">
+      <span class="n">1</span>
+      <h3>Build a second opinion</h3>
+      <p>From its own motion, heading and wheels, the vehicle works out where it <b>must</b> be — <em>without ever reading GPS</em>.</p>
+    </div>
+    <div class="step">
+      <span class="n">2</span>
+      <h3>Find who disagrees</h3>
+      <p>Every sensor is checked against every other. If one disagrees with all the rest while they agree with each other, <b>that one is lying</b>.</p>
+    </div>
+    <div class="step">
+      <span class="n">3</span>
+      <h3>Attack, or breakdown?</h3>
+      <p>A fault is random and messy. An attack is <b>smooth, and pulls steadily one way</b>. Drop the liar, keep navigating.</p>
+    </div>
+  </div>
+
+  <div class="brief" style="flex:0 0 auto;border-top-color:var(--hazard)">
+    <span class="tag" style="color:var(--hazard)">The one question it keeps asking</span>
+    <p style="color:var(--ink);font-size:calc(var(--u) * 1)">
+      GPS says <span class="haz mono">"you are here."</span> Do the other senses agree?
+      <em>When they don't, that disagreement is the proof.</em>
+    </p>
+  </div>
+</section>
+
+<!-- ═══════════ 03 · the sensors ═══════════ -->
+<section class="slide" data-name="The sensors">
+  <div class="head">
+    <div class="strip"><span class="idx">03</span><span class="label">The sensors · every one, and what it is for</span></div>
+    <h2>Six independent witnesses, all already fitted</h2>
+    <p class="note">Not one of these is new hardware. Every drone and every tracked truck already carries them — which is why this ships as a software update rather than a workshop visit.</p>
+  </div>
+
+  <div class="grow sensors">
+
+    <div class="scard exposed">
+      <div class="abbr">GNSS</div>
+      <div class="full">Global Navigation Satellite System</div>
+      <p class="plain">The satellite receiver — <b>the one being lied to.</b></p>
+      <div class="where">On the vehicle: <span>antenna on the roof or airframe</span></div>
+      <span class="chip chip-haz">an attacker can fake this</span>
+    </div>
+
+    <div class="scard">
+      <div class="abbr">IMU · accelerometer</div>
+      <div class="full">Inertial Measurement Unit</div>
+      <p class="plain">Feels every push, brake and bump — <b>the vehicle's inner ear.</b> Add it up over time and you know where you are.</p>
+      <div class="where">On the vehicle: <span>a chip inside the tracker box</span></div>
+      <span class="chip chip-ok">out of his reach</span>
+    </div>
+
+    <div class="scard">
+      <div class="abbr">IMU · gyroscope</div>
+      <div class="full">Inertial Measurement Unit</div>
+      <p class="plain">The same chip, measuring spin. It knows the moment the vehicle actually turns.</p>
+      <div class="where">On the vehicle: <span>the same chip as the accelerometer</span></div>
+      <span class="chip chip-ok">out of his reach</span>
+    </div>
+
+    <div class="scard">
+      <div class="abbr">BARO</div>
+      <div class="full">Barometer — pressure sensor</div>
+      <p class="plain">Air thins as you climb, so pressure gives height — the way an aircraft altimeter always has.</p>
+      <div class="where">On the vehicle: <span>a vented port on the same board</span></div>
+      <span class="chip chip-amb">only by physical means</span>
+    </div>
+
+    <div class="scard">
+      <div class="abbr">MAG</div>
+      <div class="full">Magnetometer — digital compass</div>
+      <p class="plain">Reads the Earth's magnetic field to know which way the vehicle points. A compass with no moving parts.</p>
+      <div class="where">On the vehicle: <span>away from the motors, often on a mast</span></div>
+      <span class="chip chip-amb">only by physical means</span>
+    </div>
+
+    <div class="scard">
+      <div class="abbr">ODOM</div>
+      <div class="full">Wheel odometry</div>
+      <p class="plain">Counts wheel turns to measure real distance covered. <b>Trucks only — a drone has no wheels.</b></p>
+      <div class="where">On the vehicle: <span>the ABS sensor already at the wheel</span></div>
+      <span class="chip chip-ok">out of his reach</span>
+    </div>
+
+  </div>
+
+  <p class="note" style="flex:0 0 auto">
+    <b>The point of the last row:</b> GPS is the only one an attacker can touch from a distance.
+    The other five, he would have to reach the vehicle itself — <em>which is the whole reason this works.</em>
+  </p>
+</section>
+
+<!-- ═══════════ 04 · naming the liar ═══════════ -->
+<section class="slide" data-name="Naming the liar">
+  <div class="head">
+    <div class="strip"><span class="idx">04</span><span class="label">Naming the liar, and knowing why</span></div>
+    <h2>A diagnosis, not an alarm</h2>
+  </div>
+
+  <div class="grow row row-2" style="align-items:center;gap:calc(var(--u) * 1.6)">
+    <figure>
+      <svg viewBox="0 0 640 400" role="img" aria-label="The GNSS sensor disagrees with all four other sensors, while the inertial, barometer, magnetometer and odometry sensors agree with each other. Four against one identifies GNSS as the liar.">
+        <rect x="368" y="14" width="240" height="316" rx="2" fill="#E2EFF4" stroke="#0E5C7E" stroke-width="1.5" stroke-dasharray="7 5"></rect>
+
+        <line x1="178" y1="172" x2="364" y2="56" stroke="#C8452B" stroke-width="2.2" stroke-dasharray="8 5"></line>
+        <line x1="178" y1="172" x2="364" y2="132" stroke="#C8452B" stroke-width="2.2" stroke-dasharray="8 5"></line>
+        <line x1="178" y1="172" x2="364" y2="212" stroke="#C8452B" stroke-width="2.2" stroke-dasharray="8 5"></line>
+        <line x1="178" y1="172" x2="364" y2="288" stroke="#C8452B" stroke-width="2.2" stroke-dasharray="8 5"></line>
+
+        <circle cx="118" cy="172" r="60" fill="#F8E8E4" stroke="#C8452B" stroke-width="3"></circle>
+        <text x="118" y="180" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="21" font-weight="700" fill="#C8452B">gnss</text>
+        <text x="118" y="262" text-anchor="middle" font-family="Archivo, sans-serif" font-size="15" font-weight="700" fill="#0B1B24">disagrees with</text>
+        <text x="118" y="282" text-anchor="middle" font-family="Archivo, sans-serif" font-size="15" font-weight="700" fill="#0B1B24">all four others</text>
+
+        <rect x="392" y="32" width="192" height="48" rx="2" fill="#FFFFFF" stroke="#0E5C7E" stroke-width="1.5"></rect>
+        <text x="488" y="63" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="16" fill="#0E5C7E">imu</text>
+        <rect x="392" y="108" width="192" height="48" rx="2" fill="#FFFFFF" stroke="#0E5C7E" stroke-width="1.5"></rect>
+        <text x="488" y="139" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="16" fill="#0E5C7E">baro</text>
+        <rect x="392" y="188" width="192" height="48" rx="2" fill="#FFFFFF" stroke="#0E5C7E" stroke-width="1.5"></rect>
+        <text x="488" y="219" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="16" fill="#0E5C7E">mag</text>
+        <rect x="392" y="264" width="192" height="48" rx="2" fill="#FFFFFF" stroke="#0E5C7E" stroke-width="1.5"></rect>
+        <text x="488" y="295" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="16" fill="#0E5C7E">odom</text>
+
+        <text x="488" y="354" text-anchor="middle" font-family="Archivo, sans-serif" font-size="15" font-weight="700" fill="#0E5C7E">these four agree with each other</text>
+
+        <line x1="58" y1="382" x2="102" y2="382" stroke="#C8452B" stroke-width="2.2" stroke-dasharray="8 5"></line>
+        <text x="110" y="387" font-family="JetBrains Mono, monospace" font-size="12" fill="#425C68">disagrees</text>
+        <line x1="228" y1="382" x2="272" y2="382" stroke="#0E5C7E" stroke-width="2.2"></line>
+        <text x="280" y="387" font-family="JetBrains Mono, monospace" font-size="12" fill="#425C68">agrees</text>
+      </svg>
+      <figcaption>Four against one — that pattern <em>is</em> the accusation. If the compass were the odd one out instead, the compass would be named. <b>Nothing about GPS is hardcoded.</b></figcaption>
+    </figure>
+
+    <div class="col">
+      <div class="brief" style="border-top-color:var(--amber)">
+        <span class="tag" style="color:var(--amber)">Cause 1 · a sensor fault</span>
+        <p>Random, jumpy, incoherent. The error points in no particular direction, and the sensor usually fails its own health check too. → <b>Drop it, keep operating, flag the vehicle for service.</b></p>
+      </div>
+      <div class="brief" style="border-top-color:var(--hazard)">
+        <span class="tag" style="color:var(--hazard)">Cause 2 · a spoofing attack</span>
+        <p>Smooth, steady, purposeful — pulling consistently one way. <b>Too clean to be a fault:</b> real hardware fails messily, an attacker wants a specific destination. → <b>Alarm, switch navigation, preserve evidence, check the fleet.</b></p>
+      </div>
+      <div class="brief">
+        <span class="tag">Cause 3 · manipulated environment</span>
+        <p>One physical measurement shifts while everything else stays honest — the compass swings but the gyro felt no turn. → <b>Ignore that sensor, warn that interference is present nearby.</b></p>
+      </div>
+      <div class="brief" style="border-top-color:var(--rule)">
+        <span class="tag" style="color:var(--ink-3)">And when we are not sure</span>
+        <p>Below the confidence threshold we return <span class="chip chip-mut">unclassified</span> and default to the safe response. <b>The system is allowed to say it does not know.</b></p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════ 05 · architecture ═══════════ -->
+<section class="slide" data-name="Architecture">
+  <div class="head">
+    <div class="strip"><span class="idx">05</span><span class="label">System architecture</span></div>
+    <h2>Three processes, all software, one laptop</h2>
+  </div>
+
+  <figure class="grow">
+    <svg viewBox="0 0 1000 340" role="img" aria-label="The simulator sends sensor frames over UDP port 5005 to the detector, which sends verdict frames over WebSocket 8080 to the console and incidents over WebSocket 8081 to the fleet service. The console controls the simulator over HTTP port 5010. No ground truth is present in the sensor stream.">
+      <defs>
+        <marker id="a1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <polygon points="0,1 10,5 0,9" fill="#425C68"></polygon>
+        </marker>
+        <marker id="a2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <polygon points="0,1 10,5 0,9" fill="#0E5C7E"></polygon>
+        </marker>
+      </defs>
+
+      <path d="M875,54 V22 H125 V50" fill="none" stroke="#425C68" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#a1)"></path>
+      <text x="500" y="16" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="12.5" fill="#425C68">HTTP :5010 · start · reset · inject attack</text>
+
+      <rect x="30" y="52" width="190" height="102" rx="2" fill="#FFFFFF" stroke="#425C68" stroke-width="1.5"></rect>
+      <text x="125" y="88" text-anchor="middle" font-family="Archivo, sans-serif" font-size="19" font-weight="800" fill="#0B1B24">simulator</text>
+      <text x="125" y="111" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="11.5" fill="#C8452B">our test tool</text>
+      <text x="125" y="133" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="11" fill="#7A929C">vehicle · sensors · attacks</text>
+
+      <rect x="405" y="52" width="190" height="102" rx="2" fill="#E2EFF4" stroke="#0E5C7E" stroke-width="2.5"></rect>
+      <text x="500" y="88" text-anchor="middle" font-family="Archivo, sans-serif" font-size="19" font-weight="800" fill="#083D55">detector</text>
+      <text x="500" y="111" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="11.5" fill="#0E5C7E">the product</text>
+      <text x="500" y="133" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="11" fill="#425C68">cross-check · blame · classify</text>
+
+      <rect x="780" y="52" width="190" height="102" rx="2" fill="#FFFFFF" stroke="#425C68" stroke-width="1.5"></rect>
+      <text x="875" y="88" text-anchor="middle" font-family="Archivo, sans-serif" font-size="19" font-weight="800" fill="#0B1B24">console</text>
+      <text x="875" y="111" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="11.5" fill="#425C68">operator + phone</text>
+      <text x="875" y="133" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="11" fill="#7A929C">canvas map · no tiles</text>
+
+      <rect x="405" y="240" width="190" height="80" rx="2" fill="#FFFFFF" stroke="#425C68" stroke-width="1.5"></rect>
+      <text x="500" y="272" text-anchor="middle" font-family="Archivo, sans-serif" font-size="16" font-weight="800" fill="#0B1B24">fleet service</text>
+      <text x="500" y="294" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="11" fill="#7A929C">cluster · zone · advisory</text>
+
+      <line x1="222" y1="103" x2="399" y2="103" stroke="#425C68" stroke-width="2" marker-end="url(#a1)"></line>
+      <text x="310" y="90" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="12.5" fill="#0B1B24">UDP :5005 · 20 Hz</text>
+      <text x="310" y="124" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="12.5" font-weight="700" fill="#C8452B">no truth crosses here</text>
+
+      <line x1="597" y1="103" x2="774" y2="103" stroke="#0E5C7E" stroke-width="2.5" marker-end="url(#a2)"></line>
+      <text x="685" y="90" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="12.5" fill="#0B1B24">WS :8080 · 20 Hz</text>
+      <text x="685" y="124" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="12.5" fill="#0E5C7E">verdicts + trust scores</text>
+
+      <line x1="500" y1="156" x2="500" y2="236" stroke="#425C68" stroke-width="2" marker-end="url(#a1)"></line>
+      <text x="514" y="184" font-family="JetBrains Mono, monospace" font-size="12" fill="#0B1B24">WS :8081</text>
+      <text x="514" y="202" font-family="JetBrains Mono, monospace" font-size="11" fill="#7A929C">incidents</text>
+
+      <path d="M597,274 H700 V158" fill="none" stroke="#425C68" stroke-width="1.5" marker-end="url(#a1)"></path>
+      <text x="712" y="250" font-family="JetBrains Mono, monospace" font-size="11" fill="#7A929C">attack zone + advisories</text>
+    </svg>
+    <figcaption>
+      <b class="haz">The rule the whole demo rests on:</b> the simulator and the detector are separate
+      processes, and no ground truth ever crosses the socket — no true position, no attack flag, nothing.
+      The detector is structurally <b>incapable</b> of cheating, and the raw-feed panel proves it live:
+      <em>"that is everything the detector receives — show me the field that tells it an attack is happening."</em>
+    </figcaption>
+  </figure>
+</section>
+
+<!-- ═══════════ 06 · novelty ═══════════ -->
+<section class="slide" data-name="Novelty">
+  <div class="head">
+    <div class="strip"><span class="idx">06</span><span class="label">Novelty</span></div>
+    <h2>Four things that make this ours</h2>
+    <p class="note">The vulnerability is well known and the physics are public. The novelty is not in noticing that GPS can be faked — it is in <b>where the defence sits</b> and <b>what it does once it fires</b>.</p>
+  </div>
+
+  <div class="grow row row-4">
+    <div class="claim">
+      <span class="no">01</span>
+      <h3>No hardware at all</h3>
+      <p>Today's real protection is an anti-spoofing antenna fitted per vehicle. It works, and almost nobody has it, because it means opening every unit and paying per unit. <b>The hardware answer protects the fleet you buy next year. Ours protects the fleet running today.</b></p>
+    </div>
+    <div class="claim">
+      <span class="no">02</span>
+      <h3>It names the guilty sensor</h3>
+      <p>Not "something is wrong" — <b>"the compass is lying, and the other four agree that it is."</b> An alarm with no subject leaves a human guessing during the worst possible minute. That difference decides whether the operator can act.</p>
+    </div>
+    <div class="claim">
+      <span class="no">03</span>
+      <h3>Attack or fault — the question everyone skips</h3>
+      <p>Others stop at "anomaly detected." We answer <b>why</b>, because a broken sensor and a deliberate attack demand opposite responses. It is also the only way one system covers all three problems PS 18 names.</p>
+    </div>
+    <div class="claim">
+      <span class="no">04</span>
+      <h3>The fleet checks itself</h3>
+      <p>One vehicle reporting a GPS problem might be a fault. <b>Four in the same area at the same moment is certainly an attack</b> — and you now know roughly where the attacker is standing. Detection gets stronger as the fleet grows.</p>
+    </div>
+  </div>
+
+  <div class="slab" style="flex:0 0 auto;padding:calc(var(--u) * .95) calc(var(--u) * 1.4)">
+    <p class="after" style="font-size:calc(var(--u) * .93);color:#DCEBF1;max-width:none">
+      <b style="color:#fff">Claim 04 is also the business.</b> Every new customer makes the product better
+      for every existing customer, because each vehicle added is another witness on the map.
+      <span class="hi">A competitor can copy our code in a month. They cannot copy the fleet.</span>
+    </p>
+  </div>
+</section>
+
+<!-- ═══════════ 07 · what to expect ═══════════ -->
+<section class="slide" data-name="What to expect">
+  <div class="head">
+    <div class="strip"><span class="idx">07</span><span class="label">What we can expect</span></div>
+    <h2>What the finished system will do — and where it fails</h2>
+  </div>
+
+  <div class="grow row row-2" style="align-items:center;gap:calc(var(--u) * 1.5)">
+    <figure>
+      <svg viewBox="0 0 640 330" role="img" aria-label="Detection strength curve. The peak ratio of residual to claimed uncertainty rises from 1.18 at zero walk-off to 7.24 at 5 metres per second. Below about 0.2 metres per second the attack is hidden inside our own drift.">
+        <rect x="60" y="30" width="162" height="230" fill="#F8E8E4"></rect>
+        <text x="141" y="50" text-anchor="middle" font-family="Archivo, sans-serif" font-size="12.5" font-weight="800" fill="#C8452B">hidden inside</text>
+        <text x="141" y="67" text-anchor="middle" font-family="Archivo, sans-serif" font-size="12.5" font-weight="800" fill="#C8452B">our own drift</text>
+
+        <line x1="60" y1="260" x2="600" y2="260" stroke="#C7D8DF" stroke-width="1"></line>
+        <text x="50" y="264" text-anchor="end" font-family="JetBrains Mono, monospace" font-size="11" fill="#7A929C">0</text>
+        <line x1="60" y1="202.5" x2="600" y2="202.5" stroke="#DFE9ED" stroke-width="1"></line>
+        <text x="50" y="206" text-anchor="end" font-family="JetBrains Mono, monospace" font-size="11" fill="#7A929C">2</text>
+        <line x1="60" y1="145" x2="600" y2="145" stroke="#DFE9ED" stroke-width="1"></line>
+        <text x="50" y="149" text-anchor="end" font-family="JetBrains Mono, monospace" font-size="11" fill="#7A929C">4</text>
+        <line x1="60" y1="87.5" x2="600" y2="87.5" stroke="#DFE9ED" stroke-width="1"></line>
+        <text x="50" y="91" text-anchor="end" font-family="JetBrains Mono, monospace" font-size="11" fill="#7A929C">6</text>
+        <line x1="60" y1="30" x2="600" y2="30" stroke="#DFE9ED" stroke-width="1"></line>
+        <text x="50" y="34" text-anchor="end" font-family="JetBrains Mono, monospace" font-size="11" fill="#7A929C">8</text>
+
+        <polyline points="60,226 168,226 276,223 384,209 492,171 600,52" fill="none" stroke="#0E5C7E" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"></polyline>
+        <circle cx="60" cy="226" r="5" fill="#C8452B"></circle>
+        <circle cx="168" cy="226" r="5" fill="#C8452B"></circle>
+        <circle cx="276" cy="223" r="5" fill="#0E5C7E"></circle>
+        <circle cx="384" cy="209" r="5" fill="#0E5C7E"></circle>
+        <circle cx="492" cy="171" r="5" fill="#0E5C7E"></circle>
+        <circle cx="600" cy="52" r="6.5" fill="#0E5C7E"></circle>
+
+        <text x="74" y="215" font-family="JetBrains Mono, monospace" font-size="11.5" fill="#425C68">1.18</text>
+        <text x="182" y="215" font-family="JetBrains Mono, monospace" font-size="11.5" fill="#425C68">1.18</text>
+        <text x="276" y="211" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="11.5" fill="#425C68">1.29</text>
+        <text x="384" y="197" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="11.5" fill="#425C68">1.79</text>
+        <text x="492" y="159" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="11.5" fill="#425C68">3.09</text>
+        <text x="592" y="41" text-anchor="end" font-family="JetBrains Mono, monospace" font-size="13" font-weight="700" fill="#0E5C7E">7.24</text>
+
+        <text x="60" y="282" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="11" fill="#7A929C">0.0</text>
+        <text x="168" y="282" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="11" fill="#7A929C">0.2</text>
+        <text x="276" y="282" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="11" fill="#7A929C">0.5</text>
+        <text x="384" y="282" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="11" fill="#7A929C">1.0</text>
+        <text x="492" y="282" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="11" fill="#7A929C">2.0</text>
+        <text x="600" y="282" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="11" fill="#7A929C">5.0</text>
+        <text x="330" y="305" text-anchor="middle" font-family="Archivo, sans-serif" font-size="12.5" font-weight="700" fill="#0B1B24">spoofing walk-off speed (m/s)</text>
+        <text x="330" y="323" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="11" fill="#7A929C">y = residual ÷ the uncertainty we claim</text>
+      </svg>
+      <figcaption>Measured on our own detector, not estimated. <b class="haz">Below about 0.2 m/s a spoofer moves us slower than our own drift, and we miss it</b> — showing where we fail is the most credible thing we can do on stage.</figcaption>
+    </figure>
+
+    <div class="col">
+      <div class="expect">
+        <div class="item">
+          <span class="chip chip-ok">1</span>
+          <p><b>Spoofing caught, GPS named</b>A walk-off attack is detected, <span class="mono">gnss</span> is named as the liar, and the vehicle stays on its true route afterwards.</p>
+        </div>
+        <div class="item">
+          <span class="chip chip-ok">2</span>
+          <p><b>Zero false alarms</b>A clean run with hard turns and braking finishes with no alerts. This is a gate we check after every change.</p>
+        </div>
+        <div class="item">
+          <span class="chip chip-ok">3</span>
+          <p><b>A broken sensor is called a fault</b>Not an attack. Different symptom, different response, correct diagnosis.</p>
+        </div>
+        <div class="item">
+          <span class="chip chip-ok">4</span>
+          <p><b>A magnet is called interference</b>The compass swings, the gyro felt no turn, and the system says so.</p>
+        </div>
+        <div class="item">
+          <span class="chip chip-ok">5</span>
+          <p><b>Two liars → "I don't know"</b>Spoof GPS and the compass at once and it returns <span class="mono">cannot_isolate</span> rather than a confident wrong answer.</p>
+        </div>
+        <div class="item">
+          <span class="chip chip-ok">6</span>
+          <p><b>Four vehicles → one attack zone</b>Attacked together they produce one event and one circle on the map. One vehicle alone produces no circle.</p>
+        </div>
+        <div class="item">
+          <span class="chip chip-ok">7</span>
+          <p><b>Trucks by configuration only</b>Switching from drone to truck changes settings, not code.</p>
+        </div>
+        <div class="item">
+          <span class="chip chip-ok">8</span>
+          <p><b>Every incident replays exactly</b>The stored record reproduces an identical verdict, which is what an insurer or an investigator actually needs.</p>
+        </div>
+      </div>
+
+      <div class="brief" style="border-top-color:var(--hazard)">
+        <span class="tag" style="color:var(--hazard)">The honest limit</span>
+        <p>A very slow spoofer — under roughly <b>0.2 m/s</b> — moves the vehicle no faster than our own dead-reckoning drift, and hides inside it. We will say this on stage rather than wait to be asked.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════ 08 · close ═══════════ -->
+<section class="slide" data-name="In one line">
+  <div class="head">
+    <div class="strip"><span class="idx">08</span><span class="label">In closing</span></div>
+  </div>
+
+  <div class="grow col" style="justify-content:center;gap:calc(var(--u) * 1.2)">
+    <h1 style="font-size:calc(var(--u) * 2.9);max-width:20ch">An attacker can fake<br>the signal.</h1>
+    <h1 style="font-size:calc(var(--u) * 2.9);color:var(--marine);max-width:22ch">He cannot fake<br>what the vehicle feels.</h1>
+
+    <div class="row row-3" style="margin-top:calc(var(--u) * .5)">
+      <div class="brief">
+        <span class="tag">No hardware</span>
+        <p>Ships as a software update into fleets already on the road today.</p>
+      </div>
+      <div class="brief">
+        <span class="tag">A diagnosis, not an alarm</span>
+        <p>Names the lying sensor, and says whether it is an attack or a breakdown.</p>
+      </div>
+      <div class="brief">
+        <span class="tag">Honest about its limits</span>
+        <p>It says <span class="mono">cannot_isolate</span> when it does not know, and we show you where it fails.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="slab" style="flex:0 0 auto;padding:calc(var(--u) * .95) calc(var(--u) * 1.4)">
+    <span class="kicker">And where an AI model is allowed to sit</span>
+    <p class="after" style="font-size:calc(var(--u) * .9);max-width:none">
+      Nothing in the detection path calls an AI model — this is physics and arithmetic. It earns exactly
+      one job: <b style="color:#fff">writing the incident report after the event</b>, behind a visible
+      on/off switch. We turn it off and re-run the attack:
+      <span class="hi">detection is identical, only the written report disappears.</span>
+    </p>
+  </div>
+</section>
+
+<!-- ═══════════ 09 · the ask ═══════════ -->
+<section class="slide finale" data-name="48 hours">
+  <div class="head">
+    <div class="strip"><span class="idx">09</span><span class="label">What we are asking for</span></div>
+  </div>
+
+  <div class="grow col" style="justify-content:center;gap:calc(var(--u) * 1.3);max-width:70ch">
+    <p class="quote">
+      <span class="dim">Every defence that works against GPS spoofing today needs new hardware bolted into every single vehicle. That is why almost nobody has one.</span>
+      Give us <span class="hi">48 hours</span> and one laptop — and we will hand back a defence that needs <span class="hi">none</span>.
+    </p>
+
+    <div class="tally">
+      <div><span class="fig">48</span><span class="cap">hours</span></div>
+      <div><span class="fig">0</span><span class="cap">new sensors</span></div>
+      <div><span class="fig">3</span><span class="cap">threats answered</span></div>
+      <div><span class="fig">1</span><span class="cap">laptop, offline</span></div>
+    </div>
+
+    <p class="lead" style="font-size:calc(var(--u) * .98);max-width:56ch">
+      Not a prototype that works once, in one direction, on one recorded run. By the end of it you will
+      be able to <b>pick the attack yourself, set its strength, point it any way you
+      like — and try to fool it in front of us.</b>
+    </p>
+
+    <p class="sign">Team SensorSentry · PS 18 · Spoofing Detection &amp; Sensor Fusion</p>
+  </div>
+</section>
+
+</div>
+
+<div class="bar"><span id="bar"></span></div>
+
+<div class="chrome">
+  <span class="brandmark">SensorSentry · PS 18 · Review 1</span>
+  <div class="dots" id="dots"></div>
+  <div class="controls">
+    <button type="button" id="prev" aria-label="Previous page">←</button>
+    <button type="button" id="next" aria-label="Next page">→</button>
+    <button type="button" id="fs" aria-label="Toggle full screen">⛶ full</button>
+    <span class="counter" id="counter"></span>
+  </div>
+</div>
+
+<script>
+/* ---------------- deck navigation ---------------- */
+var slides = Array.prototype.slice.call(document.querySelectorAll('.slide'));
+var dotsEl = document.getElementById('dots');
+var counter = document.getElementById('counter');
+var bar = document.getElementById('bar');
+var prevBtn = document.getElementById('prev');
+var nextBtn = document.getElementById('next');
+var idx = 0;
+
+slides.forEach(function(s, k){
+  var b = document.createElement('button');
+  b.type = 'button';
+  b.title = (k + 1) + ' · ' + s.dataset.name;
+  b.setAttribute('aria-label', 'Go to page ' + (k + 1) + ': ' + s.dataset.name);
+  b.addEventListener('click', function(){ show(k); });
+  dotsEl.appendChild(b);
+});
+var dots = Array.prototype.slice.call(dotsEl.children);
+
+function show(n){
+  idx = Math.max(0, Math.min(slides.length - 1, n));
+  slides.forEach(function(s, k){
+    s.hidden = k !== idx;
+    if (k === idx){
+      Array.prototype.forEach.call(s.children, function(c){
+        c.style.animation = 'none'; void c.offsetWidth; c.style.animation = '';
+      });
+    }
+  });
+  dots.forEach(function(d, k){ d.setAttribute('aria-current', k === idx ? 'true' : 'false'); });
+  document.body.classList.toggle('on-finale', slides[idx].classList.contains('finale'));
+  counter.textContent = String(idx + 1).padStart(2, '0') + '/' + String(slides.length).padStart(2, '0');
+  bar.style.width = ((idx + 1) / slides.length * 100) + '%';
+  prevBtn.disabled = idx === 0;
+  nextBtn.disabled = idx === slides.length - 1;
+  if (idx === 0) runPlot();
+}
+
+function toggleFs(){
+  if (document.fullscreenElement) { document.exitFullscreen(); }
+  else if (document.documentElement.requestFullscreen) { document.documentElement.requestFullscreen(); }
+}
+
+prevBtn.addEventListener('click', function(){ show(idx - 1); });
+nextBtn.addEventListener('click', function(){ show(idx + 1); });
+document.getElementById('fs').addEventListener('click', toggleFs);
+
+document.addEventListener('keydown', function(e){
+  var k = e.key;
+  if (k === 'ArrowRight' || k === 'PageDown' || k === ' ') { e.preventDefault(); show(idx + 1); }
+  else if (k === 'ArrowLeft' || k === 'PageUp') { e.preventDefault(); show(idx - 1); }
+  else if (k === 'Home') { e.preventDefault(); show(0); }
+  else if (k === 'End') { e.preventDefault(); show(slides.length - 1); }
+  else if (k === 'f' || k === 'F') { toggleFs(); }
+});
+
+/* ---------------- the live two-path plot ----------------
+   The product's core image, moving: the vehicle's real track,
+   the position GPS claims, and the residual stretching between
+   them until the detector calls it.
+--------------------------------------------------------- */
+
+var cv = document.getElementById('plot');
+var ctx = cv.getContext('2d');
+var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+var P0 = [0.10, 0.88], P1 = [0.30, 0.20], P2 = [0.74, 0.42];
+var SPLIT = 0.34;
+var DIR = [0.60, 0.80];
+var K = 0.40;
+var M_PER_UNIT = 545;
+var ALERT_M = 30;
+var DURATION = 7200;
+
+function truePt(s){
+  var a = (1 - s) * (1 - s), b = 2 * (1 - s) * s, c = s * s;
+  return [a * P0[0] + b * P1[0] + c * P2[0], a * P0[1] + b * P1[1] + c * P2[1]];
+}
+function offsetAt(s){ return s <= SPLIT ? 0 : K * (s - SPLIT); }
+function claimPt(s){
+  var t = truePt(s), o = offsetAt(s);
+  return [t[0] + DIR[0] * o, t[1] + DIR[1] * o];
+}
+
+var W = 0, H = 0, S = 1;
+function fit(){
+  var box = cv.parentNode;
+  var cssW = box.clientWidth - (parseFloat(getComputedStyle(box).paddingLeft) * 2);
+  if (cssW < 40) cssW = 300;
+  var cssH = Math.round(cssW * 0.78);
+  var dpr = window.devicePixelRatio || 1;
+  cv.style.height = cssH + 'px';
+  cv.width = Math.round(cssW * dpr);
+  cv.height = Math.round(cssH * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  W = cssW; H = cssH; S = Math.min(W, H) / 560;
+}
+function X(u){ return 0.05 * W + u * 0.90 * W; }
+function Y(v){ return 0.05 * H + v * 0.90 * H; }
+function fs(px){ return Math.max(9, px * Math.max(0.62, S)); }
+
+function grid(){
+  ctx.strokeStyle = '#EDF4F7';
+  ctx.lineWidth = 1;
+  var step = Math.max(16, W / 26);
+  for (var x = 0; x < W; x += step){ ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
+  for (var y = 0; y < H; y += step){ ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
+}
+
+function path(fn, upto, color, dash, width){
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = width;
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+  ctx.setLineDash(dash);
+  ctx.beginPath();
+  var n = 140;
+  for (var i = 0; i <= n; i++){
+    var s = upto * i / n;
+    var p = fn(s);
+    var px = X(p[0]), py = Y(p[1]);
+    if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+  }
+  ctx.stroke();
+  ctx.restore();
+}
+
+function dot(p, color, r){
+  ctx.beginPath();
+  ctx.fillStyle = color;
+  ctx.arc(X(p[0]), Y(p[1]), r, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.strokeStyle = '#FFFFFF';
+  ctx.lineWidth = 2;
+  ctx.arc(X(p[0]), Y(p[1]), r, 0, Math.PI * 2);
+  ctx.stroke();
+}
+
+function draw(s){
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#FFFFFF';
+  ctx.fillRect(0, 0, W, H);
+  grid();
+
+  var tp = truePt(s), cp = claimPt(s);
+  var metres = offsetAt(s) * M_PER_UNIT;
+
+  if (metres > 1){
+    ctx.save();
+    ctx.strokeStyle = '#9AA9B0';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([3, 4]);
+    ctx.beginPath();
+    ctx.moveTo(X(tp[0]), Y(tp[1]));
+    ctx.lineTo(X(cp[0]), Y(cp[1]));
+    ctx.stroke();
+    ctx.restore();
+
+    var mx = (X(tp[0]) + X(cp[0])) / 2 + 10 * S;
+    var my = (Y(tp[1]) + Y(cp[1])) / 2;
+    ctx.font = '700 ' + fs(15) + 'px "JetBrains Mono", monospace';
+    ctx.fillStyle = metres >= ALERT_M ? '#C8452B' : '#425C68';
+    ctx.textAlign = 'left';
+    ctx.fillText('residual ' + metres.toFixed(0) + ' m', mx, my);
+  }
+
+  path(truePt, s, '#0E5C7E', [], 3.4);
+  path(claimPt, s, '#C8452B', [9, 6], 3);
+
+  dot(tp, '#0E5C7E', 6.5);
+  if (s > SPLIT) dot(cp, '#C8452B', 6.5);
+
+  ctx.font = '800 ' + fs(15) + 'px Archivo, Arial, sans-serif';
+  ctx.textAlign = 'right';
+  ctx.fillStyle = '#0E5C7E';
+  ctx.fillText('where it really is', X(tp[0]) - 12 * S, Y(tp[1]) + 22 * S);
+  if (s > SPLIT + 0.05){
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#C8452B';
+    ctx.fillText('where GPS claims', X(cp[0]) + 12 * S, Y(cp[1]) + 6 * S);
+  }
+
+  var lx = 0.05 * W, ly = 0.055 * H;
+  ctx.font = '500 ' + fs(13) + 'px "JetBrains Mono", monospace';
+  ctx.textAlign = 'left';
+  ctx.save();
+  ctx.strokeStyle = '#0E5C7E'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(lx, ly); ctx.lineTo(lx + 26 * S, ly); ctx.stroke();
+  ctx.strokeStyle = '#C8452B'; ctx.setLineDash([7, 5]);
+  ctx.beginPath(); ctx.moveTo(lx, ly + 20 * S); ctx.lineTo(lx + 26 * S, ly + 20 * S); ctx.stroke();
+  ctx.restore();
+  ctx.fillStyle = '#425C68';
+  ctx.fillText('the witness — physics', lx + 34 * S, ly + 4 * S);
+  ctx.fillText('the GPS claim — the lie', lx + 34 * S, ly + 24 * S);
+
+  if (metres >= ALERT_M){
+    var bw = 210 * Math.max(0.66, S), bh = 54 * Math.max(0.66, S);
+    var bx = W - bw - 0.05 * W, by = 0.045 * H;
+    ctx.fillStyle = '#F8E8E4';
+    ctx.strokeStyle = '#C8452B';
+    ctx.lineWidth = 1.5;
+    ctx.fillRect(bx, by, bw, bh);
+    ctx.strokeRect(bx, by, bw, bh);
+    ctx.textAlign = 'left';
+    ctx.font = '900 ' + fs(17) + 'px Archivo, Arial, sans-serif';
+    ctx.fillStyle = '#C8452B';
+    ctx.fillText('ALERT', bx + 12 * S, by + bh * 0.42);
+    ctx.font = '500 ' + fs(12.5) + 'px "JetBrains Mono", monospace';
+    ctx.fillStyle = '#8E4A3A';
+    ctx.fillText('guilty: gnss · cause: attack', bx + 12 * S, by + bh * 0.78);
+  }
+}
+
+var raf = null, t0 = null;
+function runPlot(){
+  fit();
+  if (raf) cancelAnimationFrame(raf);
+  raf = null;
+  if (reduce){ draw(1); return; }
+  t0 = null;
+  function step(ts){
+    if (t0 === null) t0 = ts;
+    var s = Math.min(1, (ts - t0) / DURATION);
+    draw(s);
+    if (s < 1) { raf = requestAnimationFrame(step); } else { raf = null; }
+  }
+  raf = requestAnimationFrame(step);
+}
+
+document.getElementById('replay').addEventListener('click', runPlot);
+window.addEventListener('resize', function(){
+  fit();
+  if (idx === 0 && !raf) draw(1);
+});
+
+show(0);
+</script>

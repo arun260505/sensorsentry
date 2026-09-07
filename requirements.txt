@@ -1,0 +1,6 @@
+# SensorSentry — runtime dependencies
+#
+# NumPy only. Nothing else, ever. See CLAUDE.md rule 6:
+# no install surprises on demo day, and "we wrote the maths" survives scrutiny.
+
+numpy>=1.24
