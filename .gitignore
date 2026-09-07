@@ -24,3 +24,8 @@ desktop.ini
 *.jpg
 *.jpeg
 !console/assets/*.png
+
+# Simulator truth logs — generated output, never committed.
+# Truth lives on the simulator side only (CLAUDE.md rule 2).
+truth*.jsonl
+*.truth.jsonl
