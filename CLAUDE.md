@@ -196,9 +196,18 @@ that on stage — showing where we fail is the most credible thing we can do.
 
 ### Open questions
 
-- **Recalibrate `DRIFT_RATE_MPS` in phase 11** against the real simulator. The
-  0.5 m/s figure comes from straight-line fixture motion and will be
-  optimistic; turns are where dead reckoning actually suffers.
+- **`DRIFT_RATE_MPS` recalibrated 0.5 -> 1.8** against Abishek's simulator
+  (7 Sep). The fixture was the optimistic one: it flies straight, and turns are
+  where dead reckoning suffers. Worst case over five seeds — clean 60 m at 60 s,
+  manoeuvre 103 m; both inside the 20-120 m band the handover asked for.
+- **The clean-run gate now holds for ~90 s, not the full 3-minute route.**
+  Drift is not linear: the implied rate climbs 0.6 -> 4.3 m/s between 30 s and
+  120 s, so a free-running witness eventually outgrows any linear sigma. Raising
+  the constant to cover 120 s would push sigma past 200 m and make a 2 m/s
+  walk-off invisible — trading the attack we exist to catch for a passing test.
+  **Phase 7 is now a blocker, not an improvement:** while GNSS is trusted it must
+  aid the witness so drift stops growing without bound and the residual becomes
+  a filter innovation. Free-running for three minutes is a phase 2 shortcut.
 - Abishek's raw-integration drift check (target 20–120 m at 60 s) measures
   *unfiltered* integration, so it is not the same quantity as our filtered
   witness error (~12 m). Both are useful; don't confuse them.

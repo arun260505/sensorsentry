@@ -41,6 +41,12 @@ MAG_YAW_GAIN = 0.05
 """How hard the compass corrects yaw. Larger than the tilt gain because
 integrated gyro yaw drifts fastest and has nothing else to check it."""
 
+MAX_INTEGRATION_GAP_S = 0.5
+"""Longest frame gap we will integrate across.
+
+Above this the motion between samples is guesswork, so we stop integrating and
+only count the time. At 20 Hz this is ten consecutive lost frames."""
+
 TILT_TRUST_BAND = 0.25
 """How far |accel| may sit from gravity, in m/s^2, before we stop believing it
 represents tilt.
@@ -98,6 +104,9 @@ class Witness:
     elapsed_s: float
     """Seconds since the anchor was set."""
 
+    lost_s: float
+    """Of those seconds, how many fell inside gaps too long to integrate."""
+
     distance_travelled_m: float
     """Path length since the anchor, not straight-line displacement. Compared
     against wheel odometry, which also measures path length."""
@@ -125,6 +134,10 @@ class DeadReckoner:
         self.disp = np.zeros(3)         # ENU m since anchor
         self.path_m = 0.0
         self.elapsed = 0.0
+        self.lost_s = 0.0
+        """Seconds inside gaps too long to integrate. Reported so the console
+        can say the witness coasted rather than pretending it tracked."""
+
         self._initialised = False
         self._baro_ref_hpa: Optional[float] = None
         self._baro_alt: Optional[float] = None
@@ -169,9 +182,18 @@ class DeadReckoner:
 
     def update(self, frame: Frame) -> Witness:
         dt = frame.dt
-        if dt <= 0.0 or dt > 1.0:
+        if dt <= 0.0 or dt > MAX_INTEGRATION_GAP_S:
             # First frame, or a gap long enough that integrating across it
             # would inject a large error. Level the attitude and wait.
+            #
+            # Time still passed, though, so `elapsed` must advance anyway.
+            # Skipping it lets the vehicle coast through a dropout while we
+            # keep claiming the small uncertainty we had before it — the one
+            # direction this model must never err in, because it would have us
+            # accusing GNSS of a disagreement our own drift could explain.
+            if dt > 0.0:
+                self.elapsed += dt
+                self.lost_s += dt
             self._level_from(frame)
             return self._witness()
 
@@ -298,5 +320,6 @@ class DeadReckoner:
             pitch=self.pitch,
             sigma_m=self._sigma(),
             elapsed_s=self.elapsed,
+            lost_s=self.lost_s,
             distance_travelled_m=self.path_m,
         )

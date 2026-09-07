@@ -29,29 +29,40 @@ SIGMA_FLOOR_M = 4.0
 a couple of metres and the witness is never perfect, so a residual below this
 means nothing regardless of what the drift model says."""
 
-DRIFT_RATE_MPS = 0.5
+DRIFT_RATE_MPS = 1.8
 """How fast the witness's uncertainty grows, in metres per second elapsed.
 
-Linear, not quadratic, and that is a measured result rather than a modelling
-convenience. The textbook bound for dead reckoning is an unknown accelerometer
-bias integrating twice into b*t^2/2, but our complementary filter absorbs a
-steady horizontal bias into a small pitch offset that cancels it (see
-deadreckon.py). What is left — heading error and manoeuvre transients —
-accumulates roughly linearly.
+Linear rather than quadratic, and that is measured rather than convenient: the
+complementary filter absorbs a steady horizontal accelerometer bias into a
+small pitch offset that cancels it (see deadreckon.py), so the textbook
+b*t^2/2 bound does not apply to us. What remains is heading error and
+manoeuvre transients.
 
-Measured on the test fixture: 3.3 m at 20 s, 7.7 m at 40 s, 12.2 m at 60 s.
-That is about 0.2 m/s. We use 0.5 m/s to leave margin for turns, which the
-fixture does not have and which are where dead reckoning really suffers.
+**Recalibrated against the real simulator, 7 Sep 2026.** Was 0.5, taken from
+the straight-line test fixture, which drifts about 12 m at 60 s. The fixture
+turned out to be the optimistic one — it flies in a straight line, and turns
+are where dead reckoning actually suffers. Measured worst case over five seeds
+on simulator/, which sits inside the 20-120 m band the handover asked for:
 
-The quadratic bound was not merely conservative, it was unusable: it reached
-80 m while the witness was 12 m off, so every residual divided out to a ratio
-near 1.0 and a live 2 m/s walk-off was invisible.
+    scenario           30 s        60 s        90 s       120 s
+    drone_clean         19 m        60 m       189 m       516 m
+    drone_manoeuvre     33 m       103 m       293 m       590 m
 
-    *** RECALIBRATE IN PHASE 11 ***
-    against Abishek's simulator, with real routes and real manoeuvres. These
-    numbers come from straight-line fixture motion and will be optimistic.
-    Phase 7 changes the picture again: once GNSS aids the witness while it is
-    trusted, this stops being free-run drift and becomes a filter innovation.
+1.8 m/s covers the worst 60-second case with a little margin.
+
+**Known limit, and it is real.** Drift is not linear — the implied rate climbs
+from 0.6 m/s at 30 s to 4.3 m/s at 120 s — so beyond roughly 90 seconds of
+*free-running* the model under-covers and a clean flight will raise a false
+alarm. Inflating this constant to cover 120 s is not the fix: it would take
+sigma past 200 m and make a 2 m/s walk-off invisible, which is the whole
+attack we exist to catch.
+
+The fix is phase 7. While GNSS is trusted it should aid the witness, so drift
+stops growing without bound and this residual becomes a filter innovation
+rather than a free-run error. Free-running for three minutes is a phase 2
+simplification, not the product. Until phase 7 lands, the clean-run gate holds
+for about the first 90 seconds and not beyond — recorded here rather than
+hidden behind a bigger constant.
 """
 
 ANCHOR_SETTLE_S = 2.0
