@@ -126,242 +126,68 @@ short.**
 
 ## Status
 
-**Current phase:** 8 — truck (Abishek). Detection, blame, classification and fallback all done.
-**Last updated:** 7 September 2026
-
-**Both starred stages are built.** The detector catches a spoof, a magnet or
-a failing sensor, names the sensor, says whether it is an attack, a breakdown
-or interference, and gives a different instruction for each. It says
-`cannot_isolate` or `unclassified` rather than guessing.
-
-    harness/sweep.py           zero false alarms; detection floor ~2 m/s
-    harness/blame_check.py     8 of 8 - which sensor
-    harness/classify_check.py  8 of 8 - attack / fault / interference
-
-<<<<<<< HEAD
-It now **acts** on the verdict: the lying sensor is dropped and the vehicle
-keeps navigating on the rest, with an error budget that grows honestly and
-tells the operator when to stop.
-
-    harness/fallback_check.py  34 m from truth vs GPS's 91 m, budget honest
-    harness/fleet_check.py     3 attacked -> one zone; the clean one warned
-
-The fleet logic is built and tested — several vehicles attacked in one area
-become a single event with a located zone, and vehicles heading toward it
-are warned before they arrive. What remains: drawing that zone on the
-console, the truck profile, evidence, phone view.
-
-| Owner | Area | State |
-|---|---|---|
-| Abishek | Simulator | task 1 done (reviewed, fixed) · **task 2 in progress** — attack injectors |
-| — | Detector core | stages 1-10 done, 59 tests passing |
-| — | Fleet | clustering, zone and advisories done — not yet on screen |
-| — | Console | live — canvas map, two paths, raw feed |
-=======
-What remains is plumbing rather than invention: act on the verdict (7), the
-detector's truck road-check in crossvalidate (8), fleet map (9), evidence and
-phone view (10).
-
-| Owner | Area | State |
-|---|---|---|
-| Abishek | Simulator | tasks 1-3 done: vehicle + sensors, attack/fault/interference injectors (single-axis `Bias`), **the truck** — `roads.py`, `TruckVehicle`, `truck_clean`/`truck_theft` (zero-alert gate green, theft → GPS/attack) |
-| — | Detector core | stages 1-7 (bar fusion) done, 41 tests passing |
-| — | Console | live — canvas map, two paths, raw feed (scenario buttons from `/control/scenarios`) |
->>>>>>> origin/sim/truck
-| — | Blame (stage 5) | **done** — names the sensor, or says `cannot_isolate` |
-| — | Classify (stage 6) | **done** - attack / fault / interference, or `unclassified` |
-| — | Fleet map, evidence | not started — phases 9, 10 |
-
-Full checklist: **[PLAN.md](PLAN.md)**
+**7 September 2026. Everything that makes this project different is built and
+measured.** What remains is rehearsal and polish, not invention.
 
 Run it:
 
 ```bash
-python -m detector.server                                 # terminal 1
-python -m harness.send_fixture --spoof 2.5 --spoof-at 15  # terminal 2
-# open http://127.0.0.1:8080
+python -m detector.server                     # terminal 1 — console on :8080
+python -m simulator.control --quiet           # terminal 2 — scenario buttons
+# open http://127.0.0.1:8080 and pick a scenario
 
-python -m tests.run_all                                   # 22 tests
-python -m detector.run                                    # terminal-only version
+python -m tests.run_all                       # 64 tests
+python -m harness.sweep                       # false alarms + detection curve
+python -m harness.blame_check                 # which sensor          8/8
+python -m harness.classify_check              # attack/fault/interf.  7/8
+python -m harness.fallback_check              # keeps flying under attack
+python -m harness.fleet_check                 # zone + advisory
+python -m harness.send_fleet                  # 4 vehicles, 3 attacked
 ```
 
-Two things about the console that are deliberate and easy to undo by accident:
+### What works
 
-- **It draws its own map on a canvas — no tile server, no map library.** The
-  demo runs with wifi off in front of judges; a map that silently fails to
-  load would take the whole thing with it.
-- **The raw-feed panel stays visible.** It is the anti-hardcoding proof: point
-  at it and say *"that is everything the detector receives — show me the field
-  that tells it an attack is happening."*
-
-### Engineering findings — these cost real time, don't rediscover them
-
-**-3. An error budget must be measured from the moment it starts counting, and
-must never flatter itself.** The free-running budget was first fitted to drift
-from the start of the run and started from zero, so it claimed 190 m while the
-witness was 729 m out. An operator deciding whether to press on was being
-handed a figure four times better than the truth. Fixed by measuring growth
-from the freeze (quadratic, ~0.18 m/s^2) and starting from the error already
-present when aiding stopped (~25 m).
-
-**Dead reckoning buys about 40 seconds, not minutes.** Past that our own drift
-overtakes even a 3 m/s spoof. That is not a defect to hide — it is why the
-console counts down and then says "stop or land" rather than showing a number.
-
-
-**-2. A reference must stop following a sensor the moment it becomes suspect.**
-The gyro heading is slowly re-seeded from the compass so it cannot drift
-without bound. Left running, that re-seeding quietly *absorbed* a magnet
-offset: the magnet was correctly blamed for fifty seconds, the gyro caught up
-with the corrupted compass, the two agreed again, and the accusation moved to
-GPS - which was innocent. Same rule as freezing GNSS aiding under attack.
-
-**Evidence must be allowed to be intermittent.** Requiring strictly continuous
-evidence looked tidy and missed the most obvious fault there is: a compass
-gone noisy dips back under the threshold between samples, resetting the timer
-forever, so a sensor reading 17x normal raised nothing at all. The accumulator
-now leaks at half speed instead of resetting.
-
-**Heading rate is not the gyro's z reading.** Only a level vehicle turns about
-its own z axis; banked over, part of the turn appears on y and the rest is
-foreshortened by pitch. Integrating gz raw under-reads a 30-degree banked turn
-by 13 percent, which accumulated to 171 degrees across a flight and read as a
-failing compass on a healthy vehicle.
-
-**Coherence alone cannot separate interference from a dying sensor** - both
-give a smooth one-way error. Steadiness can: a magnet holds its offset, a
-failing compass keeps changing how wrong it is.
-
-
-**-1. A sensor is only cleared by a check that would have caught the fault.**
-GNSS passing an altitude check says nothing about it lying horizontally, and
-passing the position check says almost nothing about a slow walk-off. Blame
-therefore works inside one *domain* — heading, horizontal, vertical — and only
-same-domain evidence can provide an alibi. Allowing cross-domain alibis let
-the real culprit walk free in every test.
-
-**Two failing checks accuse; one only detects.** A single failing check names
-two sensors and cannot choose between them, so it returns `cannot_isolate` —
-which is the honest answer, not a gap. A walk-off is isolated because the
-compass is *cleared* by still agreeing with the gyro; a magnet is isolated
-because the compass fails everything it takes part in.
-
-**Comparing GNSS course against gyro-integrated heading does not work.** It
-looked like the obvious way to isolate GNSS without involving the compass, but
-a gyro has no absolute reference: its heading accumulates scale error over
-every turn and reads 51x normal on an honest manoeuvring flight, far worse
-than any attack. Removed.
-
-
-**0. Position integration cannot catch a slow walk-off, and no amount of
-filter tuning changes that.** A constant half-degree pitch error — well inside
-what a complementary filter leaves behind — leaks enough gravity to build a
-**6 m/s velocity error inside a minute**. That swamps a 2 m/s attack whatever
-you do to the uncertainty model. We tried position aiding, then alpha-beta
-position-and-velocity aiding; the clean-run noise always came out as large as
-the attack signal. This is a known limit of inertial-only spoofing detection.
-
-**What works instead is comparing *direction*, not accumulated position.**
-Pull a 12 m/s vehicle sideways at 2 m/s and its course over ground swings 9
-degrees while the airframe still points where it pointed. The compass is good
-to 1.5 degrees, and a radio attack cannot reach it. Measured: 2.4 degrees of
-disagreement on honest flights against 10.6 degrees under a 2 m/s walk-off.
-This is why the design has many sensor pairs and not one residual — see
-`crossvalidate.py`.
-
-
-**1. An accelerometer cannot tell tilting from accelerating, and getting the
-gate wrong is unrecoverable.** Correcting attitude from gravity during
-acceleration writes a false pitch, the gyro then faithfully preserves it,
-gravity leaks into the forward axis, and the witness silently under-reads
-speed forever after — it read 7.1 m/s on a 12 m/s vehicle. The gate must close
-on the *worst* sample in the last second, not the average: an averaged gate
-still opens at the start of a manoeuvre while the window is half full of the
-stationary samples before it, which is enough to do the damage.
-
-A magnitude gate alone still cannot reach a truck: at the briefed 1.5 m/s²
-pull-away, |a| − g ≈ 0.10, comfortably inside any band that also lets a
-resting drone level itself. So the gate gained a **direction check**
-(`deadreckon.py`, `FORCE_CONSISTENCY_MPS2`): a pitch correction is refused
-unless the forward specific force matches −g·sin(pitch). A level truck pulling
-away reads ax ≈ 1.5 on the same axis gravity would use, so nothing writes a
-false pitch and the witness keeps navigating. The check is pitch-only by
-design — gating the roll axis the same way starved the drone's banked-turn
-leveling and regressed the hard-manoeuvre clean run. Below ~0.3 m/s² the
-direction check also stops telling a pull-away from noise; that is the honest
-truck floor, and the brief (1.5 m/s²) sits above it.
-
-**2. Health checks must measure sample-to-sample noise, not raw spread, and
-use a median.** Real motion is smooth so it barely shows between adjacent
-samples; a failing sensor is not. And one genuine jump — a vehicle moving off
-— makes a standard deviation declare the sensor faulty for two seconds. Median
-absolute deviation ignores outliers by construction.
-
-**3. Steady horizontal accelerometer bias is *rejected*, not integrated.** The
-complementary filter absorbs it into a small pitch offset that cancels it. So
-the textbook b·t²/2 drift bound does not apply to us — our uncertainty grows
-roughly **linearly**, and the quadratic model was unusable: it claimed 80 m of
-uncertainty while the witness was 12 m off, hiding a live 2 m/s attack.
-
-### Measured detection curve
-
-`python -m harness.sweep`, against the real simulator, whole pipeline, four
-seeds per point. These are the numbers to put on the results card.
-
-| | result |
+| | |
 |---|---|
-| **False alarms**, 12 honest runs (drone clean + hard manoeuvre, truck_clean) | **zero** |
-| GPS walk-off 5 m/s | caught 15-16 s after onset |
-| GPS walk-off 3 m/s | caught 15-17 s after onset |
-| GPS walk-off 2 m/s | caught 16-18 s after onset |
-| GPS walk-off 1 m/s and below | **not detected** |
-| Magnet on compass, 25 deg or more | caught 2 s after onset |
-| Magnet on compass, 10 deg | caught 14 s after onset |
-| Truck walk-off 2-5 m/s, parallel to the road | caught ~69-70 s after onset |
-| Truck walk-off 1 m/s | **not detected** |
-| Truck demo `truck_theft` (18 m/s walk-off) | GPS blamed ~t=108; cause attack |
+| False alarms, 8 honest flights incl. hard manoeuvres | **zero** |
+| Walk-off 2 / 3 / 5 m/s | caught 15-18 s after onset |
+| Walk-off 1 m/s and below | **not detected — our floor** |
+| Magnet on compass, 25 deg+ | caught 2 s after onset |
+| Names the guilty sensor | 8 of 8 |
+| Attack / fault / interference | 7 of 8 |
+| Drops the liar, keeps flying | 34 m from truth vs GPS's 91 m |
+| Fleet locates the attacker | 3 hit -> one zone, 4th warned |
+| Incident replays to identical verdict | yes |
 
-**Say the floor out loud on stage.** Below about 2 m/s a walk-off is slower
-than our own inertial drift and we do not catch it. That is a property of the
-IMU, not a bug — and at that speed an attacker needs about eight minutes to
-move a vehicle a kilometre.
+### Owners
 
-The 15-17 s latency is honest too, and worth explaining rather than hiding:
-the course check only means anything while the vehicle is flying straight, so
-detection waits for the next straight segment after the attack starts.
+| Owner | Area | State |
+|---|---|---|
+| Abishek | Simulator | tasks 1-3 done — flight, attacks, truck, roads |
+| — | Detector | stages 1-10 done |
+| — | Console | map, banner, verdict, fleet, phone view, report |
 
-The truck's ~70 s latency is a different animal and needs its own one-liner:
-a walk-off *parallel* to travel bends the reported course almost not at all,
-so the compass/course eyes that catch the drones stay quiet, and detection
-rides the cumulative GPS-vs-wheel-distance residual instead. The demo's
-`truck_theft` is caught sooner (~t=108) precisely because the real truck turns
-off the road — divergence is instantly visible.
+### Known weaknesses — say these out loud, do not hide them
 
-### Open questions
+- **Walk-off below ~2 m/s is not detected.** Slower than our own drift. At that
+  speed an attacker needs eight minutes to move a vehicle a kilometre.
+- **Dead reckoning buys about 40 seconds**, not minutes. Past that our drift
+  overtakes even a 3 m/s spoof, which is why the console counts down and then
+  says "stop or land".
+- **A slowly drifting compass is not reliably attributed.** As it drifts the
+  course check fails and blame can migrate to GPS; settled verdicts flip-flop.
+  The magnet and the noisy compass are solid; this middle case is not.
+- **Detection latency is 15-18 s** because the course check needs a straight
+  segment. The attack is caught at the next one.
 
-- **`DRIFT_RATE_MPS` recalibrated 0.5 -> 1.8** against Abishek's simulator
-  (7 Sep). The fixture was the optimistic one: it flies straight, and turns are
-  where dead reckoning suffers. Worst case over five seeds — clean 60 m at 60 s,
-  manoeuvre 103 m; both inside the 20-120 m band the handover asked for.
-- **The clean-run gate now holds for ~90 s, not the full 3-minute route.**
-  Drift is not linear: the implied rate climbs 0.6 -> 4.3 m/s between 30 s and
-  120 s, so a free-running witness eventually outgrows any linear sigma. Raising
-  the constant to cover 120 s would push sigma past 200 m and make a 2 m/s
-  walk-off invisible — trading the attack we exist to catch for a passing test.
-  **Phase 7 is now a blocker, not an improvement:** while GNSS is trusted it must
-  aid the witness so drift stops growing without bound and the residual becomes
-  a filter innovation. Free-running for three minutes is a phase 2 shortcut.
-- **Truck walk-off cause flaps fault/attack while the truck sits parked.**
-  During the in-line walk-off the wheels read 0.0 and the real GNSS is
-  legitimately static at the red light, so health flags GPS "stuck" exactly
-  when the drift pattern reads "attack". Blame never wavers (gnss throughout),
-  but the cause toggles for a couple of seconds around the hold. A classifier
-  tie-break is deserved in a later phase; not started.
-- Abishek's raw-integration drift check (target 20–120 m at 60 s) measures
-  *unfiltered* integration, so it is not the same quantity as our filtered
-  witness error (~12 m). Both are useful; don't confuse them.
+### Still to do
 
----
+1. **Rehearsal (phase 12) — nothing done, and worth more than any feature.**
+   Five full run-throughs, wifi off, reset under two seconds.
+2. `harness/regress.py` and `results.py` — the results card.
+3. **The demo playbook HTML still has placeholder numbers** (it says a 0.2 m/s
+   floor; the measured floor is 2 m/s). Fix before anyone reads it.
+4. Fleet cannot be started from the console — `send_fleet` is CLI only.
 
 ## Decisions already made — don't re-open these
 
