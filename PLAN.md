@@ -107,7 +107,7 @@ confirms **GNSS is never read in the dead-reckoning path**.
 - [x] canvas map: grid, scale bar, auto-fit (**no online tiles**)
 - [x] Draw GNSS-claimed path and dead-reckoned path, plus the gap between them
 - [x] Raw-feed panel showing incoming frames
-- [ ] Start and Reset controls wired to the simulator *(buttons live; simulator :5010 not up yet)*
+- [x] Scenario buttons wired to the simulator, built from its own list
 
 **⛔ Do not pass until:** you can show this to someone and they understand it
 without explanation.
@@ -122,16 +122,16 @@ without explanation.
 > A's half is handed off: [docs/handover/02-abishek-attacks.md](docs/handover/02-abishek-attacks.md)
 
 **Attacks** (A)
-- [ ] Walk-off, with adjustable speed and direction
-- [ ] Teleport
-- [ ] Altitude-only
-- [ ] Replay / meaconing
+- [x] Walk-off, with adjustable speed and direction
+- [x] Teleport
+- [x] Altitude-only
+- [x] Replay / meaconing
 
 **Faults** (A)
-- [ ] Stuck value
-- [ ] Excess noise
-- [ ] Dropout
-- [ ] Slow bias
+- [x] Stuck value
+- [x] Excess noise
+- [x] Dropout
+- [x] Slow bias
 
 **Cross-validation** (B)
 - [x] `crossvalidate.py` — GNSS ↔ inertial
@@ -193,7 +193,7 @@ the spoofing run keeps the vehicle on its true route after detection.
 
 ## Phase 8 — Truck profile · ~4h · A + B
 
-- [ ] `profiles.py` — sensor set and applicable pairs per vehicle type
+- [x] `profiles.py` — sensor set and applicable pairs per vehicle type
 - [ ] Truck motion model
 - [ ] Wheel odometry cross-check
 - [ ] Simple road-network check
@@ -209,7 +209,7 @@ change**. You say this on stage, so it must be literally true.
 - [x] Four detector instances against four simulated vehicles
 - [x] `cluster.py` — group by radius and time; attacks only, never faults window
 - [x] Zone centre and radius, from the vehicles' *own* positions
-- [ ] Draw the zone on the fleet map *(console still to do)*
+- [x] Draw the zone on the fleet map
 - [x] `advisory.py` — warn on time-to-reach, not distance
 
 **Done when:** four vehicles attacked together produce **one event and one
@@ -268,7 +268,7 @@ playbook without asking a question.
 - [ ] Six scenarios selectable, starting within two seconds
 - [x] Clean run with hard manoeuvres → **zero alerts**
 - [~] Spoofing caught — but GNSS not yet *named* (phase 5) and no fallback yet (phase 7)
-- [ ] Broken sensor reported as fault, not attack
+- [x] Broken sensor reported as fault, not attack
 - [~] Magnet caught — but not yet *classified* as interference (phase 6)
 - [ ] Truck profile runs with configuration only
 - [x] Attacked vehicles → one event, one zone
