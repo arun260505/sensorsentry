@@ -105,6 +105,9 @@ console/     two pages, one server. `/` is the evidence display — the screen
              the room watches. `/drive` is the control surface — the screen
              the driver touches. common.js is what they share. Both are
              responsive, so either is also the phone view.
+android/     the phone alarm — two Java files, no libraries. Polls the
+             console and rings when a vehicle is spoofed. SensorSentry-debug.apk
+             is the built one; adb install it, no toolchain needed
 harness/     measurement sweeps, regression runs, results card
 docs/        contract, briefs, requirements, plans, handovers
 ```
@@ -191,6 +194,7 @@ is exactly the kind of thing a buyer's engineer will ask about. Say it first.
 | Owner | Area | State |
 |---|---|---|
 | Abishek | Simulator | tasks 1-3 done — flight, attacks, truck, roads |
+| Abishek | Phone app | task 6 — built and working; see the handover before changing it |
 | — | Detector | stages 1-10 done |
 | — | Console | map, banner, verdict, fleet, phone view, report |
 
@@ -528,6 +532,7 @@ Use these words consistently; they end up in the UI and the pitch.
 | **[docs/SCENARIOS.md](docs/SCENARIOS.md)** | Every case a judge can produce, how to press it, what it says. Checked by `harness/usecases.py`. |
 | **[docs/MANUAL-TESTS.md](docs/MANUAL-TESTS.md)** | The same 17 as a by-hand checklist: which vehicle, how long to wait, measured timings, what counts as a fail. |
 | **[docs/RUN-SHEET.md](docs/RUN-SHEET.md)** | The demo in order, with the words. Setup, seven scenes, what to say where it fails, and the parachute. |
+| [docs/handover/06-abishek-phone-app.md](docs/handover/06-abishek-phone-app.md) | The phone app: how to run it, the three decisions behind it, and the bugs not to reintroduce. |
 | **[PLAN.md](PLAN.md)** | Tickable build checklist, 12 phases |
 | [docs/sensorsentry.html](docs/sensorsentry.html) | The main brief — problem, workflow, novelty, business |
 | [docs/sensorsentry-explained.html](docs/sensorsentry-explained.html) | Plain-language version, no background needed |
