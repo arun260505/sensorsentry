@@ -16,18 +16,20 @@ never on the detection path at all. It reads a file that has already been
 written. That is the demonstration: turn it off on stage, re-run the attack,
 watch the same detection happen, and the only thing missing is the prose.
 
-## What is actually generating this text today
+## What is actually generating this text
 
-A template, filled from the record. Not a language model — there is no model
-in this repository and none is called.
+Either a template or a language model, and the report says which — every
+`Report` carries `generated_by`, and the console prints it.
 
-That is deliberate rather than a shortcut: the interesting claim is the
-*architecture*, that the writing layer is optional and post-hoc, and a
-template proves that as well as a model would while keeping the demo offline
-and identical every run. `compose()` is where a model would be handed the same
-structured record, and its output would replace the same paragraphs.
+The model runs only when `ANTHROPIC_API_KEY` is set and the request succeeds;
+see `narrate.py`. With no key, no network, or any failure at all, the template
+writes it and the report is labelled `template`. That fallback is not a
+nicety: the demo has to survive a venue whose wifi eats the request, and a
+blank panel in front of judges is the worst outcome available.
 
-Say this plainly if asked. Claiming a template is an AI is the sort of thing
+Both paths read the same finished record, and neither can change a verdict —
+by the time either runs, the verdict is already on disk. Say this plainly if
+asked, and never let a template claim to be a model. That is the sort of thing
 that unravels badly under one follow-up question.
 """
 
@@ -37,6 +39,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
+from . import narrate
 from .evidence import Incident, read
 
 _SENSOR = {"gnss": "the GPS receiver", "imu": "the motion sensor",
@@ -79,12 +82,17 @@ class Report:
     """What wrote this. Named honestly so nobody has to guess later."""
 
 
-def compose(path: Path, *, enabled: bool = True) -> Optional[Report]:
+def compose(path: Path, *, enabled: bool = True,
+            use_model: bool = True) -> Optional[Report]:
     """Write up a stored incident. Returns None when switched off.
 
-    A language model would be handed exactly this record and would replace the
-    paragraphs below. It is not called here; nothing in this repository calls
-    one.
+    `enabled` is the operator's switch and turns the whole feature off.
+    `use_model` is separate, and exists so the tests can force the template
+    path and compare the two — a model is not deterministic, and a test that
+    calls one is a test that fails on a Tuesday when the network is slow.
+
+    The model, when it runs, is handed the record this function has already
+    finished reading. It replaces the prose and nothing else.
     """
     if not enabled:
         return None

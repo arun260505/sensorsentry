@@ -152,6 +152,7 @@ python -m harness.classify_check              # attack/fault/interf.  7/8
 python -m harness.fallback_check              # keeps flying under attack
 python -m harness.fleet_check                 # zone + advisory
 python -m harness.usecases                    # all 17 cases, named
+python -m harness.dressrehearsal              # the whole demo, end to end
 python -m harness.results --save              # the closing card
 python -m harness.send_fleet                  # 4 vehicles, 3 attacked
 ```
@@ -441,10 +442,31 @@ it out loud instead.
   sees that gap unexplained reads it as flakiness; a judge who is told to expect
   it reads it as restraint.
 
+### The written report can now be a model
+
+`detector/narrate.py` calls Claude with the stored record when
+`ANTHROPIC_API_KEY` is set. With no key, no network, or any failure at all it
+falls back to the template and the report says `generated_by: template` — a
+blank panel in front of judges is the worst outcome available, and a template
+passing for a model is the second worst.
+
+Raw `urllib`, not the SDK, because of rule 6: a demo that needs `pip install`
+on the morning has a new way to fail.
+
+**Two tests pin the on-stage claim.** One asserts no detector stage imports
+`narrate` — structurally, because a behavioural test would pass on a build
+where a stage called the model and happened to agree with itself that
+afternoon. The other asserts that with no key the report still arrives and
+still labels itself honestly.
+
 ### Still to do
 
-**Rehearsal (phase 12). Nothing else is outstanding, and nothing else is worth
-more.** Five full run-throughs out loud, wifi off, reset under two seconds.
+**Rehearsal (phase 12), out loud.** `python -m harness.dressrehearsal` drives
+all ten beats through the browser's own endpoints and reports which land — it
+found a walk-off bearing that takes over 110 s to name where another takes 70.
+But it presses buttons; it cannot say the sentences. Five run-throughs from
+[docs/RUN-SHEET.md](docs/RUN-SHEET.md), wifi off.
+
 A demo that has never been run start to finish will break in the room — that
 is the normal outcome, not bad luck.
 
@@ -505,6 +527,7 @@ Use these words consistently; they end up in the UI and the pitch.
 | **[docs/schema.md](docs/schema.md)** | The frozen data contract. Read before writing code. |
 | **[docs/SCENARIOS.md](docs/SCENARIOS.md)** | Every case a judge can produce, how to press it, what it says. Checked by `harness/usecases.py`. |
 | **[docs/MANUAL-TESTS.md](docs/MANUAL-TESTS.md)** | The same 17 as a by-hand checklist: which vehicle, how long to wait, measured timings, what counts as a fail. |
+| **[docs/RUN-SHEET.md](docs/RUN-SHEET.md)** | The demo in order, with the words. Setup, seven scenes, what to say where it fails, and the parachute. |
 | **[PLAN.md](PLAN.md)** | Tickable build checklist, 12 phases |
 | [docs/sensorsentry.html](docs/sensorsentry.html) | The main brief — problem, workflow, novelty, business |
 | [docs/sensorsentry-explained.html](docs/sensorsentry-explained.html) | Plain-language version, no background needed |

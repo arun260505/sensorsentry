@@ -841,7 +841,7 @@ def the_report_switch_cannot_touch_detection() -> None:
         off = report_mod.compose(path, enabled=False)
         assert off is None
 
-        on = report_mod.compose(path, enabled=True)
+        on = report_mod.compose(path, enabled=True, use_model=False)
         assert on is not None and on.body
 
         _h2, _f2, after = evidence_mod.read(path)
@@ -854,15 +854,71 @@ def the_report_says_what_wrote_it() -> None:
     under one follow-up question."""
     import tempfile
     with tempfile.TemporaryDirectory() as tmp:
-        written = report_mod.compose(_record_a_run(tmp))
+        written = report_mod.compose(_record_a_run(tmp), use_model=False)
         assert written.generated_by == "template"
+
+
+@test
+def the_model_cannot_reach_the_detection_path() -> None:
+    """The on-stage claim, pinned so it cannot quietly stop being true.
+
+    "Turn the AI off and the detection is identical" is only worth saying if
+    nothing that decides anything can call it. Asserted structurally rather
+    than by comparing outputs: no detector stage imports `narrate`, and the
+    only module that does is the one that writes prose after the event.
+
+    A behavioural test would pass just as happily on a build where a stage
+    called the model and happened to agree with itself that afternoon.
+    """
+    import pathlib
+
+    detector_dir = pathlib.Path(__file__).resolve().parent.parent / "detector"
+    allowed = {"narrate.py", "report.py"}
+    offenders = []
+    for module in sorted(detector_dir.glob("*.py")):
+        if module.name in allowed:
+            continue
+        text = module.read_text(encoding="utf-8")
+        for line in text.splitlines():
+            stripped = line.strip()
+            if stripped.startswith(("import ", "from ")) and "narrate" in stripped:
+                offenders.append(f"{module.name}: {stripped}")
+    assert not offenders, (
+        "a detector stage can reach the language model: " + "; ".join(offenders))
+
+
+@test
+def with_no_key_the_report_falls_back_and_says_so() -> None:
+    """A venue whose wifi eats the request must still produce a report.
+
+    The worst outcome available on stage is a blank panel, so every failure
+    path returns the template — and labels itself honestly rather than letting
+    a template pass for a model.
+    """
+    import os
+    import tempfile
+
+    from detector import narrate as narrate_mod
+
+    previous = os.environ.pop("ANTHROPIC_API_KEY", None)
+    try:
+        assert narrate_mod.available() is False
+        assert narrate_mod.narrate({"anything": True}) is None
+        with tempfile.TemporaryDirectory() as tmp:
+            # use_model left on: with no key it must still come back template.
+            written = report_mod.compose(_record_a_run(tmp), use_model=True)
+            assert written is not None and written.body
+            assert written.generated_by == "template"
+    finally:
+        if previous is not None:
+            os.environ["ANTHROPIC_API_KEY"] = previous
 
 
 @test
 def the_report_names_the_sensor_and_the_cause() -> None:
     import tempfile
     with tempfile.TemporaryDirectory() as tmp:
-        written = report_mod.compose(_record_a_run(tmp))
+        written = report_mod.compose(_record_a_run(tmp), use_model=False)
         assert "GPS" in written.title or "GPS" in written.body
         assert "attack" in written.title.lower() or "attack" in written.body.lower()
         assert "next steps" in written.body.lower()
@@ -873,7 +929,8 @@ def a_quiet_run_produces_a_quiet_report() -> None:
     """No incident must not become an incident report."""
     import tempfile
     with tempfile.TemporaryDirectory() as tmp:
-        written = report_mod.compose(_record_a_run(tmp, spoof_mps=0.0))
+        written = report_mod.compose(_record_a_run(tmp, spoof_mps=0.0),
+                                     use_model=False)
         assert "no incident" in written.title.lower()
 
 
