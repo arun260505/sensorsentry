@@ -38,6 +38,7 @@ public class MainActivity extends Activity {
     private static final String KEY_SERVER = "server";
     private static final String DEFAULT_SERVER = "172.16.130.172:8080";
 
+    private LinearLayout root;
     private TextView headline;
     private TextView detail;
     private TextView connection;
@@ -98,7 +99,7 @@ public class MainActivity extends Activity {
 
     private View buildView() {
         int pad = dp(20);
-        LinearLayout root = new LinearLayout(this);
+        root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(pad, dp(36), pad, pad);
         root.setBackgroundColor(Color.parseColor("#0f1c25"));
@@ -192,8 +193,9 @@ public class MainActivity extends Activity {
     private void show(String head, String note, boolean alert, boolean connected) {
         if (head != null) headline.setText(head);
         if (note != null) detail.setText(note);
-        headline.setTextColor(alert ? Color.WHITE : Color.WHITE);
-        View root = headline.getRootView();
+        // Paint the layout we built, not getRootView() — that returns the
+        // window decor, which the theme paints over, so the screen stayed
+        // navy through an alert it was supposed to turn red for.
         root.setBackgroundColor(alert
                 ? Color.parseColor("#8c1d13") : Color.parseColor("#0f1c25"));
         connection.setText(connected ? "connected" : "not connected");

@@ -51,7 +51,7 @@ public class WatchService extends Service {
     public static final String EXTRA_ALERT = "alert";
     public static final String EXTRA_CONNECTED = "connected";
 
-    static final String CHANNEL_ALERT = "sensorsentry.alert";
+    static final String CHANNEL_ALERT = "sensorsentry.alert.v2";
     static final String CHANNEL_WATCHING = "sensorsentry.watching";
     static final int NOTE_WATCHING = 1;
     static final int NOTE_ALERT = 2;
@@ -149,6 +149,9 @@ public class WatchService extends Service {
     private void read(JSONObject snapshot) {
         JSONObject vehicles = snapshot.optJSONObject("vehicles");
         if (vehicles == null || vehicles.length() == 0) {
+            if (alerting) {
+                getSystemService(NotificationManager.class).cancel(NOTE_ALERT);
+            }
             alerting = false;
             publish("No vehicle running", "Start a run on the console", false, true);
             return;
@@ -162,6 +165,13 @@ public class WatchService extends Service {
         boolean alert = "ALERT".equals(state.optString("state"));
 
         if (!alert) {
+            // Take the old alarm out of the shade when the vehicle recovers.
+            // Left there, the previous incident's banner sits over the next
+            // clean run — and on stage that reads as an alert that has not
+            // cleared rather than one that has.
+            if (alerting) {
+                getSystemService(NotificationManager.class).cancel(NOTE_ALERT);
+            }
             alerting = false;
             publish("All sensors agree", vehicle + " · nothing wrong", false, true);
             return;
@@ -261,11 +271,18 @@ public class WatchService extends Service {
                 .build();
         manager.notify(NOTE_ALERT, note);
 
-        // The channel already carries a sound, but a pocketed phone in a noisy
-        // hall needs the alarm stream rather than the notification stream.
+        // Two separate choices, and they are not the same thing.
+        //
+        // WHAT it sounds like: the notification tone, not the alarm-clock one.
+        // An alarm tone is designed to wake somebody from sleep and keeps
+        // going; this is an alert about a lorry, and it should sound like one.
+        //
+        // HOW LOUD: the alarm stream regardless, because that is the one
+        // channel a phone on silent still plays. A pocketed phone in a noisy
+        // hall that politely says nothing has failed at its only job.
         try {
-            Uri tone = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM);
-            if (tone == null) tone = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION);
+            Uri tone = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION);
+            if (tone == null) tone = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM);
             Ringtone ringtone = RingtoneManager.getRingtone(getApplicationContext(), tone);
             if (ringtone != null) {
                 ringtone.setAudioAttributes(new AudioAttributes.Builder()
@@ -315,7 +332,7 @@ public class WatchService extends Service {
         alert.setDescription("A vehicle's sensors have stopped agreeing.");
         alert.enableVibration(true);
         alert.setVibrationPattern(new long[]{0, 400, 200, 400});
-        Uri tone = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM);
+        Uri tone = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION);
         if (tone != null) {
             alert.setSound(tone, new AudioAttributes.Builder()
                     .setUsage(AudioAttributes.USAGE_ALARM)
@@ -324,8 +341,11 @@ public class WatchService extends Service {
         }
         manager.createNotificationChannel(alert);
 
-        if (Build.VERSION.SDK_INT >= 0) {
-            manager.deleteNotificationChannel("sensorsentry.old");
-        }
+        // The first version of this channel carried the alarm-clock tone, and
+        // a channel's sound is fixed once Android has seen it — changing it in
+        // code does nothing to an installed app. Hence the v2 id above and
+        // this: drop the old one so it does not linger in the phone's
+        // notification settings looking like a duplicate.
+        manager.deleteNotificationChannel("sensorsentry.alert");
     }
 }
