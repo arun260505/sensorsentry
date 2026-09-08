@@ -334,6 +334,67 @@ def truck_theft():
 # ---------------------------------------------------------------------------
 # Registry
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# The truck versions of the scripted drone runs
+#
+# Both vehicles now offer the same set, which matters for more than symmetry:
+# the interesting differences between them only show up when the same attack
+# is run on each. A walk-off is caught in seconds on a drone by the course
+# check and takes a minute on a lorry — then the road check names it outright,
+# which a drone can never do. Having only the drone versions meant that
+# comparison could be described but not shown.
+# ---------------------------------------------------------------------------
+def truck_walkoff():
+    """The Sriperumbudur run, with a 3 m/s walk-off from t=35 s.
+
+    Slower to catch than the drone's, and worth saying so: a lorry travels
+    more slowly, so the same sideways drag swings its course over the ground
+    less. What the lorry has instead is a road it must be on."""
+    waypoints, vehicle_type = truck_clean()
+    schedule = [
+        {
+            "t_start": 35.0,
+            "kind":    "attack",
+            "cls":     "WalkOff",
+            "kwargs":  {"speed_mps": 3.0, "bearing_deg": 90.0},
+        }
+    ]
+    return waypoints, vehicle_type, schedule
+
+
+def truck_fault():
+    """The same run, with a slow accelerometer bias from t=30 s.
+
+    A failing part, not an attack, and the console must say so — same
+    injection as `drone_fault`, so the two can be compared directly."""
+    waypoints, vehicle_type = truck_clean()
+    schedule = [
+        {
+            "t_start": 30.0,
+            "kind":    "fault",
+            "cls":     "Bias",
+            "kwargs":  {"sensor": "imu", "rate_per_s": 0.05, "axis": "ax"},
+        }
+    ]
+    return waypoints, vehicle_type, schedule
+
+
+def truck_magnet():
+    """The same run, with a 45 degree magnetic offset on the compass from
+    t=30 s. The gyro is deliberately untouched: that disagreement is what
+    separates interference from a turn."""
+    waypoints, vehicle_type = truck_clean()
+    schedule = [
+        {
+            "t_start": 30.0,
+            "kind":    "interference",
+            "cls":     "Magnet",
+            "kwargs":  {"offset_deg": 45.0},
+        }
+    ]
+    return waypoints, vehicle_type, schedule
+
+
 SCENARIOS = {
     "drone_clean":      drone_clean,
     "drone_manoeuvre":  drone_manoeuvre,
@@ -341,6 +402,9 @@ SCENARIOS = {
     "drone_fault":      drone_fault,
     "drone_magnet":     drone_magnet,
     "truck_clean":      truck_clean,
+    "truck_walkoff":    truck_walkoff,
+    "truck_fault":      truck_fault,
+    "truck_magnet":     truck_magnet,
     "truck_theft":      truck_theft,
 }
 

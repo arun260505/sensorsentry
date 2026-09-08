@@ -34,6 +34,7 @@ const COLOR = themeColours({
 const CANVAS_BG = themeColours({ bg: "--map-bg" }).bg;
 
 let latest = null;
+let rawFrame = null;   // the incoming sensor frame, for the instruments
 let trails = { gnss: [], witness: [] };
 let fleet = {};
 let zones = [];
@@ -790,21 +791,154 @@ function label(x, y, text, color, strong, align) {
   ctx.textAlign = "left";
 }
 
+/* --- instruments ---------------------------------------------------------
+ *
+ * Three dials in the corner, each showing two independent measurements of one
+ * physical quantity: what the sensor reports, and what the rest of the
+ * vehicle works out without it.
+ *
+ * This was a static north arrow, which is why driving anything other than the
+ * GPS looked like it did nothing. The GPS had the two tracks on the map to
+ * pull apart; the compass, the barometer and the wheels had no picture at
+ * all, so a judge turning the compass forty degrees watched a number change
+ * somewhere and nothing else move.
+ *
+ * Only the instruments this vehicle actually carries are drawn. A lorry has
+ * no barometer and a drone has no wheels, and an empty dial reads as broken.
+ */
+
+const DIAL_R = 26;
+const DIAL_GAP = 14;
+
+function fittedHere(sensor) {
+  const type = latest && latest.vehicle_type;
+  if (type === "truck") return sensor !== "baro";
+  if (type === "drone") return sensor !== "odom";
+  return true;
+}
+
 function drawCompass(w, h) {
-  const x = w - 44, y = 44, r = 17;
+  // Kept under the old name because draw() calls it; it is now the whole
+  // cluster, laid out down the right-hand edge.
+  let y = 20 + DIAL_R;
+  const x = w - 20 - DIAL_R;
+
+  drawHeadingDial(x, y);
+  if (fittedHere("baro")) { y += DIAL_R * 2 + DIAL_GAP; drawHeightDial(x, y); }
+  if (fittedHere("odom")) { y += DIAL_R * 2 + DIAL_GAP; drawSpeedDial(x, y); }
+}
+
+function dialFace(x, y, label) {
+  ctx.beginPath();
+  ctx.arc(x, y, DIAL_R, 0, Math.PI * 2);
+  ctx.fillStyle = CANVAS_BG;
+  ctx.globalAlpha = 0.88;
+  ctx.fill();
+  ctx.globalAlpha = 1;
   ctx.strokeStyle = COLOR.gridMajor;
-  ctx.lineWidth = 1.5;
-  ctx.beginPath();
-  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.lineWidth = 1.4;
   ctx.stroke();
-  ctx.beginPath();
-  ctx.moveTo(x, y + r - 3);
-  ctx.lineTo(x, y - r + 3);
-  ctx.stroke();
+
   ctx.fillStyle = COLOR.text;
-  ctx.font = "700 11px system-ui, sans-serif";
+  ctx.font = "600 8px system-ui, sans-serif";
   ctx.textAlign = "center";
-  ctx.fillText("N", x, y - r - 4);
+  ctx.fillText(label, x, y + DIAL_R + 10);
+  ctx.textAlign = "left";
+}
+
+function needle(x, y, degrees, colour, width, length) {
+  const rad = (degrees - 90) * Math.PI / 180;   // 0 deg points up
+  ctx.strokeStyle = colour;
+  ctx.lineWidth = width;
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  ctx.moveTo(x - Math.cos(rad) * length * 0.28, y - Math.sin(rad) * length * 0.28);
+  ctx.lineTo(x + Math.cos(rad) * length, y + Math.sin(rad) * length);
+  ctx.stroke();
+}
+
+/* Which way we are pointing: the compass against the gyro's own heading.
+ * A magnet or a hand on the compass swings one needle and leaves the other,
+ * which is the entire interference case as a picture. */
+function drawHeadingDial(x, y) {
+  dialFace(x, y, "HEADING");
+  ctx.fillStyle = COLOR.text;
+  ctx.font = "700 8px system-ui, sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText("N", x, y - DIAL_R + 8);
+  ctx.textAlign = "left";
+
+  const gyro = latest ? latest.gyro_heading_deg : null;
+  const compass = rawFrame && rawFrame.mag ? rawFrame.mag.heading_deg : null;
+  if (gyro != null) needle(x, y, gyro, COLOR.witness, 2, DIAL_R - 8);
+  if (compass != null) needle(x, y, compass, COLOR.claimed, 2.6, DIAL_R - 6);
+
+  if (compass != null && gyro != null) {
+    let gap = Math.abs(((compass - gyro + 540) % 360) - 180);
+    if (gap > 12) dialAlarm(x, y, `${Math.round(gap)}°`);
+  }
+}
+
+/* How high we are: GPS against the barometer. */
+function drawHeightDial(x, y) {
+  dialFace(x, y, "HEIGHT");
+  const gps = latest && latest.gnss ? latest.gnss.u : null;
+  const own = latest && latest.witness ? latest.witness.u : null;
+  if (gps == null && own == null) return;
+
+  // A tape rather than a needle: height is a level, not a direction.
+  const span = Math.max(30, Math.abs((gps || 0) - (own || 0)) * 1.6);
+  const mark = (value, colour, width) => {
+    if (value == null) return;
+    const t = Math.max(-1, Math.min(1, value / span));
+    const py = y + DIAL_R * 0.62 * -t;
+    ctx.strokeStyle = colour;
+    ctx.lineWidth = width;
+    ctx.beginPath();
+    ctx.moveTo(x - DIAL_R * 0.55, py);
+    ctx.lineTo(x + DIAL_R * 0.55, py);
+    ctx.stroke();
+  };
+  mark(own, COLOR.witness, 2);
+  mark(gps, COLOR.claimed, 2.6);
+
+  if (gps != null && own != null && Math.abs(gps - own) > 12) {
+    dialAlarm(x, y, `${Math.round(Math.abs(gps - own))}m`);
+  }
+}
+
+/* How fast we are going: the wheels against our own estimate. */
+function drawSpeedDial(x, y) {
+  dialFace(x, y, "SPEED");
+  const wheels = rawFrame && rawFrame.odom ? rawFrame.odom.wheel_speed_mps : null;
+  const own = latest && latest.witness ? latest.witness.speed_mps : null;
+  const top = Math.max(25, wheels || 0, own || 0);
+  // Sweep from -120 to +120 degrees, the way a speedometer reads.
+  const sweep = (v) => -120 + Math.max(0, Math.min(1, v / top)) * 240;
+  if (own != null) needle(x, y, sweep(own), COLOR.witness, 2, DIAL_R - 8);
+  if (wheels != null) needle(x, y, sweep(wheels), COLOR.claimed, 2.6, DIAL_R - 6);
+
+  if (wheels != null && own != null && Math.abs(wheels - own) > 4) {
+    dialAlarm(x, y, `${Math.round(Math.abs(wheels - own))}`);
+  }
+}
+
+/* A ring and a figure when the two measurements have come apart. The number
+ * is the gap itself, so the disagreement is on screen rather than implied. */
+function dialAlarm(x, y, text) {
+  ctx.strokeStyle = COLOR.link;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(x, y, DIAL_R + 2.5, 0, Math.PI * 2);
+  ctx.stroke();
+
+  ctx.font = "700 9px ui-monospace, monospace";
+  ctx.textAlign = "center";
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = CANVAS_BG;
+  ctx.strokeText(text, x, y - DIAL_R - 5);
+  ctx.fillStyle = COLOR.link;
+  ctx.fillText(text, x, y - DIAL_R - 5);
   ctx.textAlign = "left";
 }
 
@@ -985,6 +1119,7 @@ onSnapshot((snapshot) => {
   }
 
   latest = snapshot.state;
+  rawFrame = snapshot.raw;
   focus = snapshot.focus;
   advisories = snapshot.advisories || [];
 

@@ -30,6 +30,9 @@ const SCENARIOS = {
   drone_walkoff:   ["drone · walkoff",   "GPS spoofing"],
   drone_fault:     ["drone · fault",     "sensor failure"],
   drone_magnet:    ["drone · magnet",    "magnet on compass"],
+  truck_walkoff:   ["truck · walkoff",   "GPS spoofing"],
+  truck_fault:     ["truck · fault",     "sensor failure"],
+  truck_magnet:    ["truck · magnet",    "magnet on compass"],
   truck_theft:     ["truck · theft",     "cargo theft"],
 };
 
