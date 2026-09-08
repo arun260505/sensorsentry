@@ -12,6 +12,8 @@ import android.media.RingtoneManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.IBinder;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
 import android.util.Log;
@@ -60,7 +62,9 @@ public class WatchService extends Service {
     public static final String EXTRA_VERT_M          = "vert_m";        // float, vertical residual
     public static final String EXTRA_COMPASS_DEG     = "compass_deg";   // float, compass offset °
     public static final String EXTRA_CAUSE_LABEL     = "cause_label";   // "attack" / "fault" / ""
-    public static final String EXTRA_CAUSE_REASON    = "cause_reason";  // human-readable sentence
+    public static final String EXTRA_CAUSE_REASON    = "cause_reason";  // why we say that
+    public static final String EXTRA_CAUSE_ACTION    = "cause_action";  // what to do about it
+    public static final String EXTRA_GUILTY          = "guilty";        // which sensor
     public static final String EXTRA_VEHICLE_ID      = "vehicle_id";    // "DRONE-07" etc.
     public static final String EXTRA_SIGMA_M         = "sigma_m";       // float, position sigma (Our uncertainty)
     public static final String EXTRA_RATIO           = "ratio_x";       // float, worst pair ratio
@@ -112,6 +116,8 @@ public class WatchService extends Service {
     private float  lastVertM       = 0f;
     private String lastCauseLabel  = "";
     private String lastCauseReason = "";
+    private String lastCauseAction = "";
+    private String lastGuilty      = "";
     private float  lastCompassDeg  = Float.NaN;
     private String lastVehicleId   = "VEHICLE";
     private float  lastSigmaM      = 0f;
@@ -309,6 +315,10 @@ public class WatchService extends Service {
                 getSystemService(NotificationManager.class).cancel(NOTE_ALERT);
             }
             alerting = false;
+            // Clear the last incident's words, or the panel goes on explaining
+            // an attack that finished while the badge says everything agrees.
+            lastCauseLabel = ""; lastCauseReason = "";
+            lastCauseAction = ""; lastGuilty = "";
             publish("All sensors agree", vehicle + " · nothing wrong", false, true,
                     gnssTrailJson, witnessTrailJson, gapM);
             return;
@@ -321,7 +331,13 @@ public class WatchService extends Service {
         String action = cause == null ? "" : cause.optString("action", "");
 
         lastCauseLabel  = label;
-        lastCauseReason = action;
+        // The reason and the action are two different sentences and the phone
+        // needs both. This was sending the action under the name "reason", so
+        // the screen showed what to do and never why — which is the half that
+        // makes an operator believe the other half.
+        lastCauseReason = cause == null ? "" : cause.optString("reason", "");
+        lastCauseAction = action;
+        lastGuilty      = guilty == null ? "" : guilty;
 
         String headline = headline(label, guilty);
         String detail = vehicle + (action.isEmpty() ? "" : " · " + action);
@@ -394,6 +410,8 @@ public class WatchService extends Service {
         update.putExtra(EXTRA_COMPASS_DEG,   lastCompassDeg);
         update.putExtra(EXTRA_CAUSE_LABEL,   lastCauseLabel);
         update.putExtra(EXTRA_CAUSE_REASON,  lastCauseReason);
+        update.putExtra(EXTRA_CAUSE_ACTION,  lastCauseAction);
+        update.putExtra(EXTRA_GUILTY,        lastGuilty);
         update.putExtra(EXTRA_SIGMA_M,       lastSigmaM);
         update.putExtra(EXTRA_RATIO,         lastRatio);
         // Basemap: pass via static field to avoid TransactionTooLargeException
@@ -419,16 +437,33 @@ public class WatchService extends Service {
         PendingIntent tap = PendingIntent.getActivity(
                 this, 0, open, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
 
-        Notification note = new Notification.Builder(this, CHANNEL_ALERT)
+        // Two icons, and they are not interchangeable.
+        //
+        // The SMALL icon is drawn as a silhouette — Android throws away every
+        // colour in it and keeps the alpha. Putting the logo here would render
+        // it as a solid white blob, which is what "use the logo in the
+        // notification" usually turns into. So it stays the warning triangle,
+        // which was drawn as a single opaque path for exactly this reason.
+        //
+        // The LARGE icon is a real bitmap, in colour, and that is where the
+        // logo belongs: it is the one the manager actually sees in the shade.
+        Notification.Builder builder = new Notification.Builder(this, CHANNEL_ALERT)
                 .setSmallIcon(R.drawable.ic_alert)
                 .setContentTitle(headline)
                 .setContentText(detail)
                 .setStyle(new Notification.BigTextStyle().bigText(detail))
                 .setCategory(Notification.CATEGORY_ALARM)
                 .setPriority(Notification.PRIORITY_MAX)
+                .setColor(0xFFCC4030)
                 .setAutoCancel(true)
-                .setContentIntent(tap)
-                .build();
+                .setContentIntent(tap);
+        try {
+            Bitmap logo = BitmapFactory.decodeResource(getResources(), R.mipmap.ic_launcher);
+            if (logo != null) builder.setLargeIcon(logo);
+        } catch (Exception e) {
+            Log.w(TAG, "no large icon", e);   // the alarm matters; the picture does not
+        }
+        Notification note = builder.build();
         manager.notify(NOTE_ALERT, note);
 
         // Two separate choices, and they are not the same thing.
