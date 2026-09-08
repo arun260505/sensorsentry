@@ -226,6 +226,7 @@ function draw() {
   drawFleet(view, w, h);
 
   drawSensorTracks(view, w, h);
+  drawHeightGauge(view, w, h);
 
   // The claimed track sits under the real one: when they overlap, what the
   // vehicle actually did should be the line you see.
@@ -880,11 +881,72 @@ function pushSensorTracks(snapshot) {
     if (track.length > TRACK_MAX) track.shift();
   }
   // Believe the wheels about distance, everything else about direction.
-  if (wheels != null && ownHeading != null) {
+  if (fittedHere("odom") && wheels != null && ownHeading != null) {
     const track = sensorTracks.odom;
     track.push(advance(track[track.length - 1], ownHeading, wheels * dt));
     if (track.length > TRACK_MAX) track.shift();
   }
+}
+
+/* Height, drawn beside the vehicle as a gauge.
+ *
+ * A plan view has nowhere to put an altitude, so height was the one sensor
+ * with a legend row and nothing on the map. A short vertical scale at the
+ * vehicle fixes that honestly: two ticks, one where the GPS says it is and
+ * one where the barometer says, joined by a line whose length *is* the
+ * disagreement. Squeeze the barometer and the two ticks pull apart in front
+ * of you.
+ *
+ * Only on a vehicle that carries one, which is the drone.
+ */
+function drawHeightGauge(view, w, h) {
+  if (!fittedHere("baro")) return;
+  const st = latest;
+  const wit = trails.witness[trails.witness.length - 1];
+  if (!st || !wit || !st.gnss || !st.witness) return;
+  const gps = st.gnss.u, own = st.witness.u;
+  if (gps == null || own == null) return;
+
+  const [vx, vy] = project(wit[0], wit[1], view, w, h);
+  const x = vx - 34;                       // clear of the vehicle marker
+  const mid = vy;
+  const half = 34;
+
+  // Scale so the two always sit inside the gauge, with a floor so a pair of
+  // honest readings a metre apart do not fill it and look like a crisis.
+  const span = Math.max(20, Math.abs(gps - own) * 1.7);
+  const at = (v) => mid - ((v - (gps + own) / 2) / span) * half;
+
+  ctx.strokeStyle = COLOR.gridMajor;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(x, mid - half);
+  ctx.lineTo(x, mid + half);
+  ctx.stroke();
+
+  const tick = (v, colour, width) => {
+    ctx.strokeStyle = colour;
+    ctx.lineWidth = width;
+    ctx.beginPath();
+    ctx.moveTo(x - 7, at(v));
+    ctx.lineTo(x + 7, at(v));
+    ctx.stroke();
+  };
+
+  const gap = Math.abs(gps - own);
+  if (gap > 8) {
+    // The line between them is the disagreement itself.
+    ctx.strokeStyle = SENSOR_COLOUR.baro;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(x, at(gps));
+    ctx.lineTo(x, at(own));
+    ctx.stroke();
+    label(x - 12, at((gps + own) / 2) + 4,
+          `height ${gap.toFixed(0)} m apart`, SENSOR_COLOUR.baro, true, "right");
+  }
+  tick(own, COLOR.witness, 2);
+  tick(gps, COLOR.claimed, 2.6);
 }
 
 /* Drawn under the two position tracks, thinner, so the map still reads as a
@@ -981,15 +1043,19 @@ function sensorDeviations() {
   }
   // Wheels: metres per second against our own estimate of speed.
   const wheels = rawFrame && rawFrame.odom ? rawFrame.odom.wheel_speed_mps : null;
-  if (wheels != null && st.witness && st.witness.speed_mps != null) {
+  if (fittedHere("odom") && wheels != null && st.witness
+      && st.witness.speed_mps != null) {
     out.odom = {
       off: Math.abs(wheels - st.witness.speed_mps),
       text: (v) => `${v.toFixed(1)} m/s off`,
       quiet: 4,
     };
   }
-  // Height: metres between the GPS altitude and the barometric one.
-  if (st.gnss && st.witness && st.gnss.u != null && st.witness.u != null) {
+  // Height: metres between the GPS altitude and the barometric one. Only on
+  // a vehicle that has a barometer — a lorry does not, and the row must not
+  // appear for it however available the numbers are.
+  if (fittedHere("baro")
+      && st.gnss && st.witness && st.gnss.u != null && st.witness.u != null) {
     out.baro = {
       off: Math.abs(st.gnss.u - st.witness.u),
       text: (v) => `${v.toFixed(0)} m off`,
@@ -1081,15 +1147,29 @@ function drawCompassRays(view, w, h) {
 const DIAL_R = 26;
 const DIAL_GAP = 26;   // room for the two source names under each dial
 
+/* Does this vehicle actually carry the sensor?
+ *
+ * Answered from the checks the detector is running, not from the vehicle's
+ * name and not from whether a reading happens to be in the frame. Both are
+ * misleading: the simulator sends a barometer reading on a lorry, and the
+ * detector's truck profile ignores it, so a height row built from what
+ * arrives in the frame would have shown a barometer the system does not use.
+ *
+ * The pair list is the detector's own statement of what it relies on, so
+ * asking it means a new vehicle profile needs no change here.
+ */
 function fittedHere(sensor) {
-  const type = latest && latest.vehicle_type;
-  // Before a run there is no vehicle and no readings, so only the compass
-  // rose is drawn — it is a map reference in its own right. Two empty dials
-  // sitting there beforehand read as instruments that are not working.
-  if (!type) return false;
-  if (type === "truck") return sensor !== "baro";
-  if (type === "drone") return sensor !== "odom";
-  return true;
+  const st = latest;
+  if (!st || !st.pair_states) return false;
+  for (const key of Object.keys(st.pair_states)) {
+    const [left, right] = key.split(":");
+    if (left === "health") {
+      if (right === sensor) return true;
+      continue;
+    }
+    if (left.split("-").includes(sensor)) return true;
+  }
+  return false;
 }
 
 function drawCompass(w, h) {
