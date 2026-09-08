@@ -26,8 +26,11 @@
     <span class="sep">·</span>
     <span id="clock">t 0.0 s</span>
   </div>
-  <a class="drivelink" href="/drive" target="_blank" rel="noopener">Controls ↗</a>
-  <div class="statepill" id="statepill" data-state="IDLE">IDLE</div>
+  <div class="barright">
+    <button id="themetoggle" type="button">Dark</button>
+    <a class="drivelink" href="/drive" target="_blank" rel="noopener">Controls ↗</a>
+    <div class="statepill" id="statepill" data-state="IDLE">IDLE</div>
+  </div>
 </header>
 
 <div id="violation" class="violation" hidden></div>
@@ -57,113 +60,143 @@
       <span class="lg" data-key="baro"><i class="swatch"></i>
         <b>Height</b><em id="lg-baro">—</em></span>
     </div>
+    <!-- The camera follows the vehicle by itself, which is right for the
+         demo and wrong for anyone who wants a look around. Touch any of
+         these and it stops following until you tell it to start again. -->
+    <div class="mapctl">
+      <button id="zoomin"  type="button" title="Zoom in">+</button>
+      <button id="zoomout" type="button" title="Zoom out">−</button>
+      <button id="zoomfit" type="button" title="Fit the whole run">Whole run</button>
+      <button id="zoomfollow" type="button" title="Follow the vehicle again" hidden>
+        Follow
+      </button>
+    </div>
+    <div class="mapmode" id="mapmode" hidden>Manual view — drag to pan, scroll to zoom</div>
+
     <div class="scalebar"><span id="scaletext">100 m</span></div>
   </section>
 
   <aside class="side">
 
-    <div class="panel verdict" id="verdictpanel" hidden>
-      <h2>Verdict</h2>
-      <div class="guilty">
-        <span id="guilty">—</span>
-        <span class="cause" id="cause">—</span>
-      </div>
-      <p class="reason" id="reason"></p>
-      <p class="action" id="action"></p>
-      <ul class="evidence" id="evidence"></ul>
-    </div>
-
-    <!-- The proof. A verdict is an assertion; this is the working. Four
-         sensors agreeing with each other and one disagreeing with all of them
-         is the entire argument, and until this existed it lived only inside
-         the detector where nobody could see it. -->
-    <div class="panel proof" id="proofpanel" hidden>
-      <h2>Why we say that</h2>
-      <p class="prooflede" id="prooflede"></p>
-      <canvas id="web" class="web" width="300" height="190"></canvas>
-      <div class="prooflists">
-        <div class="proofgroup bad" id="disagreegroup" hidden>
-          <h3><span class="tick">✗</span> These do not match</h3>
-          <ul id="disagree"></ul>
-        </div>
-        <div class="proofgroup good" id="agreegroup" hidden>
-          <h3><span class="tick">✓</span> These match each other</h3>
-          <ul id="agree"></ul>
-        </div>
-      </div>
-    </div>
-
-    <div class="panel headline">
-      <h2>Separation</h2>
-      <div class="big" id="sep">—</div>
-      <div class="sub">metres between the two positions</div>
-      <div class="rows">
-        <div><span>Our uncertainty</span><b id="sigma">—</b></div>
-        <div><span>Ratio</span><b id="ratio">—</b></div>
-        <div><span>Vertical</span><b id="vert">—</b></div>
-      </div>
-    </div>
-
-    <div class="panel nav" id="navpanel" hidden>
-      <h2>Navigating on</h2>
-      <div class="navsource" id="navsource">—</div>
-      <div class="rows">
-        <div><span>Accurate to about</span><b id="navbudget">—</b></div>
-        <div><span>Safe for another</span><b id="navremaining">—</b></div>
-      </div>
-      <p class="navnote" id="navnote"></p>
-    </div>
-
-    <div class="panel fleet" id="fleetpanel" hidden>
-      <h2>Attack zone</h2>
-      <div class="zoneline" id="zoneline">—</div>
-      <div class="rows">
-        <div><span>Vehicles hit</span><b id="zonevehicles">—</b></div>
-        <div><span>Area</span><b id="zoneradius">—</b></div>
-      </div>
-      <ul class="advisories" id="advisories"></ul>
-    </div>
-
-    <!-- Two independent measurements of the same physical thing. While
-         everything is honest the lines sit on top of each other; drive one of
-         them and they come apart in front of you. That is the claim of the
-         whole project in three pictures. -->
-    <div class="panel traces" id="tracepanel" hidden>
-      <h2>The readings</h2>
-      <div class="tracecard" id="trace-heading">
-        <div class="tracehead"><span>Which way we point</span>
-          <span class="tracenows" id="trace-heading-now"></span></div>
-        <canvas id="canvas-heading" class="tracecanvas"></canvas>
-      </div>
-      <div class="tracecard" id="trace-height">
-        <div class="tracehead"><span>How high we are</span>
-          <span class="tracenows" id="trace-height-now"></span></div>
-        <canvas id="canvas-height" class="tracecanvas"></canvas>
-      </div>
-      <div class="tracecard" id="trace-speed">
-        <div class="tracehead"><span>How fast we are going</span>
-          <span class="tracenows" id="trace-speed-now"></span></div>
-        <canvas id="canvas-speed" class="tracecanvas"></canvas>
-      </div>
-      <p class="tracenote">
-        Two separate sensors measuring the same thing. When they lie on top of
-        each other, everything agrees.
+    <!-- The band that never scrolls.
+         The rail was eight panels of equal weight in one scrolling column, so
+         the verdict could sit below the fold while a reference table sat
+         above it. Whatever else is on screen, the answer is here. -->
+    <div class="answer" id="answer" data-state="IDLE">
+      <div class="answer-label" id="answerlabel">Waiting</div>
+      <div class="answer-what" id="answerwhat">No run</div>
+      <p class="answer-why" id="answerwhy">
+        Start a scenario from the control screen.
       </p>
-    </div>
-
-    <div class="panel">
-      <h2>Sensors</h2>
-      <div id="sensors" class="sensors"><p class="empty">no run</p></div>
-    </div>
-
-    <div class="panel">
-      <h2>Own senses</h2>
-      <div class="rows">
-        <div><span>Speed</span><b id="speed">—</b></div>
-        <div><span>Distance</span><b id="dist">—</b></div>
-        <div><span>Dead reckoning for</span><b id="elapsed">—</b></div>
-        <div><span>Frames</span><b id="frames">—</b></div>
+      <div class="answer-figure">
+        <b id="sep">—</b>
+        <span>metres between where GPS says it is and where it worked out it is</span>
       </div>
+    </div>
+
+    <div class="detail">
+
+      <div class="panel verdict" id="verdictpanel" hidden>
+        <h2>Verdict</h2>
+        <div class="guilty">
+          <span id="guilty">—</span>
+          <span class="cause" id="cause">—</span>
+        </div>
+        <p class="reason" id="reason"></p>
+        <p class="action" id="action"></p>
+        <ul class="evidence" id="evidence"></ul>
+      </div>
+
+      <!-- The proof. A verdict is an assertion; this is the working. Four
+           sensors agreeing with each other and one disagreeing with all of
+           them is the entire argument, and until this existed it lived only
+           inside the detector where nobody could see it. -->
+      <div class="panel proof" id="proofpanel" hidden>
+        <h2>Why we say that</h2>
+        <p class="prooflede" id="prooflede"></p>
+        <canvas id="web" class="web" width="300" height="190"></canvas>
+        <div class="prooflists">
+          <div class="proofgroup bad" id="disagreegroup" hidden>
+            <h3><span class="tick">✗</span> These do not match</h3>
+            <ul id="disagree"></ul>
+          </div>
+          <div class="proofgroup good" id="agreegroup" hidden>
+            <h3><span class="tick">✓</span> These match each other</h3>
+            <ul id="agree"></ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel nav" id="navpanel" hidden>
+        <h2>Navigating on</h2>
+        <div class="navsource" id="navsource">—</div>
+        <div class="rows">
+          <div><span>Accurate to about</span><b id="navbudget">—</b></div>
+          <div><span>Safe for another</span><b id="navremaining">—</b></div>
+        </div>
+        <p class="navnote" id="navnote"></p>
+      </div>
+
+      <div class="panel fleet" id="fleetpanel" hidden>
+        <h2>Attack zone</h2>
+        <div class="zoneline" id="zoneline">—</div>
+        <div class="rows">
+          <div><span>Vehicles hit</span><b id="zonevehicles">—</b></div>
+          <div><span>Area</span><b id="zoneradius">—</b></div>
+        </div>
+        <ul class="advisories" id="advisories"></ul>
+      </div>
+
+      <!-- Two independent measurements of the same physical thing. While
+           everything is honest the lines sit on top of each other; drive one
+           of them and they come apart in front of you. -->
+      <div class="panel traces" id="tracepanel" hidden>
+        <h2>The readings</h2>
+        <div class="tracecard" id="trace-heading">
+          <div class="tracehead"><span>Which way we point</span>
+            <span class="tracenows" id="trace-heading-now"></span></div>
+          <canvas id="canvas-heading" class="tracecanvas"></canvas>
+        </div>
+        <div class="tracecard" id="trace-height">
+          <div class="tracehead"><span>How high we are</span>
+            <span class="tracenows" id="trace-height-now"></span></div>
+          <canvas id="canvas-height" class="tracecanvas"></canvas>
+        </div>
+        <div class="tracecard" id="trace-speed">
+          <div class="tracehead"><span>How fast we are going</span>
+            <span class="tracenows" id="trace-speed-now"></span></div>
+          <canvas id="canvas-speed" class="tracecanvas"></canvas>
+        </div>
+        <p class="tracenote">
+          Two separate sensors measuring the same thing. When they lie on top
+          of each other, everything agrees.
+        </p>
+      </div>
+
+      <div class="panel">
+        <h2>The gap, in detail</h2>
+        <div class="rows">
+          <div><span>Our uncertainty</span><b id="sigma">—</b></div>
+          <div><span>Ratio</span><b id="ratio">—</b></div>
+          <div><span>Vertical</span><b id="vert">—</b></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>Sensors</h2>
+        <div id="sensors" class="sensors"><p class="empty">no run</p></div>
+      </div>
+
+      <div class="panel">
+        <h2>Own senses</h2>
+        <div class="rows">
+          <div><span>Speed</span><b id="speed">—</b></div>
+          <div><span>Distance</span><b id="dist">—</b></div>
+          <div><span>Dead reckoning for</span><b id="elapsed">—</b></div>
+          <div><span>Frames</span><b id="frames">—</b></div>
+        </div>
+      </div>
+
     </div>
   </aside>
 </main>

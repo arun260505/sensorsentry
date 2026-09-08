@@ -60,23 +60,34 @@ async function loadScenarios() {
     }
     box.innerHTML = "";
     const offered = data.scenarios || [];
-    const make = (name, scripted) => {
+    const make = (name, scripted, into) => {
       const b = document.createElement("button");
       const [label, note] = SCENARIOS[name] || [name.replace(/_/g, " "), ""];
       b.textContent = label;
       b.dataset.note = note;
       if (scripted) b.classList.add("scripted");
       b.addEventListener("click", () => startScenario(name, b));
-      box.appendChild(b);
+      (into || box).appendChild(b);
     };
     for (const name of offered) if (START_WITH.includes(name)) make(name, false);
+
+    // Eight scripted runs in a row was most of the button count on this page
+    // and read as a menu of canned demos, which is the impression the whole
+    // "you are the sensor" panel exists to destroy. Folded away rather than
+    // dropped: they are the fallback if a laptop misbehaves in the room, and
+    // harness/results.py still measures against them.
     const rest = offered.filter((n) => !START_WITH.includes(n));
     if (rest.length) {
-      const tag = document.createElement("span");
-      tag.className = "scripted-label";
-      tag.textContent = "scripted runs";
-      box.appendChild(tag);
-      for (const name of rest) make(name, true);
+      const wrap = document.createElement("details");
+      wrap.className = "scripted-wrap";
+      const summary = document.createElement("summary");
+      summary.textContent = `scripted runs (${rest.length})`;
+      wrap.appendChild(summary);
+      const list = document.createElement("div");
+      list.className = "scripted-list";
+      wrap.appendChild(list);
+      box.appendChild(wrap);
+      for (const name of rest) make(name, true, list);
     }
     // The fleet finale is not a simulator scenario — it needs four vehicles
     // at once — but on stage it should be one more button, not a terminal.
@@ -86,7 +97,7 @@ async function loadScenarios() {
     fleetBtn.addEventListener("click", async () => {
       await post("/control/reset");
       await post("/control/fleet");
-      for (const b of box.children) if (b.classList) b.classList.remove("running");
+      for (const b of box.querySelectorAll("button")) b.classList.remove("running");
       fleetBtn.classList.add("running");
       setHint("running fleet — 4 vehicles");
     });
@@ -112,8 +123,11 @@ async function startScenario(name, button) {
 
   const ok = await post("/control/start", { scenario: name });
   running = ok ? name : null;
-  for (const b of el("scenarios").children) {
-    if (b.classList) b.classList.toggle("running", b === button && ok);
+  // querySelectorAll, not .children: the scripted runs live inside a
+  // <details> now, so a direct-children walk would leave one highlighted
+  // as running after you had switched away from it.
+  for (const b of el("scenarios").querySelectorAll("button")) {
+    b.classList.toggle("running", b === button && ok);
   }
   setHint(ok ? `running ${name}` : "");
 }
@@ -123,8 +137,8 @@ el("reset").addEventListener("click", async () => {
   await post("/control/reset");
   await post("/control/clear");
   running = null;
-  for (const b of el("scenarios").children) {
-    if (b.classList) b.classList.remove("running");
+  for (const b of el("scenarios").querySelectorAll("button")) {
+    b.classList.remove("running");
   }
   latest = null;
   held = {};
@@ -599,6 +613,7 @@ onSnapshot((snapshot) => {
   }
 });
 
+initTheme();
 initAttackPanel();
 watchFocus();
 loadScenarios();

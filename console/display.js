@@ -16,7 +16,10 @@ const ctx = canvas.getContext("2d");
 /* The map's palette comes out of the stylesheet, not out of a table here that
  * somebody has to remember to keep in step. See themeColours() in common.js
  * for why that mattered. */
-const COLOR = themeColours({
+/* Read once here and again on every theme change — see refreshColours below.
+ * `let`, not `const`: a page that switches to dark around a map still painting
+ * itself on paper is the exact failure this whole token scheme exists to stop. */
+let COLOR = themeColours({
   grid:      "--map-grid",
   gridMajor: "--map-grid-major",
   claimed:   "--claimed",
@@ -31,7 +34,7 @@ const COLOR = themeColours({
   wash:      "--map-alert-wash",
   fade:      "--map-alert-fade",
 });
-const CANVAS_BG = themeColours({ bg: "--map-bg" }).bg;
+let CANVAS_BG = themeColours({ bg: "--map-bg" }).bg;
 
 let latest = null;
 let rawFrame = null;   // the incoming sensor frame, for the instruments
@@ -155,7 +158,58 @@ function followTarget(w, h) {
   return { cx: wit[0], cy: wit[1], scale: Math.max(scale, FOLLOW_MIN) };
 }
 
+/* --- driving the camera by hand ------------------------------------------
+ *
+ * The follow camera is right while the demo is running and no use at all to
+ * somebody who wants to see the whole route, or to look at where the two
+ * tracks first came apart. So: buttons, the scroll wheel and a drag.
+ *
+ * Manual is sticky. It would be worse than useless if the view snapped back
+ * to the vehicle a quarter of a second after you dragged it — so once you
+ * take hold of the map it stays where you put it until you press Follow.
+ */
+let manual = null;      // {cx, cy, scale} while someone is driving it by hand
+
+const ZOOM_STEP = 1.5;
+const ZOOM_MIN = 0.05;   // the whole corridor and then some
+const ZOOM_MAX = 40;     // a metre is 40 px: individual GPS samples
+
+function takeManualControl() {
+  if (!manual && cam) manual = { cx: cam.cx, cy: cam.cy, scale: cam.scale };
+  el("mapmode").hidden = false;
+  el("zoomfollow").hidden = false;
+}
+
+function releaseManualControl() {
+  manual = null;
+  el("mapmode").hidden = true;
+  el("zoomfollow").hidden = true;
+  draw();
+}
+
+/* Zoom about a point, so the thing under the cursor stays under the cursor.
+ * Zooming about the middle instead makes the feature you were aiming at slide
+ * away as you close in on it, which is why it feels broken when it is done
+ * the easy way. */
+function zoomBy(factor, ax, ay, w, h) {
+  takeManualControl();
+  const before = manual.scale;
+  const after = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, before * factor));
+  if (after === before) return;
+  if (ax != null) {
+    // world point under the cursor, held fixed across the zoom
+    const we = manual.cx + (ax - w / 2) / before;
+    const wn = manual.cy - (ay - h / 2) / before;
+    manual.cx = we - (ax - w / 2) / after;
+    manual.cy = wn + (ay - h / 2) / after;
+  }
+  manual.scale = after;
+  draw();
+}
+
 function computeView(w, h) {
+  if (manual) return manual;
+
   const target = (isOverview() ? null : followTarget(w, h))
               || fitPoints(overviewPoints(), w, h, 70);
 
@@ -222,6 +276,18 @@ function draw() {
     drawRangeRings(w, h, view);
   }
 
+  // The two HTML overlays, measured off the elements themselves rather than
+  // guessed, so moving them in the stylesheet cannot silently start hiding
+  // labels underneath them again.
+  for (const node of [el("legend"), document.querySelector(".scalebar"),
+                      document.querySelector(".mapctl"),
+                      document.querySelector(".mapmode")]) {
+    if (!node) continue;
+    const b = node.getBoundingClientRect();
+    if (b.width) reserve(b.left - rect.left - 6, b.top - rect.top - 6,
+                         b.width + 12, b.height + 12);
+  }
+
   drawZones(view, w, h);
   drawFleet(view, w, h);
 
@@ -239,6 +305,7 @@ function draw() {
   drawCompassRays(view, w, h);
   drawCompass(w, h);
   drawInset(view, w, h);
+  flushLabels(w, h);
   updateScaleBar(view);
 }
 
@@ -251,11 +318,14 @@ function draw() {
  * which part of it the big map is currently looking at.
  */
 function drawInset(view, w, h) {
-  if (isOverview()) return;
+  if (isOverview() && !manual) return;
   if (trails.witness.length < 2) return;
 
-  const iw = Math.min(210, w * 0.28), ih = Math.min(150, h * 0.3);
-  const x0 = w - iw - 18, y0 = h - ih - 18;
+  // Bottom left, above the scale bar. It used to sit bottom right, which is
+  // where the zoom controls now are; two things in one corner is how a demo
+  // ends up with a button you cannot press.
+  const iw = Math.min(240, w * 0.3), ih = Math.min(170, h * 0.32);
+  const x0 = 18, y0 = h - ih - 52;
 
   const pts = trails.gnss.concat(trails.witness);
   for (const [lat, lon] of basemap.route || []) pts.push(toLocal(lat, lon));
@@ -310,9 +380,9 @@ function drawInset(view, w, h) {
 
   ctx.font = "600 10px system-ui, sans-serif";
   ctx.fillStyle = COLOR.text;
-  ctx.textAlign = "right";
-  ctx.fillText("the whole run", x0 + iw, y0 - 5);
-  ctx.textAlign = "left";
+  ctx.font = "600 11px system-ui, sans-serif";
+  ctx.fillText("the whole run", x0, y0 - 6);
+  reserve(x0 - 6, y0 - 18, iw + 12, ih + 24);
 }
 
 /* When the spoof has dragged the reported position further than the camera is
@@ -346,7 +416,7 @@ function drawOffscreen(view, w, h) {
 
   const gap = latest && latest.residual ? latest.residual.horizontal_m : 0;
   label(ex, ey - 16, `GPS SAYS ${gap.toFixed(0)} m THAT WAY`,
-        COLOR.claimed, true, "center");
+        COLOR.claimed, true, "center", PRIORITY.offscreen);
 }
 
 /* A steady repaint keeps the pulse smooth even when frames arrive at 10 Hz. */
@@ -659,7 +729,7 @@ function drawFleet(view, w, h) {
     const [x, y] = project(head[0], head[1], view, w, h);
     drawVehicle(x, y, headingOf(v.trails.witness), COLOR.witness,
                 v.state === "ALERT", 7);
-    label(x + 12, y + 4, id, COLOR.text, false);
+    label(x + 12, y + 4, id, COLOR.text, false, "left", PRIORITY.fleet);
   }
 }
 
@@ -696,7 +766,7 @@ function drawZones(view, w, h) {
     ctx.moveTo(x, y - 7); ctx.lineTo(x, y + 7);
     ctx.stroke();
 
-    label(x, y - r - 8, "LIKELY TRANSMITTER", COLOR.link, true, "center");
+    label(x, y - r - 8, "LIKELY TRANSMITTER", COLOR.link, true, "center", PRIORITY.zone);
   }
 }
 
@@ -725,7 +795,8 @@ function drawSeparation(view, w, h) {
 
   const text = gap >= 1000 ? `${(gap / 1000).toFixed(1)} km apart`
                            : `${gap.toFixed(0)} m apart`;
-  label((x1 + x2) / 2, (y1 + y2) / 2 - 10, text, COLOR.link, true, "center");
+  label((x1 + x2) / 2, (y1 + y2) / 2 - 10, text, COLOR.link, true, "center",
+        PRIORITY.separation);
 }
 
 function headingOf(points) {
@@ -790,26 +861,105 @@ function drawHeads(view, w, h) {
 
   if (together) {
     const name = latest && latest.vehicle_id ? latest.vehicle_id : "vehicle";
-    label(wp[0] + 17, wp[1] + 4, name, COLOR.witness, true);
+    label(wp[0] + 17, wp[1] + 4, name, COLOR.witness, true, "left", PRIORITY.witness);
     return;
   }
-  if (gp) label(gp[0] + 15, gp[1] + 4, "GPS SAYS", COLOR.claimed, true);
-  if (wp) label(wp[0] + 17, wp[1] + 4, "ACTUALLY HERE", COLOR.witness, true);
+  if (gp) label(gp[0] + 15, gp[1] + 4, "GPS SAYS", COLOR.claimed, true,
+                "left", PRIORITY.gnss);
+  if (wp) label(wp[0] + 17, wp[1] + 4, "ACTUALLY HERE", COLOR.witness, true,
+                "left", PRIORITY.witness);
 }
 
-/* Labels sit on a chip so they stay readable over a trail or a zone. */
-function label(x, y, text, color, strong, align) {
-  ctx.font = strong ? "700 12px system-ui, sans-serif"
-                    : "500 12px system-ui, sans-serif";
-  ctx.textAlign = align || "left";
-  const pad = 5;
-  const width = ctx.measureText(text).width;
-  const left = align === "center" ? x - width / 2 - pad : x - pad;
-  ctx.fillStyle = COLOR.chip;
-  ctx.fillRect(left, y - 12, width + pad * 2, 16);
-  ctx.fillStyle = color;
-  ctx.fillText(text, x, y);
-  ctx.textAlign = "left";
+/* --- labels --------------------------------------------------------------
+ *
+ * Ten places on this map wanted to write on it, and every one of them drew
+ * straight to the canvas at whatever coordinate suited it. With four vehicles
+ * in a cluster that produced exactly what you would expect: LIKELY
+ * TRANSMITTER across a drone, a vehicle name across the separation figure,
+ * and a compass note printed over the top of both with its beginning lost
+ * behind another chip.
+ *
+ * So nothing draws a label any more; it asks for one. They are all placed
+ * together at the end of the frame, most important first, and anything that
+ * cannot find clear space is nudged — and if it still cannot fit, dropped.
+ *
+ * Dropped, deliberately. A map that hides its fourth-most-important note is
+ * readable; one that prints all ten on top of each other is not, and it is
+ * the important ones that get buried, because they are drawn first.
+ */
+
+const LABEL_PAD = 5;
+const LABEL_H = 17;
+
+/* Higher wins the space. The two positions and the gap between them are the
+ * claim of the whole project; a fleet member's name is not. */
+const PRIORITY = {
+  separation: 100,
+  witness:     95,
+  gnss:        90,
+  offscreen:   85,
+  zone:        80,
+  gauge:       55,
+  fleet:       50,
+  track:       45,
+  compass:     40,
+};
+
+let labelQueue = [];
+
+/* Areas already spoken for. The legend and the scale bar are HTML sitting on
+ * top of the canvas, so the canvas cannot see them and was happily writing
+ * underneath both; the dials and the inset it draws itself. Reserved before
+ * anything is placed, so a label goes somewhere it can actually be read. */
+let labelReserved = [];
+
+function reserve(x, y, w, h) {
+  labelReserved.push({ x, y, w, h });
+}
+
+function label(x, y, text, color, strong, align, priority) {
+  labelQueue.push({ x, y, text, color, strong, align, priority: priority || 50 });
+}
+
+/* Candidate offsets, in the order they are tried: where it asked to go, then
+ * directly under, over, and progressively further away. */
+const LABEL_TRIES = [
+  [0, 0], [0, 17], [0, -17], [0, 34], [0, -34],
+  [14, 25], [-14, 25], [14, -25], [-14, -25], [0, 51], [0, -51],
+];
+
+function flushLabels(w, h) {
+  const placed = labelReserved.slice();
+  const clear = (r) => !placed.some((p) =>
+    r.x < p.x + p.w && r.x + r.w > p.x && r.y < p.y + p.h && r.y + r.h > p.y);
+
+  for (const item of labelQueue.sort((a, b) => b.priority - a.priority)) {
+    ctx.font = item.strong ? "700 12px system-ui, sans-serif"
+                           : "500 12px system-ui, sans-serif";
+    const width = ctx.measureText(item.text).width + LABEL_PAD * 2;
+
+    let box = null;
+    for (const [dx, dy] of LABEL_TRIES) {
+      const cx = item.x + dx, cy = item.y + dy;
+      const left = item.align === "center" ? cx - width / 2 : cx - LABEL_PAD;
+      const candidate = { x: left, y: cy - 12, w: width, h: LABEL_H, cx, cy };
+      // Off the edge of the canvas is no better than on top of something.
+      if (candidate.x < 2 || candidate.x + candidate.w > w - 2) continue;
+      if (candidate.y < 2 || candidate.y + candidate.h > h - 2) continue;
+      if (clear(candidate)) { box = candidate; break; }
+    }
+    if (!box) continue;
+    placed.push(box);
+
+    ctx.textAlign = item.align || "left";
+    ctx.fillStyle = COLOR.chip;
+    ctx.fillRect(box.x, box.y, box.w, box.h);
+    ctx.fillStyle = item.color;
+    ctx.fillText(item.text, box.cx, box.cy);
+    ctx.textAlign = "left";
+  }
+  labelQueue = [];
+  labelReserved = [];
 }
 
 
@@ -943,7 +1093,8 @@ function drawHeightGauge(view, w, h) {
     ctx.lineTo(x, at(own));
     ctx.stroke();
     label(x - 12, at((gps + own) / 2) + 4,
-          `height ${gap.toFixed(0)} m apart`, SENSOR_COLOUR.baro, true, "right");
+          `height ${gap.toFixed(0)} m apart`, SENSOR_COLOUR.baro, true, "right",
+          PRIORITY.gauge);
   }
   tick(own, COLOR.witness, 2);
   tick(gps, COLOR.claimed, 2.6);
@@ -983,7 +1134,8 @@ function drawSensorTracks(view, w, h) {
     ctx.arc(x, y, 4, 0, Math.PI * 2);
     ctx.fillStyle = colour;
     ctx.fill();
-    label(x + 9, y + 4, `if you believed the ${name}`, colour, true);
+    label(x + 9, y + 4, `if you believed the ${name}`, colour, true,
+          "left", PRIORITY.track);
   }
 }
 
@@ -999,7 +1151,7 @@ function drawSensorTracks(view, w, h) {
  * quiet rows; one sensor lying reads as one row in red with a number in it.
  */
 
-const SENSOR_COLOUR = themeColours({
+let SENSOR_COLOUR = themeColours({
   mag:  "--sensor-mag",
   odom: "--sensor-odom",
   baro: "--sensor-baro",
@@ -1125,7 +1277,8 @@ function drawCompassRays(view, w, h) {
 
   const mid = (compass - 90) * Math.PI / 180;
   label(x + Math.cos(mid) * 70, y + Math.sin(mid) * 70,
-        `compass ${Math.round(gap)}° off`, SENSOR_COLOUR.mag, true);
+        `compass ${Math.round(gap)}° off`, SENSOR_COLOUR.mag, true,
+        "left", PRIORITY.compass);
 }
 
 /* --- instruments ---------------------------------------------------------
@@ -1181,6 +1334,7 @@ function drawCompass(w, h) {
   drawHeadingDial(x, y);
   if (fittedHere("baro")) { y += DIAL_R * 2 + DIAL_GAP; drawHeightDial(x, y); }
   if (fittedHere("odom")) { y += DIAL_R * 2 + DIAL_GAP; drawSpeedDial(x, y); }
+  reserve(x - DIAL_R - 12, 8, DIAL_R * 2 + 24, y + DIAL_R + DIAL_GAP);
 }
 
 /* Name both needles under the dial, in their own colours.
@@ -1331,6 +1485,77 @@ function updateScaleBar(view) {
 }
 
 /* --- panels ------------------------------------------------------------- */
+
+/* --- the answer, in a band that never scrolls ----------------------------
+ *
+ * The rail was eight panels of equal weight in one scrolling column, and the
+ * verdict — the entire point of the product — could sit below the fold while
+ * a table of reference numbers sat above it. That is how an answer gets
+ * missed in a room.
+ *
+ * So the answer lives here, fixed, and everything else scrolls underneath.
+ * Nothing was deleted: the verdict panel, the working, the readings and the
+ * reference numbers are all still there, further down.
+ *
+ * Every word comes off the ordinary stream. Where the detector refuses to
+ * name a sensor this says so, in those words, because refusing to answer is
+ * the feature and hiding it would be the lie.
+ */
+function renderAnswer(snapshot) {
+  const band = el("answer");
+  const s = snapshot ? snapshot.state : null;
+
+  if (!s) {
+    band.dataset.state = "IDLE";
+    el("answerlabel").textContent = "Waiting";
+    el("answerwhat").textContent = "No run";
+    el("answerwhy").textContent = "Start a scenario from the control screen.";
+    el("sep").textContent = "—";
+    return;
+  }
+
+  const state = s.anchored ? s.state : "IDLE";
+  band.dataset.state = state;
+
+  const blame = s.blame || {};
+  const cause = s.cause || {};
+  const named = blame.guilty && blame.guilty !== "cannot_isolate";
+  const who = named ? (SENSOR_LABEL[blame.guilty] || blame.guilty) : null;
+
+  if (!s.anchored) {
+    el("answerlabel").textContent = "Settling";
+    el("answerwhat").textContent = "Anchoring";
+    el("answerwhy").textContent =
+      "Building enough history to have an opinion. Nothing is being judged yet.";
+  } else if (state === "ALERT" && named) {
+    const word = { attack: "is being spoofed", fault: "has failed",
+                   interference: "is being interfered with" }[cause.label]
+                 || "cannot be trusted";
+    el("answerlabel").textContent = "The answer";
+    el("answerwhat").textContent = `${who} ${word}`;
+    el("answerwhy").textContent = cause.action || cause.reason || "";
+  } else if (state === "ALERT") {
+    // The truck run reads this for about twenty seconds before it settles on
+    // a sensor, and a judge who is not told to expect it reads the gap as
+    // flakiness rather than as restraint.
+    el("answerlabel").textContent = "The answer";
+    el("answerwhat").textContent = "Something is wrong";
+    el("answerwhy").textContent =
+      "Not enough evidence yet to say which sensor. It will not guess.";
+  } else if (state === "WATCH") {
+    el("answerlabel").textContent = "Watching";
+    el("answerwhat").textContent = "Something may be wrong";
+    el("answerwhy").textContent =
+      "One check is drifting. Not yet enough to raise an alert.";
+  } else {
+    const checks = (s.pairs || []).filter((p) => p.valid || p.stale).length;
+    el("answerlabel").textContent = "All quiet";
+    el("answerwhat").textContent = "Everything agrees";
+    el("answerwhy").textContent = checks
+      ? `All ${checks} cross-checks agree. Every sensor is telling the same story.`
+      : "Every sensor is telling the same story.";
+  }
+}
 
 function renderPanels(snapshot) {
   const s = snapshot.state;
@@ -1492,7 +1717,10 @@ function onNewRun() {
   clearSensorTracks();
 }
 
+let lastSnapshot = null;
+
 onSnapshot((snapshot) => {
+  lastSnapshot = snapshot;
   const runId = snapshot.state ? snapshot.state.run_id : null;
   if (runId !== lastRunId) {
     lastRunId = runId;
@@ -1536,11 +1764,13 @@ onSnapshot((snapshot) => {
       el(id).hidden = true;
     }
     el("mode").textContent = "SINGLE VEHICLE";
+    renderAnswer(null);
     draw();
     return;
   }
 
   renderPanels(snapshot);
+  renderAnswer(snapshot);
   renderLegend();
   pushTrace(snapshot);
   pushSensorTracks(snapshot);
@@ -1594,8 +1824,8 @@ const TRACES = [
     unit: "°",
     wrap: true,                    // degrees, so 359 -> 1 is a small change
     lines: [
-      { key: "compass", name: "compass", colour: COLOR.claimed },
-      { key: "gyro", name: "gyro", colour: COLOR.witness },
+      { key: "compass", name: "compass", colour: "claimed" },
+      { key: "gyro", name: "gyro", colour: "witness" },
     ],
     read: (snap) => {
       const st = snap.state, raw = snap.raw;
@@ -1610,8 +1840,8 @@ const TRACES = [
     title: "How high we are",
     unit: " m",
     lines: [
-      { key: "gps", name: "GPS", colour: COLOR.claimed },
-      { key: "own", name: "barometer", colour: COLOR.witness },
+      { key: "gps", name: "GPS", colour: "claimed" },
+      { key: "own", name: "barometer", colour: "witness" },
     ],
     // Both sides straight off the state, in the same frame and the same
     // units. Reading the GPS height out of the raw frame instead meant three
@@ -1629,8 +1859,8 @@ const TRACES = [
     title: "How fast we are going",
     unit: " m/s",
     lines: [
-      { key: "own", name: "own sensors", colour: COLOR.witness },
-      { key: "wheels", name: "wheels", colour: COLOR.claimed },
+      { key: "own", name: "own sensors", colour: "witness" },
+      { key: "wheels", name: "wheels", colour: "claimed" },
     ],
     read: (snap) => {
       const st = snap.state, raw = snap.raw;
@@ -1719,7 +1949,7 @@ function renderTraces(snapshot) {
       if (!values.length) continue;
       const span = document.createElement("span");
       span.className = "tracenow";
-      span.style.color = line.colour;
+      span.style.color = COLOR[line.colour] || line.colour;
       span.textContent =
         `${line.name} ${values[values.length - 1].toFixed(spec.unit === "°" ? 0 : 1)}${spec.unit}`;
       readout.appendChild(span);
@@ -1761,7 +1991,7 @@ function drawTrace(spec, store, series) {
   for (const line of spec.lines) {
     const values = series[line.key];
     if (!values) continue;
-    c.strokeStyle = line.colour;
+    c.strokeStyle = COLOR[line.colour] || line.colour;
     c.lineWidth = 2;
     c.lineJoin = "round";
     c.beginPath();
@@ -1805,7 +2035,7 @@ const WEB_AT = {
   road: [0.14, 0.42],
 };
 
-const WEB_COLOUR = themeColours({
+let WEB_COLOUR = themeColours({
   bad:   "--alert",
   good:  "--web-good",
   node:  "--panel",
@@ -1949,8 +2179,130 @@ function drawWeb(pairs, states, guilty) {
   }
 }
 
+/* --- wiring the map controls --------------------------------------------- */
+
+function initMapControls() {
+  const size = () => {
+    const r = canvas.getBoundingClientRect();
+    return [r.width, r.height, r];
+  };
+
+  el("zoomin").addEventListener("click", () => {
+    const [w, h] = size();
+    zoomBy(ZOOM_STEP, w / 2, h / 2, w, h);
+  });
+  el("zoomout").addEventListener("click", () => {
+    const [w, h] = size();
+    zoomBy(1 / ZOOM_STEP, w / 2, h / 2, w, h);
+  });
+
+  // The whole run, framed — the answer to "I cannot see where it started".
+  el("zoomfit").addEventListener("click", () => {
+    const [w, h] = size();
+    takeManualControl();
+    const fit = fitPoints(overviewPoints(), w, h, 70);
+    manual.cx = fit.cx; manual.cy = fit.cy; manual.scale = fit.scale;
+    draw();
+  });
+
+  el("zoomfollow").addEventListener("click", releaseManualControl);
+
+  canvas.addEventListener("wheel", (event) => {
+    event.preventDefault();
+    const [w, h, r] = size();
+    zoomBy(event.deltaY < 0 ? 1.12 : 1 / 1.12,
+           event.clientX - r.left, event.clientY - r.top, w, h);
+  }, { passive: false });
+
+  // Drag to pan. Pointer events rather than mouse events, so it works with a
+  // finger and a trackpad on the day.
+  let dragging = null;
+  canvas.addEventListener("pointerdown", (event) => {
+    takeManualControl();
+    dragging = { x: event.clientX, y: event.clientY };
+    canvas.setPointerCapture(event.pointerId);
+    canvas.parentElement.classList.add("dragging");
+  });
+  canvas.addEventListener("pointermove", (event) => {
+    if (!dragging || !manual) return;
+    manual.cx -= (event.clientX - dragging.x) / manual.scale;
+    manual.cy += (event.clientY - dragging.y) / manual.scale;
+    dragging = { x: event.clientX, y: event.clientY };
+    draw();
+  });
+  const endDrag = (event) => {
+    dragging = null;
+    canvas.parentElement.classList.remove("dragging");
+    if (event && event.pointerId != null && canvas.hasPointerCapture(event.pointerId)) {
+      canvas.releasePointerCapture(event.pointerId);
+    }
+  };
+  canvas.addEventListener("pointerup", endDrag);
+  canvas.addEventListener("pointercancel", endDrag);
+
+  // Keys, for a driver whose hands are already on the keyboard.
+  window.addEventListener("keydown", (event) => {
+    const tag = (event.target.tagName || "").toLowerCase();
+    if (tag === "input" || tag === "textarea" || tag === "select") return;
+    const [w, h] = size();
+    if (event.key === "+" || event.key === "=") zoomBy(ZOOM_STEP, w / 2, h / 2, w, h);
+    else if (event.key === "-" || event.key === "_") zoomBy(1 / ZOOM_STEP, w / 2, h / 2, w, h);
+    else if (event.key === "0") releaseManualControl();
+  });
+}
+
+/* --- the theme -----------------------------------------------------------
+ *
+ * Everything drawn on canvas read its colours once, at load. A theme switch
+ * changes the stylesheet and nothing else, so without this the page turns
+ * dark around a map still painting roads on paper — and the legend, whose
+ * swatches are CSS, would disagree with the tracks it labels.
+ */
+function refreshColours() {
+  COLOR = themeColours({
+    grid:      "--map-grid",
+    gridMajor: "--map-grid-major",
+    claimed:   "--claimed",
+    witness:   "--witness",
+    link:      "--alert",
+    text:      "--ink-3",
+    road:      "--map-road",
+    roadCase:  "--map-road-case",
+    roadText:  "--map-road-text",
+    building:  "--map-building",
+    chip:      "--map-chip",
+    wash:      "--map-alert-wash",
+    fade:      "--map-alert-fade",
+  });
+  CANVAS_BG = themeColours({ bg: "--map-bg" }).bg;
+  SENSOR_COLOUR = themeColours({
+    mag:  "--sensor-mag",
+    odom: "--sensor-odom",
+    baro: "--sensor-baro",
+  });
+  WEB_COLOUR = themeColours({
+    bad:   "--alert",
+    good:  "--web-good",
+    node:  "--panel",
+    edge:  "--ink-3",
+    text:  "--ink-2",
+    onBad: "--panel",
+  });
+  draw();
+  // The traces and the agreement web only redraw when a frame arrives, and a
+  // paused or finished run does not send one.
+  if (lastSnapshot) {
+    renderTraces(lastSnapshot);
+    renderProof(lastSnapshot);
+  }
+}
+
+onThemeChange(refreshColours);
+
 /* --- go ------------------------------------------------------------------ */
 
+initTheme();
+initMapControls();
 resize();
 loadBasemap();
 startStream();

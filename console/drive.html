@@ -11,7 +11,11 @@
 <!-- The control surface: everything a person presses.
      The verdict, the map and the evidence are on the other screen. Keeping
      them apart is the point — a judge attacks from here and watches the
-     detector answer over there, having touched nothing in between. -->
+     detector answer over there, having touched nothing in between.
+
+     Laid out in the order a person uses it: start a run, pick a sensor and
+     lie with it, read what came back. Thirty controls with no stated order
+     is why it was not clear what to press first; the numbers fix that. -->
 
 <header class="bar">
   <div class="brand">
@@ -24,8 +28,11 @@
     <span class="sep">·</span>
     <span id="clock">t 0.0 s</span>
   </div>
-  <a class="drivelink" href="/" target="_blank" rel="noopener">Display ↗</a>
-  <div class="statepill" id="statepill" data-state="IDLE">IDLE</div>
+  <div class="barright">
+    <button id="themetoggle" type="button">Dark</button>
+    <a class="drivelink" href="/" target="_blank" rel="noopener">Display ↗</a>
+    <div class="statepill" id="statepill" data-state="IDLE">IDLE</div>
+  </div>
 </header>
 
 <!-- A rejected frame is the driver's problem to fix, not the room's, so it is
@@ -41,7 +48,7 @@
   <section class="col">
 
     <div class="panel run">
-      <h2>The run</h2>
+      <h2><span class="step">1</span>Start a run</h2>
       <p class="panelnote">
         The list comes from the simulator, not from this page. A judge picking
         off a live list is part of the argument that nothing here is staged.
@@ -57,26 +64,12 @@
          panel. The vehicle drives its real route; the judge takes a sensor
          over and drives it themselves. The detector is never told. -->
     <div class="panel attack" id="attackpanel">
-      <h2>You are the sensor</h2>
+      <h2><span class="step">2</span>Make a sensor lie</h2>
       <p class="attacknote">
-        The truck drives its real route. Take a sensor and drive it with the
+        The vehicle drives its real route. Take a sensor and drive it with the
         <b>arrow keys</b> — or stop, and let it freeze. The detector is never
         told you touched it.
       </p>
-
-      <div class="score" id="score">
-        <div class="score-side"><b id="scoreyou">0</b><span>you got away with</span></div>
-        <div class="score-v">v</div>
-        <div class="score-side"><b id="scoreus">0</b><span>we caught</span></div>
-      </div>
-
-      <!-- What the detector currently believes. "not sure yet" is left on
-           screen rather than hidden: refusing to answer is the feature. -->
-      <div class="verdictread" id="verdictread" data-state="quiet">
-        <span class="vr-label">reading you as</span>
-        <b class="vr-word" id="verdictword">—</b>
-        <span class="vr-why" id="verdictwhy"></span>
-      </div>
 
       <div class="targets" id="targets">
         <button class="target on" data-target="gps">GPS</button>
@@ -87,31 +80,42 @@
 
       <button id="taketarget" class="atk primary">Take it over</button>
 
-      <div class="drive" id="drive" hidden>
-        <div class="drivehead">
-          <span id="drivewhat">You are the GPS</span>
-          <b id="driveheading">—</b>
-        </div>
-        <div class="dpad">
-          <button class="key" data-arrow="up">&#9650;</button>
-          <div class="dpad-mid">
-            <button class="key" data-arrow="left">&#9664;</button>
-            <button class="key" id="driveoff" title="stop — let it freeze">&#9632;</button>
-            <button class="key" data-arrow="right">&#9654;</button>
+      <!-- The two ways to lie with it, side by side. The pad used to be
+           hidden until you had already taken the sensor over, so the thing
+           the panel is named after was the thing you could not see. -->
+      <div class="lieways">
+        <div class="way">
+          <div class="waytitle">Drive it yourself</div>
+          <div class="drive" id="drive">
+            <div class="drivehead">
+              <span id="drivewhat">You are the GPS</span>
+              <b id="driveheading">—</b>
+            </div>
+            <div class="dpad">
+              <button class="key" data-arrow="up">&#9650;</button>
+              <div class="dpad-mid">
+                <button class="key" data-arrow="left">&#9664;</button>
+                <button class="key" id="driveoff" title="stop — let it freeze">&#9632;</button>
+                <button class="key" data-arrow="right">&#9654;</button>
+              </div>
+              <button class="key" data-arrow="down">&#9660;</button>
+            </div>
+            <div class="drivefoot">
+              <span>arrow keys work too</span>
+              <span>space = let go</span>
+            </div>
           </div>
-          <button class="key" data-arrow="down">&#9660;</button>
         </div>
-        <div class="drivefoot">
-          <span>arrow keys work too</span>
-          <span>space = let go</span>
+
+        <!-- Everything else that can be done to the selected sensor. Built
+             from a table in drive.js so the list matches what the simulator
+             actually offers, and so harness/usecases.py can check every one
+             of them end to end. -->
+        <div class="way">
+          <div class="waytitle">Or do it in one press</div>
+          <div class="actions" id="actions"></div>
         </div>
       </div>
-
-      <!-- Everything else that can be done to the selected sensor. Built from
-           a table in drive.js so the list matches what the simulator actually
-           offers, and so harness/usecases.py can check every one of them. -->
-      <h3 class="subhead">Or do something to it</h3>
-      <div class="actions" id="actions"></div>
 
       <!-- Two states worth being able to reach in one press on stage: an
            honest vehicle, and a stationary one. -->
@@ -120,13 +124,31 @@
         <button id="dohold" class="atk" data-held="0">Park the vehicle</button>
       </div>
 
-      <!-- Timed in the browser, from the judge's own click. This number never
-           goes near the detector — it cannot, which is the point. -->
+      <p class="atk-hint" id="atkhint">Press Start above, then take a sensor.</p>
+    </div>
+
+    <!-- Timed in this browser, from the judge's own click. The number never
+         goes near the detector — it cannot, which is the entire point of it. -->
+    <div class="panel result">
+      <h2><span class="step">3</span>What came back</h2>
+      <div class="verdictread" id="verdictread" data-state="quiet">
+        <span class="vr-label">reading you as</span>
+        <b class="vr-word" id="verdictword">—</b>
+        <span class="vr-why" id="verdictwhy"></span>
+      </div>
       <div class="stopwatch" id="stopwatch" hidden>
         <span class="sw-label" id="swlabel">waiting</span>
         <span class="sw-time" id="swtime">0.0 s</span>
       </div>
-      <p class="atk-hint" id="atkhint">Press Start above, then take a sensor.</p>
+      <div class="score" id="score">
+        <div class="score-side"><b id="scoreyou">0</b><span>you got away with</span></div>
+        <div class="score-v">v</div>
+        <div class="score-side"><b id="scoreus">0</b><span>we caught</span></div>
+      </div>
+      <p class="panelnote" style="margin: 12px 0 0">
+        The clock starts on your click and stops on an alert arriving over the
+        ordinary stream. Nothing about it is ever sent to the detector.
+      </p>
     </div>
 
   </section>
@@ -140,7 +162,7 @@
         does not use it — turn it off and re-run the attack; the verdict is
         identical.
       </p>
-      <div class="runrow">
+      <div class="runrow" style="margin-top: 0">
         <button id="reporttoggle" class="toggle">Written report: off</button>
         <button id="reportopen" hidden>Open report</button>
       </div>

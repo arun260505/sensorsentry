@@ -188,3 +188,66 @@ function themeColours(names) {
   }
   return out;
 }
+
+/* Light or dark, chosen in the room rather than guessed here.
+ *
+ * A demo hall is either a bright room with the blinds up or a dark one with a
+ * projector, and the right answer is opposite in each. Dark makes the two
+ * tracks bright amber and cyan and the alert genuinely alarming; light
+ * survives daylight and photographs better. So both, on a switch.
+ *
+ * The choice is stamped on <html> and remembered, because the two pages are
+ * separate documents and a judge should not find the controls in one theme
+ * and the display in the other.
+ *
+ * Anything drawn on canvas has read its colours already, so it has to be told
+ * to read them again — that is what the listeners are for. Miss this and the
+ * page turns dark around a map that is still painting itself on paper.
+ */
+
+const THEME_KEY = "sensorsentry-theme";
+const themeListeners = [];
+
+function onThemeChange(fn) {
+  themeListeners.push(fn);
+}
+
+function currentTheme() {
+  return document.documentElement.dataset.theme === "dark" ? "dark" : "light";
+}
+
+function applyTheme(name, remember) {
+  document.documentElement.dataset.theme = name === "dark" ? "dark" : "light";
+  if (remember) {
+    try { localStorage.setItem(THEME_KEY, currentTheme()); } catch (err) { /* private window */ }
+  }
+  const button = el("themetoggle");
+  if (button) {
+    // Says what pressing it will do, not what it currently is. A button
+    // labelled with the state you are already in is read as broken.
+    button.textContent = currentTheme() === "dark" ? "Light" : "Dark";
+    button.title = `Switch to the ${currentTheme() === "dark" ? "light" : "dark"} theme`;
+  }
+  for (const fn of themeListeners) fn(currentTheme());
+}
+
+function initTheme() {
+  let stored = null;
+  try { stored = localStorage.getItem(THEME_KEY); } catch (err) { /* private window */ }
+  const prefersDark = window.matchMedia
+    && window.matchMedia("(prefers-color-scheme: dark)").matches;
+  applyTheme(stored || (prefersDark ? "dark" : "light"), false);
+
+  const button = el("themetoggle");
+  if (button) {
+    button.addEventListener("click", () => {
+      applyTheme(currentTheme() === "dark" ? "light" : "dark", true);
+    });
+  }
+
+  // The other page is a separate document with its own copy of this. Follow
+  // its writes so switching on one switches both.
+  window.addEventListener("storage", (event) => {
+    if (event.key === THEME_KEY && event.newValue) applyTheme(event.newValue, false);
+  });
+}

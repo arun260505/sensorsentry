@@ -323,6 +323,55 @@ the console. `#actions` was empty on every run. `harness.usecases` posts to
 `/control/inject` directly, so it passed 17/17 against buttons a judge could
 not press. **A harness that talks to the API cannot see a hole in the UI.**
 
+### One button system, one answer band, one theme switch
+
+**There were seven button styles** — `.scenarios button`, `button.target`,
+`button.atk`, `button.atk.primary`, `button.key`, `.actions button`,
+`.toggle` — each with its own size, radius, weight and hover. Thirty controls
+on `/drive` in seven visual languages is why nobody could tell what to press
+first. Everything now inherits from one `button` rule and differs only by
+deliberate modifier. `/drive` is numbered **1 Start a run · 2 Make a sensor
+lie · 3 What came back**, and the eight scripted runs are folded into a
+`<details>` rather than being most of the button count.
+
+**The rail was eight panels of equal weight in one scrolling column**, so the
+verdict could sit below the fold while a reference table sat above it. The
+answer now lives in a band that never scrolls — state, one sentence, and the
+separation figure — with everything else scrolling underneath. Nothing was
+deleted; every panel is still there, further down.
+
+**Light and dark, on a switch in the header**, remembered and shared between
+the two pages. A hall is either bright with the blinds up or dark with a
+projector and the right answer is opposite in each. This only works because
+the canvas reads its colours from the stylesheet: `refreshColours()` re-reads
+every token on a switch, or the page turns dark around a map still painting
+roads on paper. **Never hardcode a colour in the console** — light and dark
+are checked for token parity, and a literal in a script breaks dark silently.
+
+**Zoom and pan.** `+` / `−` / scroll / drag, plus **Whole run** and
+**Follow**. Manual is sticky on purpose: a view that snapped back to the
+vehicle a moment after you dragged it would be worse than no control at all.
+Zoom is about the cursor, so what you aim at stays where it is.
+
+### Ten things wrote on the map and none of them looked first
+
+With four vehicles clustered that produced exactly what you would expect:
+LIKELY TRANSMITTER across a drone, a vehicle name across the separation
+figure, and a compass note over both with its start lost behind another chip.
+
+Nothing draws a label now; it asks for one. They are placed together at the
+end of the frame, highest priority first — the two positions and the gap
+between them outrank a fleet member's name — and anything that cannot find
+clear space is nudged, then dropped. **Dropped deliberately:** a map that
+hides its fourth-most-important note is readable; one that prints all ten on
+top of each other is not, and it is the important ones that get buried,
+because they are drawn first.
+
+The legend and the scale bar are HTML sitting *on top of* the canvas, so the
+canvas could not see them and was writing underneath both. Their boxes are
+measured off the elements themselves each frame rather than guessed, so
+moving them in the stylesheet cannot silently start hiding labels again.
+
 ### The map follows the vehicle now, and there are two view modes
 
 Fitting the whole 1331 m route every frame is what produced 0.29 px/m. The
