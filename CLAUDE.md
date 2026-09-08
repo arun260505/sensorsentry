@@ -149,6 +149,7 @@ python -m simulator.control --quiet           # terminal 2 — scenario buttons
 # arrow keys go nowhere; it says so across the top when it does not.
 
 python -m tests.run_all                       # 68 tests
+node tests/console_draw.js                    # the map actually draws
 python -m harness.sweep                       # false alarms + detection curve
 python -m harness.blame_check                 # which sensor          8/8
 python -m harness.classify_check              # attack/fault/interf.  8/8
@@ -198,6 +199,35 @@ could only be detected on the old corridor is named on this one.
 **The honest trade, and do not hide it:** the floor halved, but the slowest
 attack now takes 130 s to prove rather than 37 s at twice the speed. We catch
 slower attackers; we take longer to be sure about them.
+
+### The vehicle looks like the vehicle, and the browser is finally tested
+
+The marker was a triangle for both. It is now a **lorry drawn to scale in
+metres** — 12 m by 2.6 m, the same surveyed metres the roads are drawn in, so
+it sits in a lane and a spoofed position is visibly off the carriageway. A
+fixed-size icon would have put a 28 px lorry on a 4 m road at follow zoom: a
+vehicle wider than the highway, which reads as a broken picture rather than a
+wrong one. That is the trap from last time, in a new place.
+
+**The drone is deliberately *not* to scale.** A 1.1 m quadcopter is four pixels
+across at follow zoom and gone at every other. It does not sit on a road, so
+nothing breaks by drawing it larger than life, and a marker nobody can find is
+worse than one out of scale. Below 16 px a lorry outline is a smudge, so under
+that it falls back to the arrow — the same "detail is decided in pixels" rule
+the buildings and road labels use. Fleet markers are 7 px and stay arrows.
+
+Both markers are the same shape at the same scale on purpose: they are one
+vehicle, seen twice. Two different silhouettes would read as two vehicles,
+which is the one thing that picture must not say.
+
+**And `tests/console_draw.js` exists now.** Everything the browser does had no
+automated coverage at all, which is why two failures in CLAUDE.md were found
+live. It stubs a canvas, loads the real `common.js` and `display.js`, and draws
+every vehicle at every zoom — failing on a throw, on a call that draws nothing,
+and on a **non-finite coordinate**, which is worth catching on its own: canvas
+silently ignores NaN, so the shape just does not appear and nothing says why.
+Node, dev-time only; rule 6 is about what the demo needs to run, and the demo
+does not run this.
 
 ### The wandering compass — two bugs, and one number that was never measured
 
