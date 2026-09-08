@@ -928,10 +928,39 @@ function headingOf(points) {
   return Math.atan2(b[1] - a[1], b[0] - a[0]);
 }
 
-/* A triangle pointing where the vehicle is going. A dot says "something is
- * here"; this says "and it is heading that way", which is what the operator
- * is actually judging. */
-function drawVehicle(x, y, heading, color, alert, size) {
+/* A vehicle that looks like the vehicle it is.
+ *
+ * The marker was a triangle for both, and a triangle is a good marker: a dot
+ * says "something is here", an arrow says "and it is heading that way", which
+ * is what the operator is actually judging. Everything below keeps that and
+ * only makes the thing recognisable.
+ *
+ * Three rules, all of them learned the hard way on this map:
+ *
+ * **The lorry is drawn to scale, in metres.** Roads already are — that is what
+ * lets a spoofed position be visibly off the carriageway. A fixed-size icon
+ * would put a 28-pixel lorry on a 4-metre road at follow zoom, a vehicle wider
+ * than the highway, which reads as a broken picture rather than a wrong one.
+ *
+ * **The drone is not.** A 1.1 m quadcopter drawn to scale is four pixels
+ * across at follow zoom and gone at any other. It does not sit on a road, so
+ * nothing about the picture breaks if it is drawn larger than life, and a
+ * marker nobody can find is worse than one slightly out of scale.
+ *
+ * **Below a size, shape stops carrying information.** A lorry outline at seven
+ * pixels is a smudge. Under the threshold it falls back to the arrow, which is
+ * the same rule the buildings and the road labels use: detail is decided in
+ * pixels, not in metres.
+ */
+/* A container lorry, near enough. In metres, because the road it sits on is
+ * drawn from surveyed metres too and the two have to agree. */
+const TRUCK_M = { length: 12.0, width: 2.6 };
+
+const SILHOUETTE_MIN_PX = 16;
+/* Shorter than this on screen and an outline is noise. Fall back to the arrow,
+ * which stays legible down to a few pixels. */
+
+function drawVehicle(x, y, heading, color, alert, size, kind, scale) {
   const r = size || 9;
   if (alert) {
     ctx.fillStyle = COLOR.wash;
@@ -942,18 +971,118 @@ function drawVehicle(x, y, heading, color, alert, size) {
   ctx.save();
   ctx.translate(x, y);
   ctx.rotate(-heading);          // canvas y is down; headings are maths-style
+
+  ctx.fillStyle = color;
+  // Outlined in the map's own background, so where the two markers overlap —
+  // which is what an honest run looks like — the top one does not simply
+  // swallow the one underneath.
+  ctx.strokeStyle = CANVAS_BG;
+  ctx.lineWidth = 1.5;
+  ctx.lineJoin = "round";
+
+  const lengthPx = kind === "truck" && scale ? TRUCK_M.length * scale : 0;
+  if (lengthPx >= SILHOUETTE_MIN_PX) {
+    drawTruckBody(lengthPx, Math.max(TRUCK_M.width * scale, 4));
+  } else if (kind === "drone") {
+    drawDroneBody(r);
+  } else {
+    drawArrowBody(r);
+  }
+  ctx.restore();
+}
+
+function drawArrowBody(r) {
   ctx.beginPath();
   ctx.moveTo(r * 1.4, 0);
   ctx.lineTo(-r * 0.8, r * 0.8);
   ctx.lineTo(-r * 0.35, 0);
   ctx.lineTo(-r * 0.8, -r * 0.8);
   ctx.closePath();
-  ctx.fillStyle = color;
   ctx.fill();
-  ctx.strokeStyle = CANVAS_BG;
-  ctx.lineWidth = 1.5;
   ctx.stroke();
-  ctx.restore();
+}
+
+/* Seen from above, along +x. A lorry is a rectangle, and a rectangle says
+ * nothing about which end is the front — so the cab is drawn as its own block
+ * and the nose is cut to a point. Direction is the whole reason the marker
+ * exists; a symmetrical box would lose it. */
+function drawTruckBody(len, wide) {
+  const half = wide / 2;
+  const cab = len * 0.28;
+  const back = -len / 2;
+  const front = len / 2;
+
+  // Trailer.
+  ctx.beginPath();
+  ctx.rect(back, -half, len - cab, wide);
+  ctx.fill();
+  ctx.stroke();
+
+  // Cab, drawn forward of it and cut to a nose.
+  ctx.beginPath();
+  ctx.moveTo(front - cab, -half);
+  ctx.lineTo(front - wide * 0.35, -half);
+  ctx.lineTo(front, -half * 0.45);
+  ctx.lineTo(front, half * 0.45);
+  ctx.lineTo(front - wide * 0.35, half);
+  ctx.lineTo(front - cab, half);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  // The gap between cab and trailer, so it reads as a lorry rather than a bar.
+  if (len > 30) {
+    ctx.save();
+    ctx.strokeStyle = CANVAS_BG;
+    ctx.lineWidth = Math.max(1, len * 0.03);
+    ctx.beginPath();
+    ctx.moveTo(front - cab, -half);
+    ctx.lineTo(front - cab, half);
+    ctx.stroke();
+    ctx.restore();
+  }
+}
+
+/* Four rotors and a body, with the front pair further out so the thing has a
+ * nose. Fixed size: see the note above about a drone drawn to scale. */
+function drawDroneBody(r) {
+  const arm = r * 1.15;
+  const rotor = r * 0.42;
+
+  ctx.lineWidth = Math.max(1.5, r * 0.22);
+  ctx.strokeStyle = color_or(ctx.fillStyle);
+  ctx.beginPath();
+  for (const angle of [Math.PI / 4, -Math.PI / 4]) {
+    ctx.moveTo(-Math.cos(angle) * arm, -Math.sin(angle) * arm);
+    ctx.lineTo(Math.cos(angle) * arm, Math.sin(angle) * arm);
+  }
+  ctx.stroke();
+
+  ctx.strokeStyle = CANVAS_BG;
+  ctx.lineWidth = 1.2;
+  for (const angle of [Math.PI / 4, 3 * Math.PI / 4,
+                       -3 * Math.PI / 4, -Math.PI / 4]) {
+    ctx.beginPath();
+    ctx.arc(Math.cos(angle) * arm, Math.sin(angle) * arm, rotor, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+  }
+
+  // Body, and a nose so the heading is still readable at a glance.
+  ctx.beginPath();
+  ctx.moveTo(r * 1.05, 0);
+  ctx.lineTo(-r * 0.45, r * 0.5);
+  ctx.lineTo(-r * 0.45, -r * 0.5);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+}
+
+/* The arms are drawn in the vehicle's own colour, which is sitting in
+ * fillStyle. Reading it back keeps the two in step without threading the
+ * colour through every helper. */
+function color_or(fill) {
+  return typeof fill === "string" ? fill : COLOR.witness;
 }
 
 /* Pixels between the two markers before they are labelled separately. */
@@ -967,8 +1096,15 @@ function drawHeads(view, w, h) {
   const gp = g ? project(g[0], g[1], view, w, h) : null;
   const wp = wit ? project(wit[0], wit[1], view, w, h) : null;
 
-  if (gp) drawVehicle(gp[0], gp[1], headingOf(trails.gnss), COLOR.claimed, false, 8);
-  if (wp) drawVehicle(wp[0], wp[1], headingOf(trails.witness), COLOR.witness, alert, 10);
+  // Both markers are the same vehicle — one where it really is, one where the
+  // GPS claims it is — so they are drawn as the same shape at the same scale.
+  // Two different silhouettes would read as two vehicles, which is the one
+  // thing this picture must not say.
+  const kind = latest && latest.vehicle_type ? latest.vehicle_type : "";
+  if (gp) drawVehicle(gp[0], gp[1], headingOf(trails.gnss), COLOR.claimed,
+                      false, 8, kind, view.scale);
+  if (wp) drawVehicle(wp[0], wp[1], headingOf(trails.witness), COLOR.witness,
+                      alert, 10, kind, view.scale);
 
   // While the two agree they are the same vehicle, so they get one name.
   //
