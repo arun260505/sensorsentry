@@ -49,6 +49,16 @@ public class MainActivity extends Activity {
     private final BroadcastReceiver updates = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
+            // Hearing from the service at all means it is running, whatever
+            // this Activity thinks. Reopening the app — or tapping the
+            // notification — starts a fresh Activity with `watching` false,
+            // so the address box came back and the button said "Watch" while
+            // it was in fact already connected and reporting.
+            //
+            // The service broadcasts every second, so its own heartbeat is
+            // the honest answer to "is this watching?".
+            if (!watching) markWatching();
+
             boolean alert = intent.getBooleanExtra(WatchService.EXTRA_ALERT, false);
             boolean connected = intent.getBooleanExtra(WatchService.EXTRA_CONNECTED, false);
             show(intent.getStringExtra(WatchService.EXTRA_HEADLINE),
@@ -93,6 +103,14 @@ public class MainActivity extends Activity {
         } catch (IllegalArgumentException ignored) {
             // Not registered; nothing to undo.
         }
+    }
+
+    /** The address is setup, not information: once it is watching, the screen
+     *  carries the one thing being watched for and nothing else. */
+    private void markWatching() {
+        watching = true;
+        toggle.setText("Stop");
+        serverField.setVisibility(View.GONE);
     }
 
     // --- the screen --------------------------------------------------------
@@ -180,12 +198,7 @@ public class MainActivity extends Activity {
 
         service.putExtra("server", server);
         startForegroundService(service);
-        watching = true;
-        toggle.setText("Stop");
-        // The address is setup, not information. Once it is watching, the
-        // screen should carry the one thing being watched for and nothing
-        // else — an IP address on a screen held up to a room is noise.
-        serverField.setVisibility(View.GONE);
+        markWatching();
         show("Connecting…", "", false, false);
     }
 
