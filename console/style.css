@@ -917,3 +917,10 @@ button.key.on     { background: var(--claimed); border-color: var(--claimed); co
    so switching target never looks like it failed */
 .drive.idle { opacity: .72; }
 .drive.idle .drivehead b { color: var(--ink-3); }
+
+/* the two states worth reaching in one press: honest, and stationary */
+.atk-row.states { margin-top: 8px; }
+.atk-row.states .atk { flex: 1; }
+#dohold[data-held="1"] {
+  background: var(--claimed); border-color: var(--claimed); color: #fff;
+}

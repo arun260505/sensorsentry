@@ -108,6 +108,7 @@ async function startScenario(name, button) {
   latest = null;
   held = {};
   renderHeld();
+  resetHoldButton();
 
   const ok = await post("/control/start", { scenario: name });
   running = ok ? name : null;
@@ -314,6 +315,13 @@ let swTimer = null;
 const score = { you: 0, us: 0 };
 
 function attackLive() { return latest !== null && latest !== undefined; }
+
+function resetHoldButton() {
+  const button = el("dohold");
+  if (!button) return;
+  button.dataset.held = "0";
+  button.textContent = "Park the vehicle";
+}
 
 function setAttackEnabled() {
   const live = attackLive();
@@ -528,6 +536,28 @@ function initAttackPanel() {
     if (tag === "input" || tag === "select" || tag === "textarea") return;
     if (event.key in ARROWS) { event.preventDefault(); pressArrow(ARROWS[event.key]); }
     if (event.key === " ") { event.preventDefault(); steer(TARGETS[target].stop()); }
+  });
+
+  /* Park it, or let it go again.
+   *
+   * The whole demo in one button. A stationary vehicle makes every honest
+   * sensor go quiet together — the wheels read zero, the position stops
+   * moving, the accelerometer feels nothing — so anything still claiming the
+   * vehicle is travelling is visibly the one lying. Park a spoofed lorry and
+   * the fake position carries on down the highway on its own.
+   *
+   * Not a pause. The run continues and the detector goes on checking; the
+   * vehicle simply brakes to a stop and sits there, which is why the honest
+   * sensors report it truthfully rather than being switched off.
+   */
+  el("dohold").addEventListener("click", async () => {
+    const button = el("dohold");
+    const held = button.dataset.held === "1";
+    const ok = await post("/control/hold", { hold: !held });
+    if (!ok) return;
+    button.dataset.held = held ? "0" : "1";
+    button.textContent = held ? "Park the vehicle" : "Let it drive on";
+    setHint(held ? "driving on" : "parked — honest sensors go quiet, liars do not");
   });
 
   el("doclear").addEventListener("click", async () => {

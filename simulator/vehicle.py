@@ -81,6 +81,23 @@ class Waypoint:
 # Vehicle
 # ---------------------------------------------------------------------------
 class Vehicle:
+    hold = False
+    """Park the vehicle where it is, without ending the run.
+
+    A class attribute rather than something set in `__init__`, so every
+    vehicle type has it whatever its own constructor does — the truck builds
+    itself differently and went straight past an instance attribute.
+
+    It lowers the speed the vehicle is aiming for to zero, so it brakes to a
+    stop the way a lorry does rather than teleporting to rest, and every
+    sensor then reports a stationary vehicle honestly, because it really is
+    one.
+
+    That is the point of it. Park the vehicle and everything truthful goes
+    quiet together: the wheels read zero, the position stops moving, the
+    accelerometer feels nothing. Anything still claiming the vehicle is
+    travelling is, very visibly, not telling the truth."""
+
     """
     Drives a drone along a list of Waypoints.
 
@@ -101,6 +118,8 @@ class Vehicle:
         self._yaw = 0.0                            # rad — 0 = East
         self._climb_rate = 0.0                     # m/s, rate-limited
         self._t = 0.0
+
+
 
     # ------------------------------------------------------------------
     # Public read-only properties (used by sensors.py, never by publisher)
@@ -178,7 +197,7 @@ class Vehicle:
         self._yaw += yaw_change
 
         # Desired speed along heading direction
-        desired_speed = wp.speed_mps
+        desired_speed = 0.0 if self.hold else wp.speed_mps
         current_speed = self.speed_mps
 
         # Accelerate/decelerate toward desired speed
@@ -344,7 +363,7 @@ class TruckVehicle(Vehicle):
         self._yaw += float(yaw_change)
 
         # Desired speed — decelerate for the turn/stops with the braking limit
-        desired_speed = min(wp.speed_mps, self.MAX_SPEED_MPS)
+        desired_speed = 0.0 if self.hold else min(wp.speed_mps, self.MAX_SPEED_MPS)
         current_speed = self.speed_mps
         speed_err = desired_speed - current_speed
 
@@ -402,7 +421,7 @@ class TruckVehicle(Vehicle):
         # approaches at a modest cap; close in it smoothly bleeds off.
         room = max(0.0, dist - 2.0)
         stop_target = math.sqrt(2.0 * self.MAX_BRAKE_MPS2 * room)
-        target_speed = min(stop_target, self.STOP_APPROACH_MPS)
+        target_speed = 0.0 if self.hold else min(stop_target, self.STOP_APPROACH_MPS)
         speed_err = target_speed - current_speed
         max_dv = (
             self.MAX_ACC_MPS2 * DT if speed_err >= 0.0

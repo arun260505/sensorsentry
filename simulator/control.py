@@ -59,6 +59,7 @@ class SimState:
         self._run_thread = None
         self._scenario   = None
         self._seed       = None
+        self._hold       = False
 
     # -- Injector access (read by run loop) --
     def injectors(self):
@@ -103,6 +104,16 @@ class SimState:
                          if s == which or s.split(":")[0] == which]:
                 self._injectors.pop(slot, None)
 
+    @property
+    def hold(self) -> bool:
+        with self._lock:
+            return self._hold
+
+    @hold.setter
+    def hold(self, value: bool) -> None:
+        with self._lock:
+            self._hold = bool(value)
+
     # -- Run control --
     def is_running(self) -> bool:
         return self._run_thread is not None and self._run_thread.is_alive()
@@ -111,6 +122,7 @@ class SimState:
         """Launch the simulation loop in a daemon thread."""
         self._stop_event.clear()
         self.clear_injector()
+        self.hold = False
         self._scenario = scenario
         self._seed     = seed
         self._run_thread = threading.Thread(
@@ -199,6 +211,7 @@ def _make_handler(state: SimState, run_fn, default_seed_fn):
                 self._send(200, {
                     "running":   state.is_running(),
                     "scenario":  state._scenario,
+                    "held": state.hold,
                     "injecting": bool(live),
                     "inject_kind":  live[0][1] if live else None,
                     "holding": sorted(slot for _, _, _, slot in live),
@@ -218,6 +231,8 @@ def _make_handler(state: SimState, run_fn, default_seed_fn):
                 self._handle_inject(body)
             elif self.path == "/steer":
                 self._handle_steer(body)
+            elif self.path == "/hold":
+                self._handle_hold(body)
             else:
                 self._send(404, {"error": "not found"})
 
@@ -239,6 +254,23 @@ def _make_handler(state: SimState, run_fn, default_seed_fn):
             state.stop(timeout=1.8)
             elapsed = time.monotonic() - t0
             self._send(200, {"reset": True, "elapsed_s": round(elapsed, 3)})
+
+        # ---- /hold ----
+        def _handle_hold(self, body: dict):
+            """Park the vehicle where it is, or let it go again.
+
+            Not a pause: the run continues, frames keep arriving, and the
+            detector goes on checking. The vehicle simply brakes to a stop and
+            sits there, so every honest sensor reports a stationary vehicle
+            because it is one.
+
+            Which makes it the clearest demonstration on the console. Park a
+            lorry that is being spoofed and the truthful sensors all go quiet
+            together while the fake position carries on down the highway at
+            road speed — an argument that needs no explaining.
+            """
+            state.hold = bool(body.get("hold", True))
+            self._send(200, {"hold": state.hold})
 
         # ---- /steer ----
         def _handle_steer(self, body: dict):
@@ -424,6 +456,7 @@ def _make_run_fn(vehicle_id_fn, truth_log_path, quiet):
             if stop_event.is_set():
                 break
 
+            vehicle.hold = state.hold
             sensor_data = sensors.update(vehicle)
             t_sim = vehicle.t
 

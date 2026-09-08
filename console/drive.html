@@ -113,7 +113,12 @@
       <h3 class="subhead">Or do something to it</h3>
       <div class="actions" id="actions"></div>
 
-      <button id="doclear" class="atk ghost">Let go of everything</button>
+      <!-- Two states worth being able to reach in one press on stage: an
+           honest vehicle, and a stationary one. -->
+      <div class="atk-row states">
+        <button id="doclear" class="atk">Everything honest</button>
+        <button id="dohold" class="atk" data-held="0">Park the vehicle</button>
+      </div>
 
       <!-- Timed in the browser, from the judge's own click. This number never
            goes near the detector — it cannot, which is the point. -->
