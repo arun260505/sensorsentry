@@ -51,12 +51,30 @@ public class WatchService extends Service {
     public static final String EXTRA_ALERT = "alert";
     public static final String EXTRA_CONNECTED = "connected";
 
-    static final String CHANNEL_ALERT = "sensorsentry.alert.v2";
+    static final String CHANNEL_ALERT = "sensorsentry.alert.v3";
     static final String CHANNEL_WATCHING = "sensorsentry.watching";
     static final int NOTE_WATCHING = 1;
     static final int NOTE_ALERT = 2;
 
     private static final String TAG = "SensorSentry";
+
+    /**
+     * The alert tone, shipped inside the app.
+     *
+     * <p>It used to ask the phone for its default notification sound. On the
+     * handset this was built for that setting is empty — so the channel was
+     * created pointing at a URI that resolves to nothing, and the alarm was
+     * completely silent while every other sign said it was working. Nothing in
+     * the notification dump looked wrong; the sound simply did not exist.
+     *
+     * <p>Depending on a device setting for the one thing this app has to do
+     * was the mistake. A tone in the APK sounds the same on any phone whatever
+     * its owner has configured, which matters again when the demo is run from
+     * somebody else's handset.
+     */
+    private Uri alertTone() {
+        return Uri.parse("android.resource://" + getPackageName() + "/" + R.raw.alert);
+    }
     private static final long POLL_MS = 1000L;
     private static final int TIMEOUT_MS = 3000;
 
@@ -281,9 +299,7 @@ public class WatchService extends Service {
         // channel a phone on silent still plays. A pocketed phone in a noisy
         // hall that politely says nothing has failed at its only job.
         try {
-            Uri tone = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION);
-            if (tone == null) tone = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM);
-            Ringtone ringtone = RingtoneManager.getRingtone(getApplicationContext(), tone);
+            Ringtone ringtone = RingtoneManager.getRingtone(getApplicationContext(), alertTone());
             if (ringtone != null) {
                 ringtone.setAudioAttributes(new AudioAttributes.Builder()
                         .setUsage(AudioAttributes.USAGE_ALARM)
@@ -332,13 +348,10 @@ public class WatchService extends Service {
         alert.setDescription("A vehicle's sensors have stopped agreeing.");
         alert.enableVibration(true);
         alert.setVibrationPattern(new long[]{0, 400, 200, 400});
-        Uri tone = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION);
-        if (tone != null) {
-            alert.setSound(tone, new AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_ALARM)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                    .build());
-        }
+        alert.setSound(alertTone(), new AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_ALARM)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                .build());
         manager.createNotificationChannel(alert);
 
         // The first version of this channel carried the alarm-clock tone, and
@@ -347,5 +360,6 @@ public class WatchService extends Service {
         // this: drop the old one so it does not linger in the phone's
         // notification settings looking like a duplicate.
         manager.deleteNotificationChannel("sensorsentry.alert");
+        manager.deleteNotificationChannel("sensorsentry.alert.v2");
     }
 }

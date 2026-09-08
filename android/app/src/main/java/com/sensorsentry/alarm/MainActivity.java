@@ -165,6 +165,7 @@ public class MainActivity extends Activity {
             stopService(service);
             watching = false;
             toggle.setText("Watch");
+            serverField.setVisibility(View.VISIBLE);
             show("Not watching", "Press Watch to reconnect.", false, false);
             return;
         }
@@ -181,7 +182,11 @@ public class MainActivity extends Activity {
         startForegroundService(service);
         watching = true;
         toggle.setText("Stop");
-        show("Connecting…", server, false, false);
+        // The address is setup, not information. Once it is watching, the
+        // screen should carry the one thing being watched for and nothing
+        // else — an IP address on a screen held up to a room is noise.
+        serverField.setVisibility(View.GONE);
+        show("Connecting…", "", false, false);
     }
 
     /**
