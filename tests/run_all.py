@@ -934,6 +934,52 @@ def a_quiet_run_produces_a_quiet_report() -> None:
         assert "no incident" in written.title.lower()
 
 
+@test
+def an_unattributed_incident_reads_as_english() -> None:
+    """`cannot_isolate` is a verdict, not a sensor, and must never be written
+    into a sentence shaped for a sensor name.
+
+    It was. The report said "unclassified affecting cannot_isolate" and "the
+    vehicle stopped using cannot_isolate", which reads as broken software — at
+    the exact moment the system is doing the most careful thing it does. Rule 5
+    is a strength and it has to sound like one on paper.
+    """
+    import json
+    import tempfile
+    from pathlib import Path
+
+    from detector.blame import CANNOT_ISOLATE
+    from detector.evidence import RECORD_RUN, RECORD_VERDICT
+
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "unattributed.jsonl"
+        with path.open("w", encoding="utf-8") as handle:
+            handle.write(json.dumps({
+                "record": RECORD_RUN, "vehicle_id": "DRONE-09",
+                "vehicle_type": "drone", "seed": 1, "rate_hz": 20,
+                "gnss_rate_hz": 5, "t0": 0.0}) + "\n")
+            handle.write(json.dumps({
+                "record": RECORD_VERDICT, "t": 12.0, "state": "ALERT",
+                "guilty": CANNOT_ISOLATE, "suspects": ["gnss", "baro"],
+                "cause": "unclassified", "confidence": 0.0,
+                "evidence": ["only one vertical check exists and it is the "
+                             "one failing"],
+                "action": ""}) + "\n")
+
+        written = report_mod.compose(path, use_model=False)
+        assert written is not None, "an unattributed incident produced no report"
+
+        whole = f"{written.title}\n{written.body}"
+        assert CANNOT_ISOLATE not in whole, (
+            f"the sentinel leaked into the prose:\n{whole}")
+        # It must still be a useful document: say what was seen, and which
+        # sensors were in question. "Something is wrong somewhere" is not a
+        # report an investigator can act on.
+        assert "GPS" in whole and "altitude" in whole, (
+            f"the suspects were not named:\n{whole}")
+        assert "next steps" in whole.lower()
+
+
 # --- fleet ----------------------------------------------------------------
 
 def _incident(vid, t, lat, lon, cause="attack"):

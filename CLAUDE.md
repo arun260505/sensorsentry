@@ -570,6 +570,13 @@ it out loud instead.
 - **Dead reckoning buys about 40 seconds**, not minutes. Past that our drift
   overtakes even a 3 m/s spoof, which is why the console counts down and then
   says "stop or land".
+- **A parked lorry shows this plainly, so make the parking beat promptly.**
+  Measured over three runs: the wheels read exactly 0.00 within 8 s of the
+  hold, while our own estimate bottoms out at 0.4-1.2 m/s and then *climbs*
+  — 1.16 to 1.75 m/s over the next twenty seconds, which is accelerometer bias
+  integrating with no GPS to correct it. Leave the parked lorry on screen for a
+  minute and a sharp judge will see our estimate walking away. Name it first;
+  it is the same drift already on the card.
 - **A wandering compass answers `cannot_isolate` for part of the incident**,
   and that is now the honest answer rather than a bug. While *both* heading
   checks are failing it names the compass; while only the course check is, two

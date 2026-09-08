@@ -32,7 +32,7 @@ re-read.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterator, Optional
 
@@ -54,6 +54,9 @@ class Incident:
     confidence: float
     evidence: list[str]
     action: str
+    suspects: list[str] = field(default_factory=list)
+    """Which sensors were in question. Defaulted, so records written before
+    this field existed still read back."""
 
 
 class Recorder:
@@ -144,6 +147,12 @@ class Recorder:
             "t": payload.get("t"),
             "state": state,
             "guilty": blame.get("guilty"),
+            # Who was in the frame, not only who was charged. On an incident
+            # the detector declines to attribute, the guilty field says
+            # "cannot_isolate" and this is the only thing left that tells an
+            # investigator which sensors were actually in question — which is
+            # the useful half of that finding.
+            "suspects": blame.get("suspects", []),
             "cause": cause.get("label"),
             "confidence": cause.get("confidence", 0.0),
             "evidence": blame.get("evidence", []),
@@ -178,6 +187,7 @@ def read(path: Path) -> tuple[dict[str, Any], list[dict[str, Any]], list[Inciden
                     confidence=float(row.get("confidence") or 0.0),
                     evidence=list(row.get("evidence") or []),
                     action=row.get("action", ""),
+                    suspects=list(row.get("suspects") or []),
                 ))
     return header, frames, incidents
 

@@ -209,7 +209,8 @@ Tap the notification.
 Spoof the GPS, let it run a few seconds, then press **Park the vehicle**.
 
 > "The lorry is now stationary. Watch every honest sensor go quiet together —
-> wheels zero, our own estimate zero, the position stops moving.
+> wheels at exactly zero, our own estimate down to walking pace, the position
+> stops moving.
 >
 > And the GPS is still doing seventy kilometres an hour."
 
@@ -217,6 +218,18 @@ Let that sit.
 
 > "A container standing still whose tracker is driving to Bangalore. That is
 > the whole product in one picture."
+
+**Make the point promptly, then move on** — about ten seconds after you press
+it. Measured: the wheels read exactly 0.00 within eight seconds, and our own
+estimate bottoms out around 0.4–1.2 m/s and then **creeps slowly back up**,
+because that is accelerometer bias integrating with no GPS to correct it.
+
+Do not hide that if somebody spots it. It is the same dead-reckoning drift on
+the card, and naming it first is worth more than the seconds it costs:
+
+> "And you can watch our own estimate start to creep — that is the drift I
+> mentioned. It is why we say dead reckoning buys you about forty seconds, not
+> forever, and why the console counts down and then tells you to stop."
 
 ---
 
