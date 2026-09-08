@@ -148,10 +148,10 @@ python -m simulator.control --quiet           # terminal 2 — scenario buttons
 # Two windows, one server. The driving window must hold keyboard focus or the
 # arrow keys go nowhere; it says so across the top when it does not.
 
-python -m tests.run_all                       # 64 tests
+python -m tests.run_all                       # 68 tests
 python -m harness.sweep                       # false alarms + detection curve
 python -m harness.blame_check                 # which sensor          8/8
-python -m harness.classify_check              # attack/fault/interf.  7/8
+python -m harness.classify_check              # attack/fault/interf.  8/8
 python -m harness.fallback_check              # keeps flying under attack
 python -m harness.fleet_check                 # zone + advisory
 python -m harness.usecases                    # all 17 cases, named
@@ -170,7 +170,7 @@ python -m harness.send_fleet                  # 4 vehicles, 3 attacked
 | Truck floor: 1 m/s | caught in 130 s; 3 m/s in 36-46 s |
 | Magnet on compass, 25 deg+ | caught 2 s after onset |
 | Names the guilty sensor | 8 of 8 |
-| Attack / fault / interference | 7 of 8 |
+| Attack / fault / interference | 8 of 8 |
 | Drops the liar, keeps flying | 34 m from truth vs GPS's 91 m |
 | Fleet locates the attacker | 3 hit -> one zone, 4th warned |
 | Truck: honest Kelambakkam run | silent |
@@ -198,6 +198,60 @@ could only be detected on the old corridor is named on this one.
 **The honest trade, and do not hide it:** the floor halved, but the slowest
 attack now takes 130 s to prove rather than 37 s at twice the speed. We catch
 slower attackers; we take longer to be sure about them.
+
+### The wandering compass — two bugs, and one number that was never measured
+
+The last 7/8 is now **8/8**, and neither half of the fix was where it looked.
+
+**1. An alibi from a check that had only just stopped failing.** A compass
+wandering as a random walk drifts far enough to break the compass-gyro check,
+then wanders back *through* the truth on its way to being wrong the other way.
+At the instant it crosses, that check flips to OK — and it was clearing the
+compass of a course-check failure that had been running for **eighty-eight
+seconds**, on the strength of having been quiet for **zero**. GNSS was then the
+only suspect left and was named, **at confidence 1.0, as under attack.** A
+wandering compass is a workshop job; that verdict sends the police.
+
+`blame.py` already refuses an alibi from a check that averages over a window,
+because it describes the past. This is the mirror of it: an alibi must also
+have *held* long enough to explain the accusation — its window plus the time
+hysteresis takes to relax. If the accusation is still standing after all that,
+the sensor being fine right now is not the explanation.
+
+**2. Interference and fault were split on a number that cannot split them.**
+`ARRIVED_AS_STEP` asks whether the error arrived as a jump. Measured across
+three seeds and two strengths: 40 deg magnet **6.8-7.2**, 25 deg magnet
+**4.3-4.7**, wandering compass **2.0, 2.2, 2.6 — and 7.8**. The worst wander
+steps harder than the strongest magnet. Coherence and erraticness overlap too:
+over a ten-second window a slow random walk *is* a steady offset.
+
+The difference only exists across the whole incident. Something placed beside a
+sensor pushes one way and keeps pushing — both magnets stayed between -47 and
+-15 degrees and **never crossed zero**. A compass going bad has no direction it
+is trying to go, so it wanders through the truth and out the other side: every
+wander seed spanned about -40 to +68 and scored 0.48 to 0.97. **Zero against a
+half, with nothing in between.**
+
+> "Something placed beside the compass pushes it one way and keeps pushing.
+> This one has been wrong in *both* directions — nothing you could put next to
+> it does that. It is the sensor."
+
+**3. The results card was claiming a score it had not measured.** `blame_correct`
+and `cause_correct` were the string literals `"8 of 8"` and `"7 of 8"`. The
+second went stale the moment this was fixed, so the card would have stood in
+front of judges *under*-claiming — from a hardcoded string nobody would think
+to check. Both now run the real case lists. **A results card that states a
+number it did not measure is the one thing on it that cannot be trusted**, and
+it is the same card we invite people to re-run.
+
+And a near-miss worth keeping: the first version of fix 1 counted time in state
+only on frames where the check could be *read*. GNSS is 5 Hz against 20 Hz
+frames, so it ran at a quarter of real time, and a seized odometer that used to
+be named in 7 s took **39**. The alibi had been steady all along; the clock was
+wrong. Found by the dress rehearsal, not by the tests — which is twice now
+that the rehearsal has caught what the suite could not. **Two tests pin the
+fix**, one that a wandering compass never accuses the GPS and one that the
+magnet and the wander land on opposite causes.
 
 ### The map draws what is between the roads, not only the roads
 
@@ -486,9 +540,11 @@ it out loud instead.
 - **Dead reckoning buys about 40 seconds**, not minutes. Past that our drift
   overtakes even a 3 m/s spoof, which is why the console counts down and then
   says "stop or land".
-- **A slowly drifting compass is not reliably attributed.** As it drifts the
-  course check fails and blame can migrate to GPS; settled verdicts flip-flop.
-  The magnet and the noisy compass are solid; this middle case is not.
+- **A wandering compass answers `cannot_isolate` for part of the incident**,
+  and that is now the honest answer rather than a bug. While *both* heading
+  checks are failing it names the compass; while only the course check is, two
+  sensors are equally implicated and it says so. It no longer blames GPS.
+  ~~A slowly drifting compass is not reliably attributed~~ — fixed; see below.
 - **Detection latency is 15-18 s** on a drone because the course check needs a
   straight segment. The attack is caught at the next one. On the truck run it
   is 36-46 s at 3 m/s, because the road check has to wait for the reported

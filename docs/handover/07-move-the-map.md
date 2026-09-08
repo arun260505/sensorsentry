@@ -15,7 +15,7 @@ The demo now drives out of **VIT Chennai**, south-east along the
 | **Truck floor** | 2 m/s | **1 m/s** |
 | Meaconing | detected, not named | **named in 8 s** |
 | False alarms | zero | **zero** |
-| Tests / use cases / rehearsal | 66 / 17 / 10 | **66 / 17 / 10** |
+| Tests / use cases / rehearsal | 66 / 17 / 10 | **68 / 17 / 10** |
 
 **The density prediction in step 1 was right**, which is the main reason to
 keep this file: a sparser network halved the truck floor, and turned one
@@ -228,7 +228,7 @@ reaches the turn-off.
 **Nothing merges until all of these pass on the new map.**
 
 ```bash
-python -m tests.run_all            # 66 tests — one asserts the route stays on a road
+python -m tests.run_all            # one test asserts the route stays on a road
 python -m harness.usecases         # 17/17
 python -m harness.sweep            # false alarms must be ZERO — rule 3
 python -m harness.blame_check      # 8/8

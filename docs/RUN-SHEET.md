@@ -301,7 +301,7 @@ Press **fleet · attack zone**.
 
 > "Nine honest runs, no false alarms. Nine attacks, all nine caught, sixteen
 > seconds on average. It names the guilty sensor eight times out of eight, and
-> tells an attack from a breakdown seven times out of eight.
+> tells an attack from a breakdown eight times out of eight.
 >
 > Every one of those numbers comes out of a script you can run — and where it
 > fails, that is measured too, and on the same card."

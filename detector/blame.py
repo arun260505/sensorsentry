@@ -51,6 +51,7 @@ from typing import Optional
 from . import health as health_mod
 from . import profiles
 from .crossvalidate import PairScore
+from .trust import FALL_S
 
 CANNOT_ISOLATE = "cannot_isolate"
 
@@ -94,6 +95,7 @@ def assign(
     pairs: list[PairScore],
     pair_states: dict[str, str],
     health: Optional[dict[str, health_mod.SensorHealth]] = None,
+    steady: Optional[dict[str, float]] = None,
 ) -> Blame:
     """Work out which sensor is responsible for the failing checks.
 
@@ -102,6 +104,7 @@ def assign(
     sensor for one noisy sample is how a detector loses its operator's trust.
     """
     health = health or {}
+    steady = steady or {}
 
     sick = [
         name for name, report in health.items()
@@ -135,7 +138,8 @@ def assign(
         key=lambda d: max(p.ratio for p in failing if p.domain == d),
         reverse=True,
     )
-    attempts = [_within_domain(d, pairs, pair_states, health) for d in domains]
+    attempts = [_within_domain(d, pairs, pair_states, health, steady)
+                for d in domains]
 
     isolated = [b for b in attempts if b.isolated]
     if isolated:
@@ -200,8 +204,10 @@ def _within_domain(
     pairs: list[PairScore],
     pair_states: dict[str, str],
     health: dict[str, health_mod.SensorHealth],
+    steady: Optional[dict[str, float]] = None,
 ) -> Blame:
     """Blame worked out using only one domain's evidence."""
+    steady = steady or {}
     domain_failing = [
         p for p in pairs
         if p.domain == domain and pair_states.get(p.key, "OK") != "OK"
@@ -307,11 +313,47 @@ def _within_domain(
     for sensor in suspects:
         if sensor in convicted:
             continue
+        # How long an alibi has to have held to be worth anything against the
+        # accusations standing against this sensor.
+        #
+        # Not simply the accusing check's averaging window. The right bar is
+        # the one that makes the alibi *explain* the accusation: long enough
+        # that, if this sensor really had been behaving for that whole period,
+        # the failing check would have gone quiet by itself. That is its window
+        # plus the time hysteresis takes to relax — and if it is still failing
+        # after all that, the sensor being fine now is not the explanation.
+        #
+        # Using the window alone left the wandering compass still wrong, just
+        # later: four seconds of the compass agreeing with the gyro cleared it
+        # of a course failure that had been running for ninety-two, because
+        # four seconds is not enough for the course check itself to recover.
+        accused_over = max(
+            (p.window_s + FALL_S for p in domain_failing if sensor in (p.a, p.b)),
+            default=0.0,
+        )
         for pair in instant_passing:
             other = pair.b if pair.a == sensor else pair.a if pair.b == sensor else None
             if other is None or other in suspects:
                 # A pass shared with another suspect clears nobody: two liars
                 # can agree with each other.
+                continue
+            # And it has to have been passing for that long. A check that went
+            # quiet this very instant is not evidence the sensor has been
+            # behaving — only that it is behaving right now.
+            #
+            # An intermittent fault is where this bites. A compass wandering as
+            # a random walk drifts far enough to break the compass-gyro check,
+            # then wanders back through the truth on its way to being wrong
+            # again. At the moment it crosses, that check flips to OK — and it
+            # was clearing the compass of a course-check failure that had been
+            # running for **eighty-eight seconds**, on the strength of having
+            # been quiet for **zero**. GNSS was then the only suspect left and
+            # was named, at confidence 1.0, as under attack.
+            #
+            # A wandering compass is a sensor degrading; a spoofed GNSS is a
+            # crime. Sending the police to a vehicle that needs a workshop is
+            # the specific mistake this project exists to avoid making.
+            if steady.get(pair.key, float("inf")) < accused_over:
                 continue
             cleared[sensor] = f"{sensor} still agrees with {other} ({pair.label})"
             break

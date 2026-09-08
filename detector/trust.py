@@ -71,9 +71,19 @@ class Hysteresis:
     """How long the instantaneous reading has disagreed with the current
     state, in the direction it is currently disagreeing."""
 
+    steady_s: float = 0.0
+    """How long this check has been in the state it is in.
+
+    Stage 5 needs it, and for a reason that only shows up on an intermittent
+    fault. A check that has *just this instant* gone quiet is not evidence that
+    a sensor has been behaving; it is evidence that it is behaving right now.
+    Clearing a sensor on that basis, of a failure measured over the last four
+    seconds, blames whoever else was standing there."""
+
     def reset(self) -> None:
         self.state = OK
         self._held_s = 0.0
+        self.steady_s = 0.0
 
     def update(self, dt: float, instant: Optional[str]) -> str:
         """`instant` of None means the checks could not be evaluated at all.
@@ -88,7 +98,22 @@ class Hysteresis:
         With no evidence we hold: neither escalate nor relax, and keep the
         partial case intact for when the check becomes available again.
         """
-        if dt <= 0.0 or instant is None:
+        if dt <= 0.0:
+            return self.state
+
+        # Time in state is wall-clock, and counted before the unevaluable
+        # bail-out below on purpose. The settled state persists whether or not
+        # the check could be read this frame — a check that has been quiet for
+        # twenty seconds has been quiet for twenty seconds, however often we
+        # happened to look at it.
+        #
+        # Counting only evaluable frames made this a quarter of real time for
+        # anything involving GNSS, which arrives at 5 Hz against 20 Hz frames.
+        # Stage 5 reads it as seconds, so a seized odometer that used to be
+        # named in 7 s took 39: the alibi it was waiting on had been steady all
+        # along and the clock said otherwise.
+        self.steady_s += dt
+        if instant is None:
             return self.state
 
         here, there = _RANK[self.state], _RANK[instant]
@@ -109,6 +134,7 @@ class Hysteresis:
         if self._held_s >= threshold:
             self.state = instant
             self._held_s = 0.0
+            self.steady_s = 0.0
         return self.state
 
     @property
@@ -158,6 +184,13 @@ class PairTrust:
 
     def reset(self) -> None:
         self._per_pair.clear()
+
+    def steady(self) -> dict[str, float]:
+        """How long each check has held its settled state, in seconds.
+
+        Stage 5 uses it to refuse an alibi from a check that has only just
+        stopped failing."""
+        return {key: hyst.steady_s for key, hyst in self._per_pair.items()}
 
     def update(self, dt: float, pairs, health=None) -> tuple[str, dict[str, str]]:
         """Returns the overall state and each signal's settled state.

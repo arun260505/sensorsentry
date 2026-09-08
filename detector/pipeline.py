@@ -272,7 +272,8 @@ class Pipeline:
                 )
             if self.crossvalidator is not None:
                 state.gyro_heading_deg = self.crossvalidator.gyro_heading_deg
-            state.blame = blame_mod.assign(pairs, state.pair_states, report)
+            state.blame = blame_mod.assign(pairs, state.pair_states, report,
+                                           self.trust.steady())
             state.cause = self.classifier.update(pairs, state.blame, report, frame.t)
             if self.fusion is not None:
                 state.navigation = self.fusion.update(

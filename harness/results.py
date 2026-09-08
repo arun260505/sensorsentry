@@ -143,9 +143,42 @@ def build(seeds=(4242, 77, 903)) -> Card:
     card.truck_floor_mps, card.truck_floor_latency = _floor(
         "truck_clean", (2.0, 1.0, 0.5), seeds, secs=TRUCK_WINDOW_S)
 
-    card.blame_correct = "8 of 8"
-    card.cause_correct = "7 of 8"
+    card.blame_correct, card.cause_correct = _scores()
     return card
+
+
+def _scores() -> tuple[str, str]:
+    """Run the blame and cause checks and report what they actually say.
+
+    These two were written on the card as the literals "8 of 8" and "7 of 8",
+    and the second went stale the day the wandering compass was fixed: the card
+    went on under-claiming a score that had become 8 of 8, in front of judges,
+    from a string nobody would think to look at.
+
+    A results card that states a number it did not measure is the one thing on
+    it that cannot be trusted, and it is the same card we invite people to
+    re-run. So it re-runs them.
+    """
+    from . import blame_check, classify_check
+
+    blame_right = 0
+    for _name, scenario, kwargs, expect in blame_check.CASES:
+        who, _frac, _sample = blame_check.verdict(scenario, 4242, **kwargs)
+        ok = who == expect
+        # Two faults at once is genuinely ambiguous — the same allowance the
+        # check itself makes, kept in step with it rather than re-invented.
+        if not ok and expect == "cannot_isolate" and who in ("gnss", "mag",
+                                                             "cannot_isolate"):
+            ok = True
+        blame_right += 1 if ok else 0
+
+    cause_right = 0
+    for _name, scenario, kwargs, expect in classify_check.CASES:
+        got, _agree, _last = classify_check.verdict(scenario, 4242, **kwargs)
+        cause_right += 1 if got == expect else 0
+
+    return (f"{blame_right} of {len(blame_check.CASES)}",
+            f"{cause_right} of {len(classify_check.CASES)}")
 
 
 def render(card: Card) -> str:
