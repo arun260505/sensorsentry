@@ -493,7 +493,10 @@ async function takeOver() {
     return;
   }
   const ok = await post("/control/inject", { kind: "puppet", sensor: spec.sensor });
-  if (!ok) return;
+  if (!ok) {
+    setHint(`could not take the ${target} — see the message above`, true);
+    return;
+  }
   held[spec.sensor] = true;
   renderHeld();
 
@@ -512,16 +515,31 @@ async function takeOver() {
 
 async function steer(body) {
   const spec = TARGETS[target];
-  if (!held[spec.sensor]) return;
+
+  // Every failure here used to be silent: a sensor not taken over returned
+  // immediately, and a rejection from the simulator was swallowed by a bare
+  // `if (!res.ok) return`. So an arrow that did nothing looked identical to
+  // an arrow that was not wired up, and the only way to tell them apart was
+  // to read the source. Whatever goes wrong now says so on the page.
+  if (!held[spec.sensor]) {
+    setHint(`press "Take it over" first — the ${target} is not in your hands`, true);
+    return;
+  }
   try {
     const res = await fetch("/control/steer", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify(Object.assign({ target: target }, body)),
     });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) return;
+    if (!res.ok) {
+      setHint(`steer refused: ${data.error || res.status}`, true);
+      return;
+    }
     el("driveheading").textContent = spec.show(data);
-  } catch (err) { /* the run ended under us; the panel resets on its own */ }
+    setHint(`${target} → ${spec.show(data)}`);
+  } catch (err) {
+    setHint(`steer failed: ${err.message}`, true);
+  }
 }
 
 async function pressArrow(direction) {
