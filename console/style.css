@@ -283,6 +283,12 @@ main {
 .legend .lg[data-key="mag"]     .swatch { background: var(--sensor-mag); }
 .legend .lg[data-key="odom"]    .swatch { background: var(--sensor-odom); }
 .legend .lg[data-key="baro"]    .swatch { background: var(--sensor-baro); }
+/* Height is a level, not a direction: there is no honest way to draw it on a
+   plan view, so it gets a dot rather than a line and lives on the HEIGHT dial
+   instead. A line swatch would promise a track that is not there. */
+.legend .lg[data-key="baro"] .swatch {
+  width: 8px; height: 8px; border-radius: 50%; margin-left: 5px;
+}
 
 .scalebar {
   position: absolute; left: 18px; bottom: 18px;

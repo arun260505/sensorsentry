@@ -225,6 +225,8 @@ function draw() {
   drawZones(view, w, h);
   drawFleet(view, w, h);
 
+  drawSensorTracks(view, w, h);
+
   // The claimed track sits under the real one: when they overlap, what the
   // vehicle actually did should be the line you see.
   drawTrail(trails.gnss, COLOR.claimed, view, w, h, 4);
@@ -810,6 +812,119 @@ function label(x, y, text, color, strong, align) {
 }
 
 
+
+/* --- a line for every sensor ---------------------------------------------
+ *
+ * The map drew two tracks — where the GPS says we are, and where the vehicle
+ * worked out it is — while the legend named four sensors. So three of them
+ * had a colour and no line, and driving any of them changed nothing on the
+ * map. That is the complaint, and it was a fair one.
+ *
+ * Each sensor now gets the track it would have produced **if you believed
+ * only it**. Take the compass over and turn it forty degrees and its line
+ * peels off across country, because a vehicle navigating on that compass
+ * really would go that way. Freeze the wheels and their line stops dead while
+ * the others carry on.
+ *
+ * Everything here is integrated from the ordinary stream — the same readings
+ * the detector gets, and nothing else. These lines are drawn for the operator
+ * and are never fed back into any check.
+ *
+ * Height is deliberately absent. It is a level, not a direction, and there is
+ * no honest way to draw it on a plan view; it has the HEIGHT dial and its own
+ * trace instead, and the legend row says so.
+ */
+
+const TRACK_MAX = 900;          // points kept per line, about 45 s at 20 Hz
+
+let sensorTracks = { mag: [], odom: [] };
+let trackLastT = null;
+
+function clearSensorTracks() {
+  sensorTracks = { mag: [], odom: [] };
+  trackLastT = null;
+}
+
+function advance(from, headingDeg, metres) {
+  const rad = headingDeg * Math.PI / 180;      // compass bearing: 0 = north
+  return [from[0] + Math.sin(rad) * metres, from[1] + Math.cos(rad) * metres];
+}
+
+function pushSensorTracks(snapshot) {
+  const st = snapshot.state, raw = snapshot.raw;
+  if (!st || !st.witness || st.witness.lat == null) return;
+
+  const t = st.t;
+  if (trackLastT === null) {
+    // Both start where the vehicle really is, so any daylight between them
+    // afterwards is the sensor's own doing rather than a different origin.
+    const seed = toLocal(st.witness.lat, st.witness.lon);
+    sensorTracks.mag = [seed];
+    sensorTracks.odom = [seed];
+    trackLastT = t;
+    return;
+  }
+  const dt = t - trackLastT;
+  trackLastT = t;
+  if (dt <= 0 || dt > 1.0) return;             // paused, or a new run
+
+  const ownSpeed = st.witness.speed_mps || 0;
+  const ownHeading = st.gyro_heading_deg;
+  const compass = raw && raw.mag ? raw.mag.heading_deg : null;
+  const wheels = raw && raw.odom ? raw.odom.wheel_speed_mps : null;
+
+  // Believe the compass about direction, everything else about speed.
+  if (compass != null) {
+    const track = sensorTracks.mag;
+    track.push(advance(track[track.length - 1], compass, ownSpeed * dt));
+    if (track.length > TRACK_MAX) track.shift();
+  }
+  // Believe the wheels about distance, everything else about direction.
+  if (wheels != null && ownHeading != null) {
+    const track = sensorTracks.odom;
+    track.push(advance(track[track.length - 1], ownHeading, wheels * dt));
+    if (track.length > TRACK_MAX) track.shift();
+  }
+}
+
+/* Drawn under the two position tracks, thinner, so the map still reads as a
+ * map when everything agrees and the four lines lie on top of one another. */
+function drawSensorTracks(view, w, h) {
+  const lines = [
+    ["mag", SENSOR_COLOUR.mag, "compass"],
+    ["odom", SENSOR_COLOUR.odom, "wheels"],
+  ];
+  const wit = trails.witness[trails.witness.length - 1];
+
+  for (const [key, colour, name] of lines) {
+    const track = sensorTracks[key];
+    if (!track || track.length < 2) continue;
+
+    ctx.strokeStyle = colour;
+    ctx.lineWidth = 2;
+    ctx.lineJoin = "round";
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    track.forEach(([e, n], i) => {
+      const [x, y] = project(e, n, view, w, h);
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+
+    // Name the end of the line, but only once it has separated enough to be
+    // a line of its own rather than ink on top of the others.
+    const end = track[track.length - 1];
+    if (!wit) continue;
+    if (Math.hypot(end[0] - wit[0], end[1] - wit[1]) < 25) continue;
+    const [x, y] = project(end[0], end[1], view, w, h);
+    ctx.beginPath();
+    ctx.arc(x, y, 4, 0, Math.PI * 2);
+    ctx.fillStyle = colour;
+    ctx.fill();
+    label(x + 9, y + 4, `if you believed the ${name}`, colour, true);
+  }
+}
+
 /* --- the legend, one line per sensor -------------------------------------
  *
  * It used to say two things, both about position: "GPS says" and "own sensors
@@ -1294,6 +1409,7 @@ function onNewRun() {
   cam = null;
   roadsPreparedFor = null;   // a new run anchors a new origin
   clearTraces();
+  clearSensorTracks();
 }
 
 onSnapshot((snapshot) => {
@@ -1347,6 +1463,7 @@ onSnapshot((snapshot) => {
   renderPanels(snapshot);
   renderLegend();
   pushTrace(snapshot);
+  pushSensorTracks(snapshot);
   renderTraces(snapshot);
   renderProof(snapshot);
   draw();
