@@ -104,6 +104,8 @@ public class WatchService extends Service {
     // Basemap — fetched once from /basemap, then broadcast on the next tick.
     private String  basemapJson  = null;
     private boolean basemapSent  = false;
+    public static String cachedBasemapJson = null;
+    public static boolean hasNewBasemap = false;
 
     // Per-broadcast state extracted from the snapshot.
     private float  lastHeadingDeg  = Float.NaN;
@@ -394,10 +396,11 @@ public class WatchService extends Service {
         update.putExtra(EXTRA_CAUSE_REASON,  lastCauseReason);
         update.putExtra(EXTRA_SIGMA_M,       lastSigmaM);
         update.putExtra(EXTRA_RATIO,         lastRatio);
-        // Basemap: send the JSON string once (it is large); after that the
-        // Activity has it cached in the MapView and we skip it.
+        // Basemap: pass via static field to avoid TransactionTooLargeException
+        // since the JSON can be > 512KB, which drops the Intent.
         if (basemapJson != null && !basemapSent) {
-            update.putExtra(EXTRA_BASEMAP, basemapJson);
+            cachedBasemapJson = basemapJson;
+            hasNewBasemap = true;
             basemapSent = true;
         }
         sendBroadcast(update);

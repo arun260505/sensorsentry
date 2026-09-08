@@ -47,7 +47,16 @@ public class MapView extends View {
     private static final int C_CARD_WARN    = 0xFFE88840;
     private static final int C_NORTH        = 0xFFE84040;
 
+    private int      placeCount = 0;
+    private double[][] placePts;
+    private String[] placeNames;
+
+    private int      areaCount = 0;
+    private double[][][] areaPts;
+    private String[] areaKinds;
+
     // --- Paints ----------------------------------------------------------------
+    private final Paint areaPaint  = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint roadCase   = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint roadFill   = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint trailGps   = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -62,9 +71,6 @@ public class MapView extends View {
     private int        roadCount  = 0;
     private double[][][] roadPts  = null;   // [road][point][0=lat 1=lon]
     private int[]      roadRanks  = null;
-    private int        placeCount = 0;
-    private double[][] placePts   = null;
-    private String[]   placeNames = null;
     private boolean    hasMap     = false;
 
     // --- Live data -------------------------------------------------------------
@@ -135,6 +141,25 @@ public class MapView extends View {
                     placeNames[i] = p.optString("name", "");
                 }
             }
+            JSONArray as = bm.optJSONArray("areas");
+            if (as != null) {
+                areaCount = as.length();
+                areaPts = new double[areaCount][][];
+                areaKinds = new String[areaCount];
+                for (int i = 0; i < areaCount; i++) {
+                    JSONObject a = as.getJSONObject(i);
+                    areaKinds[i] = a.optString("kind", "");
+                    JSONArray pts = a.optJSONArray("points");
+                    if (pts != null) {
+                        areaPts[i] = new double[pts.length()][2];
+                        for (int j = 0; j < pts.length(); j++) {
+                            JSONArray p = pts.getJSONArray(j);
+                            areaPts[i][j][0] = p.getDouble(0);
+                            areaPts[i][j][1] = p.getDouble(1);
+                        }
+                    } else areaPts[i] = new double[0][2];
+                }
+            }
             hasMap = true;
             invalidate();
         } catch (Exception ignored) {}
@@ -174,13 +199,34 @@ public class MapView extends View {
             proj = new Proj(box, w, h, mg, zoom, panX, panY);
         }
 
-        if (hasMap)  drawRoads(canvas, proj, w, h);
+        if (hasMap) {
+            drawAreas(canvas, proj);
+            drawRoads(canvas, proj, w, h);
+        }
         drawTrail(canvas, proj, witLat, witLon, trailWit);
         drawTrail(canvas, proj, gnsLat, gnsLon, trailGps);
         drawHeads(canvas, proj);
         if (gapM > 0.5f) drawGap(canvas, proj);
 
         drawOverlays(canvas, w, h, proj);
+    }
+
+    private void drawAreas(Canvas canvas, Proj proj) {
+        if (areaPts == null) return;
+        for (int i = 0; i < areaCount; i++) {
+            if (areaPts[i] == null || areaPts[i].length < 3) continue;
+            String k = areaKinds[i];
+            int c = 0xFF0D1E18; // default
+            if ("water".equals(k) || "river".equals(k)) c = 0xFF0A1828;
+            else if ("park".equals(k) || "forest".equals(k) || "grass".equals(k) || "nature_reserve".equals(k) || "wood".equals(k) || "farmland".equals(k) || "scrub".equals(k)) c = 0xFF12281C;
+            else if ("building".equals(k) || "commercial".equals(k)) c = 0xFF16201B;
+            else if ("industrial".equals(k) || "residential".equals(k) || "retail".equals(k)) c = 0xFF141C16;
+            else continue; // don't draw unknown areas
+            
+            areaPaint.setColor(c);
+            Path path = roadPath(proj, areaPts[i]);
+            canvas.drawPath(path, areaPaint);
+        }
     }
 
     private void drawRoads(Canvas canvas, Proj proj, int w, int h) {
@@ -550,6 +596,7 @@ public class MapView extends View {
     }
 
     private void initPaints() {
+        areaPaint.setStyle(Paint.Style.FILL);
         roadCase.setStyle(Paint.Style.STROKE); roadCase.setStrokeCap(Paint.Cap.ROUND); roadCase.setStrokeJoin(Paint.Join.ROUND);
         roadFill.setStyle(Paint.Style.STROKE); roadFill.setStrokeCap(Paint.Cap.ROUND); roadFill.setStrokeJoin(Paint.Join.ROUND);
 

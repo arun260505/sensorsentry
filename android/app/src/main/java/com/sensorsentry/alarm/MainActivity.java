@@ -87,8 +87,10 @@ public class MainActivity extends Activity {
             }
 
             // --- Map overlays ----------------------------------------------
-            String basemap = intent.getStringExtra(WatchService.EXTRA_BASEMAP);
-            if (basemap != null) mapView.setBasemap(basemap);
+            if (WatchService.hasNewBasemap) {
+                mapView.setBasemap(WatchService.cachedBasemapJson);
+                WatchService.hasNewBasemap = false;
+            }
 
             String vehicleId = intent.getStringExtra(WatchService.EXTRA_VEHICLE_ID);
             if (vehicleId != null && !vehicleId.isEmpty()) mapView.setVehicleId(vehicleId);
