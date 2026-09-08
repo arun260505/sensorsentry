@@ -140,7 +140,12 @@ from Start, or the lorry is still pulling away.
 
 ### They drive the GPS · caught in ~10 s
 
-`GPS` → arrows.
+`GPS` → **Take it over** → press the on-screen **▲ ◀ ▶ ▼** pad.
+
+*(Use the pad, not the keyboard. Arrow keys only reach whichever window has
+focus, and with the display open in its own window that is usually the display
+— which has no controls on purpose. The pad does not care what is in front,
+and the audience can see what you are pressing.)*
 
 > "You are the GPS now. The lorry is still driving its real route — only the
 > position it reports is doing what you say."
@@ -304,6 +309,7 @@ Press **fleet · attack zone**.
 | Map looks wrong, buttons do nothing | A stale server. Kill everything, restart, reload. |
 | A target is struck through | Wrong vehicle — a lorry has no barometer, a drone no wheels. |
 | Nothing happens when attacked | Acted too early. Give it twenty seconds from Start. |
+| Keyboard arrows do nothing | The other window has focus. Use the on-screen pad, or click the controls page once first. |
 | Verdict says *not sure yet* | Often correct. Wait — several settle after a few seconds. |
 | It all falls over | **scripted runs** → `truck · theft`. Pre-built, same engine, still not hardcoded. |
 
