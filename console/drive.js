@@ -616,6 +616,28 @@ function initAttackPanel() {
                             : "click this window to use arrow keys";
     foot.style.color = live ? "" : "var(--alert)";
   };
+  /* Opening the display should not cost this window its keyboard.
+   *
+   * The header link is target="_blank", so the browser opens the display and
+   * focuses it — and every arrow key afterwards goes to the screen that has
+   * no controls by design. Opening it by script instead lets this window ask
+   * for the keyboard straight back, which is the behaviour anyone would
+   * expect: the display is for looking at, this is for driving.
+   *
+   * If the browser refuses to hand focus back, nothing is lost — the pad
+   * still works and the footer says which window is listening.
+   */
+  const displayLink = document.querySelector(".drivelink");
+  if (displayLink) {
+    displayLink.addEventListener("click", (event) => {
+      event.preventDefault();
+      // A name, so pressing it twice reuses the window rather than stacking
+      // another copy of the display on top of the last one.
+      window.open(displayLink.href, "sensorsentry-display");
+      setTimeout(() => { window.focus(); keyState(); }, 200);
+    });
+  }
+
   window.addEventListener("focus", keyState);
   window.addEventListener("blur", keyState);
   document.addEventListener("visibilitychange", keyState);
