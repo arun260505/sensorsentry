@@ -597,6 +597,30 @@ function initAttackPanel() {
     if (event.key === " ") { event.preventDefault(); steer(TARGETS[target].stop()); }
   });
 
+  /* Say whether the keyboard is live.
+   *
+   * A keyboard reaches exactly one window, and the display opens in its own —
+   * so after clicking that, arrow keys go to a page that deliberately has no
+   * controls, and the pad on screen keeps working. That combination reads as
+   * "the arrows are broken" when it is really "the other window is listening".
+   *
+   * Rather than have the display forward keystrokes, which would make it a
+   * control surface and cost us the one thing we say about it out loud, the
+   * page states which it is. Clicking anywhere here takes the keyboard back.
+   */
+  const keyState = () => {
+    const foot = document.querySelector(".drivefoot span");
+    if (!foot) return;
+    const live = document.hasFocus();
+    foot.textContent = live ? "arrow keys are live here"
+                            : "click this window to use arrow keys";
+    foot.style.color = live ? "" : "var(--alert)";
+  };
+  window.addEventListener("focus", keyState);
+  window.addEventListener("blur", keyState);
+  document.addEventListener("visibilitychange", keyState);
+  keyState();
+
   // And hand focus back once a slider has been set, so the arrows are driving
   // the sensor rather than nudging the slider they were last touching.
   for (const slider of document.querySelectorAll('#attackpanel input[type="range"]')) {
