@@ -76,6 +76,14 @@
   --map-road-case:  #bfb298;
   --map-road-text:  #6f6857;
   --map-building:   #ded6c6;
+  --map-built-edge: #cec4b0;
+  --map-water:      #b9d6e2;
+  --map-water-edge: #9dc2d2;
+  --map-green:      #dfe6cd;
+  --map-sand:       #efe6cd;
+  --map-built:      #ece7db;
+  --map-campus:     #e6e2ee;
+  --map-rail:       #b3a894;
   --map-chip:       rgba(255, 255, 255, .85);
   --map-alert-wash: rgba(179, 53, 42, .20);
   --map-alert-fade: rgba(179, 53, 42, 0);
@@ -140,6 +148,16 @@
   --map-road-case:  #1a242c;   /* darker than the road, or every road haloes */
   --map-road-text:  #8fa3b1;
   --map-building:   #2a3742;
+  --map-built-edge: #35444f;
+  /* Water at night is darker than the land, not lighter — a pale lake on a
+     dark map reads as a hole punched in it. */
+  --map-water:      #16303f;
+  --map-water-edge: #1e4356;
+  --map-green:      #1a2a24;
+  --map-sand:       #2b2a22;
+  --map-built:      #171f26;
+  --map-campus:     #22222f;
+  --map-rail:       #3d4a55;
   --map-chip:       rgba(20, 28, 35, .88);
   --map-alert-wash: rgba(255, 92, 77, .22);
   --map-alert-fade: rgba(255, 92, 77, 0);

@@ -24,7 +24,7 @@ let latest = null;
    the name — stripping the prefix left a "clean" button for the drone and
    another for the truck, side by side and indistinguishable. */
 const SCENARIOS = {
-  truck_clean:     ["Start · truck",     "the Sriperumbudur delivery"],
+  truck_clean:     ["Start · truck",     "the Kelambakkam delivery"],
   drone_clean:     ["Start · drone",     "a survey flight"],
   drone_manoeuvre: ["drone · manoeuvre", "hard flying, no attack"],
   drone_walkoff:   ["drone · walkoff",   "GPS spoofing"],

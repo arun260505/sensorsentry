@@ -2,7 +2,9 @@
 roads.py — Small road network for the truck scenarios.
 
 A road is a polyline — a list of (east, north) vertices in local ENU metres.
-Straight-line segments are fine. No curves, no map data, nothing downloaded.
+The vertices are real OpenStreetMap geometry, baked to a file once by
+`bake_map.py` and read from disk: nothing is downloaded at run time, so the
+demo works with the wifi off.
 
 The truck follows waypoints (vehicle.py); this module exists so the detector
 can cross-check a reported position against the road network. A spoofed GPS
@@ -18,13 +20,15 @@ import math
 
 
 # ---------------------------------------------------------------------------
-# Road network — ENU metres from the Coimbatore origin
+# Road network — ENU metres from the Mambakkam junction
 # ---------------------------------------------------------------------------
 from .chennai import PLACES, ROADS  # noqa: F401  (re-exported)
 
 # The network lives in chennai.py so the corridor can be swapped for another
-# city without touching the geometry code below. A buyer in Coimbatore should
-# see Coimbatore.
+# place without touching the geometry code below — which is exactly what
+# happened when the demo moved from Sriperumbudur to the road outside VIT
+# Chennai: an origin, a road name and a re-bake, and nothing here changed.
+# A buyer in Coimbatore should see Coimbatore.
 
 def _dist_point_to_segment(px, py, ax, ay, bx, by):
     """Distance from point (px, py) to the line segment (ax, ay)-(bx, by)."""

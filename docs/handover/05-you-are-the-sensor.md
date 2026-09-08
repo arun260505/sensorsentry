@@ -9,8 +9,8 @@
 Task 4 let a judge *nudge* a real sensor. This one hands them the sensor
 outright.
 
-Press **Start**. The truck pulls away and drives its real route — the actual
-Sriperumbudur to Oragadam delivery, exactly as before. But the GPS no longer
+Press **Start**. The truck pulls away and drives its real route — out of VIT
+Chennai to the Mambakkam junction, exactly as before. But the GPS no longer
 follows it. **The GPS is now the judge.** Whatever they press, the GPS reports.
 Press up, the reported position goes north. Press nothing, it sits exactly
 where it is while the truck drives away from it.

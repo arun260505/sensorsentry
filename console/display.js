@@ -30,6 +30,14 @@ let COLOR = themeColours({
   roadCase:  "--map-road-case",
   roadText:  "--map-road-text",
   building:  "--map-building",
+  builtEdge: "--map-built-edge",
+  water:     "--map-water",
+  waterEdge: "--map-water-edge",
+  green:     "--map-green",
+  sand:      "--map-sand",
+  built:     "--map-built",
+  campus:    "--map-campus",
+  rail:      "--map-rail",
   chip:      "--map-chip",
   wash:      "--map-alert-wash",
   fade:      "--map-alert-fade",
@@ -251,7 +259,7 @@ function gridStep(scale) {
  * here earns its place against one of those.
  */
 
-let basemap = { roads: [], places: [] };
+let basemap = { roads: [], areas: [], rails: [], places: [] };
 let tick = 0;                       // drives the slow pulse on live elements
 let lastDraw = 0;
 
@@ -264,12 +272,14 @@ function draw() {
 
   const view = computeView(w, h);
   prepareRoads();
+  prepareAreas();
 
   // A map has either a graticule or streets, never both. When the baked road
   // network is there it is the ground; the grid and the range rings only come
   // out as the fallback for when it is not, where a bare canvas would leave
   // no sense of distance at all.
   if (basemap.roads.length) {
+    drawAreas(view, w, h);
     drawRoads(view, w, h);
   } else {
     drawGrid(w, h, view);
@@ -526,6 +536,7 @@ function roadRanks(scale) {
  * view is skipped whole rather than point by point. Keyed on the reference
  * object, which is replaced when a run starts, so a new run re-projects. */
 let roadsPreparedFor = null;
+let areasPreparedFor = null;
 
 function prepareRoads() {
   if (!reference || !basemap.roads.length) return;
@@ -543,6 +554,117 @@ function prepareRoads() {
     road.bbox = [minE, minN, maxE, maxN];
   }
   roadsPreparedFor = reference;
+}
+
+/* Areas and rails get the same treatment as the roads: projected once per run,
+ * with a bounding box, because they are just as static and there are hundreds
+ * of them. Re-projecting them every frame would undo the saving that made the
+ * paint loop affordable in the first place. */
+function prepareAreas() {
+  if (!reference) return;
+  if (areasPreparedFor === reference) return;
+  for (const shape of (basemap.areas || []).concat(basemap.rails || [])) {
+    const local = shape.points.map(([lat, lon]) => toLocal(lat, lon));
+    let minE = Infinity, maxE = -Infinity, minN = Infinity, maxN = -Infinity;
+    for (const [e, n] of local) {
+      if (e < minE) minE = e;
+      if (e > maxE) maxE = e;
+      if (n < minN) minN = n;
+      if (n > maxN) maxN = n;
+    }
+    shape.local = local;
+    shape.bbox = [minE, minN, maxE, maxN];
+    shape.span = Math.max(maxE - minE, maxN - minN);
+  }
+  areasPreparedFor = reference;
+}
+
+const AREA_FILL = {
+  water: "water", green: "green", sand: "sand",
+  built: "built", campus: "campus", building: "building",
+};
+
+/* Drawn before the roads and long before the trails, so nothing here can
+ * paint over the two tracks — which are the only things on this map that
+ * anybody actually has to see. */
+function drawAreas(view, w, h) {
+  if (!basemap.areas || !basemap.areas.length) return;
+  if (!basemap.areas[0].local) return;
+
+  const margin = 40;
+  const halfW = (w / 2 + margin) / view.scale;
+  const halfH = (h / 2 + margin) / view.scale;
+  const inView = (b) => b[0] <= view.cx + halfW && b[2] >= view.cx - halfW
+                     && b[1] <= view.cy + halfH && b[3] >= view.cy - halfH;
+
+  // A shape narrower than a couple of pixels is noise, not information. At
+  // fit-everything zoom that silently drops every building, which is right:
+  // eighty three-pixel smudges do not tell you anything and they compete with
+  // the thing that does.
+  const tooSmall = 3 / view.scale;
+
+  const traceRing = (shape) => {
+    ctx.beginPath();
+    let first = true;
+    for (const [e, n] of shape.local) {
+      const [x, y] = project(e, n, view, w, h);
+      if (first) { ctx.moveTo(x, y); first = false; } else { ctx.lineTo(x, y); }
+    }
+    ctx.closePath();
+  };
+
+  // Washes first, biggest first (the baker sorted them), then water on top of
+  // land, then buildings on top of everything — the order a paper map uses.
+  for (const pass of ["land", "water", "building"]) {
+    for (const shape of basemap.areas) {
+      const kind = AREA_FILL[shape.kind];
+      if (!kind) continue;
+      if (pass === "water" ? kind !== "water"
+        : pass === "building" ? kind !== "building"
+        : (kind === "water" || kind === "building")) continue;
+      if (shape.span < tooSmall || !inView(shape.bbox)) continue;
+
+      traceRing(shape);
+      ctx.fillStyle = COLOR[kind];
+      ctx.fill();
+      if (kind === "water" || kind === "building") {
+        ctx.strokeStyle = kind === "water" ? COLOR.waterEdge : COLOR.builtEdge;
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      }
+    }
+  }
+
+  // Names, for the ones big enough on screen to carry one. Measured in pixels
+  // rather than in hectares, so the same rule works at every zoom: a lake
+  // fills the frame at follow zoom and is a thumbnail at whole-run, and it
+  // should be named in the first case and not the second.
+  for (const shape of basemap.areas) {
+    if (!shape.name || !inView(shape.bbox)) continue;
+    if (shape.span * view.scale < 70) continue;
+    const cx = (shape.bbox[0] + shape.bbox[2]) / 2;
+    const cy = (shape.bbox[1] + shape.bbox[3]) / 2;
+    const [x, y] = project(cx, cy, view, w, h);
+    if (x < 0 || x > w || y < 0 || y > h) continue;
+    const text = shape.name.length > 26
+      ? shape.name.slice(0, 24) + "…" : shape.name;
+    label(x, y, text, COLOR.roadText, false, "center", PRIORITY.area);
+  }
+
+  for (const rail of basemap.rails || []) {
+    if (!rail.local || !inView(rail.bbox)) continue;
+    ctx.strokeStyle = COLOR.rail;
+    ctx.lineWidth = 2;
+    ctx.setLineDash([6, 5]);
+    ctx.beginPath();
+    let on = false;
+    for (const [e, n] of rail.local) {
+      const [x, y] = project(e, n, view, w, h);
+      if (!on) { ctx.moveTo(x, y); on = true; } else { ctx.lineTo(x, y); }
+    }
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
 }
 
 function drawRoads(view, w, h) {
@@ -903,6 +1025,9 @@ const PRIORITY = {
   fleet:       50,
   track:       45,
   compass:     40,
+  // Bottom of the pile on purpose. A place name is context; it must never be
+  // the thing that pushes the separation figure off the map.
+  area:        20,
 };
 
 let labelQueue = [];
@@ -1792,9 +1917,13 @@ async function loadBasemap() {
   // nothing in the console saying why.
   basemap = {
     roads: (data && Array.isArray(data.roads)) ? data.roads : [],
+    areas: (data && Array.isArray(data.areas)) ? data.areas : [],
+    rails: (data && Array.isArray(data.rails)) ? data.rails : [],
     places: (data && Array.isArray(data.places)) ? data.places : [],
     route: (data && Array.isArray(data.route)) ? data.route : [],
   };
+  // A map baked before areas existed has none, and must still draw.
+  areasPreparedFor = null;
   draw();
 }
 
@@ -2270,6 +2399,14 @@ function refreshColours() {
     roadCase:  "--map-road-case",
     roadText:  "--map-road-text",
     building:  "--map-building",
+    builtEdge: "--map-built-edge",
+    water:     "--map-water",
+    waterEdge: "--map-water-edge",
+    green:     "--map-green",
+    sand:      "--map-sand",
+    built:     "--map-built",
+    campus:    "--map-campus",
+    rail:      "--map-rail",
     chip:      "--map-chip",
     wash:      "--map-alert-wash",
     fade:      "--map-alert-fade",

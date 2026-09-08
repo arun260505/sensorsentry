@@ -48,9 +48,9 @@ def _along_route(*, stop_at: float | None = None) -> list:
     """Waypoints that follow the real carriageway.
 
     The route comes out of `chennai.py`, which reads it from the baked
-    OpenStreetMap geometry — so the lorry drives the actual centreline of
-    NH-48 and the actual road it turns onto, rather than a drawn
-    approximation. That matters beyond looks: the detector's road check
+    OpenStreetMap geometry — so the lorry drives the actual centreline of the
+    Vandalur - Kelambakkam Road and the actual road it turns onto, rather than
+    a drawn approximation. That matters beyond looks: the detector's road check
     measures against those same roads, and a truck driving a line the map does
     not have would fail a check it should pass.
 
@@ -288,12 +288,12 @@ def drone_magnet():
 # ---------------------------------------------------------------------------
 def truck_clean():
     """
-    A container run down NH-48, and nothing goes wrong.
+    A container run down the Vandalur - Kelambakkam Road, and nothing goes
+    wrong.
 
-    Real geometry: in along the highway from the Chennai side, slowing for the
-    Sriperumbudur junction where NH-48 meets the old Chennai-Bangalore road,
-    turning off, and running south-west to the estates. One signal stop on the
-    way.
+    Real geometry: out of VIT Chennai heading south-east, slowing for the
+    Mambakkam junction where the Medavakkam road crosses, turning off, and
+    running south away from the traffic. One signal stop on the way.
 
     No attack. Three minutes must pass without a single alarm. This is the
     zero-false-alarm gate for trucks, and it is also the run an operator will
@@ -307,9 +307,9 @@ def truck_theft():
     """
     The same run, and somebody is spoofing the tracker.
 
-    The lorry really does turn off at Sriperumbudur and carry on toward the
-    estates. The reported position keeps running down NH-48 at road speed, so
-    the control room watches a container making normal progress toward a
+    The lorry really does turn off at Mambakkam and carry on south. The
+    reported position keeps running down the Kelambakkam road at road speed,
+    so the control room watches a container making normal progress toward a
     delivery that is not happening.
 
     This is how the theft works, and why the tracking system is no help:
@@ -345,7 +345,7 @@ def truck_theft():
 # comparison could be described but not shown.
 # ---------------------------------------------------------------------------
 def truck_walkoff():
-    """The Sriperumbudur run, with a 3 m/s walk-off from t=35 s.
+    """The Kelambakkam run, with a 3 m/s walk-off from t=35 s.
 
     Slower to catch than the drone's, and worth saying so: a lorry travels
     more slowly, so the same sideways drag swings its course over the ground
