@@ -99,9 +99,31 @@ class Rehearsal:
         time.sleep(1.0)
 
     def start(self, scenario: str) -> None:
+        """Clear, start, and wait until the new run is genuinely being judged.
+
+        A fixed sleep is not enough, and the way it fails is the worst way
+        available: this harness exists to say whether a build is safe to show,
+        and if it reports a false alarm on a clean run because the *previous*
+        beat's alert was still on screen, the operator goes looking for a fault
+        that is not there — or, worse, learns to shrug at a red gate.
+
+        So wait for the new run's own frames, and for the verdict to be OK,
+        before starting any clock. Both, because a run can be streaming
+        while the state still carries the last incident.
+        """
         self.reset()
         post("/control/start", {"scenario": scenario})
         time.sleep(SETTLE_S)
+
+        deadline = time.time() + 12.0
+        while time.time() < deadline:
+            state = vehicle_state()
+            if state is not None and state.get("state") == "OK" \
+                    and (state.get("t") or 0.0) > 0.5:
+                return
+            time.sleep(0.3)
+        # Fall through rather than raise: a beat reporting what it actually
+        # saw is more use than the harness dying halfway down the run sheet.
 
 
 def scene_quiet(run: Rehearsal, scenario: str, watch_s: float = 25.0) -> None:
@@ -137,7 +159,30 @@ def scene_parked(run: Rehearsal) -> None:
                              "strength": 4.0, "bearing_deg": 90.0})
     time.sleep(8)
     post("/control/hold", {"hold": True})
-    time.sleep(14)
+
+    # Wait for the wheels to reach zero — that is the event — and then look at
+    # once. Measured over three runs: the wheels are at exactly 0.00 within
+    # eight seconds of the hold, while the dead-reckoned estimate bottoms out
+    # around 0.4-1.2 m/s and then **climbs slowly back**, because that is
+    # accelerometer bias integrating with nothing to correct it.
+    #
+    #   since hold      8s     30s
+    #   wheels        0.00    0.00
+    #   own estimate  1.16    1.75
+    #
+    # So waiting longer makes this beat *less* likely to pass, which is how a
+    # fixed fourteen-second sleep failed at 2.04 against a 2.0 threshold — and
+    # why the first attempt at fixing it, waiting even longer, was exactly
+    # backwards. Same on stage: make the point promptly. If the parked lorry
+    # is left on screen for a minute, our own estimate visibly creeps, which is
+    # the dead-reckoning drift already on the card and worth naming rather than
+    # being caught by.
+    deadline = time.time() + 20.0
+    while time.time() < deadline:
+        wheels_now = (snapshot().get("raw") or {}).get("odom") or {}
+        if (wheels_now.get("wheel_speed_mps") or 1.0) < 0.1:
+            break
+        time.sleep(0.3)
 
     state = vehicle_state()
     if state is None:

@@ -40,6 +40,7 @@ from pathlib import Path
 from typing import Optional
 
 from . import narrate
+from .blame import CANNOT_ISOLATE
 from .evidence import Incident, read
 
 _SENSOR = {"gnss": "the GPS receiver", "imu": "the motion sensor",
@@ -110,8 +111,21 @@ def compose(path: Path, *, enabled: bool = True,
         )
 
     first = alerts[0]
-    guilty = _SENSOR.get(first.guilty or "", first.guilty or "a sensor")
     cause = first.cause or "unclassified"
+
+    # `cannot_isolate` is not a sensor. It is the system declining to name one,
+    # which is the most careful thing it does — and writing it into sentences
+    # shaped for a sensor name produced "unclassified affecting cannot_isolate"
+    # and "the vehicle stopped using cannot_isolate". Rule 5 read as a crash.
+    #
+    # An incident nobody could attribute is still worth a report: it says what
+    # was seen, what was ruled out, and why the evidence would not support an
+    # accusation. Saying that plainly is more credible than a confident guess,
+    # and infinitely more credible than prose that looks broken.
+    if not first.guilty or first.guilty == CANNOT_ISOLATE:
+        return _unattributed(vehicle, first, frames, incidents)
+
+    guilty = _SENSOR.get(first.guilty, first.guilty)
     # To the end of the record, not to the last change of verdict. The alert
     # is usually the last thing that changes, so measuring between verdicts
     # reported every incident as lasting zero seconds.
@@ -145,5 +159,62 @@ def compose(path: Path, *, enabled: bool = True,
 
     return Report(
         title=f"{vehicle} — {cause} affecting {guilty}",
+        body="\n".join(lines),
+    )
+
+
+def _duration(first, frames, incidents) -> tuple[float, bool]:
+    """How long the condition lasted, and whether it had cleared."""
+    ended = frames[-1].get("t", first.t) if frames else first.t
+    recovered = [i for i in incidents if i.t > first.t and i.state == "OK"]
+    return (recovered[0].t if recovered else ended) - first.t, bool(recovered)
+
+
+def _unattributed(vehicle: str, first, frames, incidents) -> Report:
+    """The write-up for an incident the detector would not pin on a sensor.
+
+    Deliberately not apologetic. Two sensors in genuine conflict, with nothing
+    to break the tie, is a real finding — the alert is correct, the refusal to
+    name a culprit is correct, and an operator told plainly which sensors are
+    in question can still act. Naming one of them on a coin-toss would send a
+    mechanic to the wrong part of the lorry, or the police to a vehicle that
+    only needs a workshop.
+    """
+    duration, recovered = _duration(first, frames, incidents)
+    suspects = [_SENSOR.get(s, s) for s in first.suspects
+                if s != CANNOT_ISOLATE]
+
+    lines = [
+        f"At {first.t:.0f} seconds into the run, vehicle {vehicle} detected a "
+        f"disagreement between its sensors that it could not attribute to any "
+        f"one of them.",
+        "",
+        "The alert stands: the readings genuinely conflict. What the evidence "
+        "does not support is an accusation, so none was made.",
+    ]
+    if suspects:
+        lines += ["", f"In question: {', '.join(suspects)}. Each is implicated "
+                      f"by the failing checks and none is contradicted by "
+                      f"more of them than the others."]
+    lines += ["", "What was observed:"]
+    lines += [f"  - {line}" for line in first.evidence] or ["  - (no detail recorded)"]
+    lines += [
+        "",
+        f"The condition lasted about {duration:.0f} seconds"
+        + ("" if recovered else " and had not cleared when the record ended")
+        + ". The full sensor record for this run is stored and can be replayed "
+        "through the detector to reproduce this conclusion independently.",
+        "",
+        "Suggested next steps:",
+        "  1. Treat the vehicle's position as unverified until the "
+        "disagreement clears.",
+        "  2. Inspect the sensors named above; a bench check will separate "
+        "them where the vehicle's own cross-checks could not.",
+        "  3. If other vehicles in the same area report at the same time, "
+        "treat it as interference or an attack rather than a fault.",
+    ]
+
+    return Report(
+        title=f"{vehicle} — disagreement, sensor not identified",
         body="\n".join(lines),
     )
