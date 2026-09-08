@@ -28,7 +28,7 @@ is running the fleet:
 
 | Button | What runs |
 |---|---|
-| **Start · truck** | the Sriperumbudur → Oragadam container delivery |
+| **Start · truck** | the VIT Chennai → Mambakkam container delivery |
 | **Start · drone** | a survey flight |
 
 Everything below is done to a run already in progress. Let it settle for

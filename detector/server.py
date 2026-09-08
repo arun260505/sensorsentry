@@ -411,6 +411,18 @@ class Handler(BaseHTTPRequestHandler):
                 route = data.get("route", {})
                 return {
                     "roads": roads,
+                    # Buildings, water and landuse. Not decoration: roads on
+                    # their own read as a diagram, and a diagram is what made
+                    # this look like a drawing of a demo rather than a demo.
+                    "areas": [
+                        {"kind": a["kind"], "name": a.get("name", ""),
+                         "points": [to_llh(e, n) for e, n in a["points"]]}
+                        for a in data.get("areas", [])
+                    ],
+                    "rails": [
+                        {"points": [to_llh(e, n) for e, n in r["points"]]}
+                        for r in data.get("rails", [])
+                    ],
                     "places": self._places(to_llh),
                     "route": [to_llh(e, n) for e, n in
                               route.get("approach", []) + route.get("leg", [])],

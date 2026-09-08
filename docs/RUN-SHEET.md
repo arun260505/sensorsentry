@@ -112,10 +112,10 @@ whether this build is safe to show.
 
 Press **Start · truck**.
 
-> "This is the Chennai Port container run, the last leg — NH-48 into the
-> Sriperumbudur junction, then off toward the estates. Those are the real
-> roads; the map is OpenStreetMap data, and the lorry is driving the actual
-> carriageway."
+> "That is the road outside this building. The lorry is pulling out of VIT,
+> heading down the Kelambakkam road to the Mambakkam junction, and turning off
+> south. Those are the real roads — the map is OpenStreetMap data, and the
+> lorry is driving the actual carriageway you drove in on."
 
 Point at the legend.
 
@@ -238,10 +238,16 @@ Set the drift slider to **0.5 m/s** and take the GPS.
 
 Two more, if they are engineers:
 
-> "A dense road network helps the attacker. On the real Chennai corridor there
-> are a hundred roads, so a drifting position keeps landing on one of them —
-> we catch at two metres a second here where we caught one on a sparser map.
-> That only became visible when we stopped drawing our own roads."
+> "A dense road network helps the attacker, and we have measured it in both
+> directions. On the Sriperumbudur corridor there are a hundred roads a
+> drifting position can keep landing on, and our truck floor was two metres a
+> second. On this road there are thirty, and it is one. The same thing that
+> costs us there wins us a replay attack here — a recorded signal played back
+> lands off the carriageway, and we name the receiver in eight seconds where
+> on the denser map we could only say something was wrong.
+>
+> Which means the honest way to quote our floor is with the road it was
+> measured on."
 
 > "And a height spoof we detect but cannot attribute. Only two things on that
 > aircraft measure height, so one disagreement between them cannot say which

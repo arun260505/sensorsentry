@@ -167,27 +167,77 @@ python -m harness.send_fleet                  # 4 vehicles, 3 attacked
 | False alarms, 9 honest flights and drives incl. hard manoeuvres | **zero** |
 | Walk-off 2 / 3 / 5 m/s | caught 15-18 s after onset |
 | Drone floor: 2 m/s | caught in 18 s; below that, **not detected** |
-| Truck floor: 2 m/s | caught in 37 s |
+| Truck floor: 1 m/s | caught in 130 s; 3 m/s in 36-46 s |
 | Magnet on compass, 25 deg+ | caught 2 s after onset |
 | Names the guilty sensor | 8 of 8 |
 | Attack / fault / interference | 7 of 8 |
 | Drops the liar, keeps flying | 34 m from truth vs GPS's 91 m |
 | Fleet locates the attacker | 3 hit -> one zone, 4th warned |
-| Truck: honest Sriperumbudur run | silent |
-| Truck: walk-off 3.5 m/s | alerts at 47 s; names gnss/attack at 64-70 s |
+| Truck: honest Kelambakkam run | silent |
+| Truck: walk-off 3 m/s | names gnss/attack at 36-46 s |
+| Meaconing / replay | named gnss in 8 s |
 | Incident replays to identical verdict | yes |
 
-**The truck floor moved from 1 m/s to 2 when the map became real, and the
-reason is worth saying out loud rather than hiding.** On the drawn network
-there were three roads, so a spoofed position left the carriageway quickly and
-the road check caught a 1 m/s crawl given long enough. The real corridor has a
-hundred roads, and a slowly drifting position keeps landing on one of them —
-so the same check catches at 2 m/s instead, though it now catches *much*
-faster when it does: 37 s against 159 s.
-
 **A dense road network helps the attacker and a sparse one helps us.** That is
-a real property of the method, it only became visible on real geometry, and it
-is exactly the kind of thing a buyer's engineer will ask about. Say it first.
+a real property of the method, not a quirk of one map, and it is exactly the
+kind of thing a buyer's engineer will ask about. Say it first — then say that
+we have measured it in both directions, because we have:
+
+| | drawn network, 3 roads | Sriperumbudur, 105 | VIT-Kelambakkam, 43 |
+|---|---|---|---|
+| Truck floor | 1 m/s | 2 m/s | **1 m/s** |
+| Caught at that floor | 159 s | 37 s | 130 s |
+| Meaconing | — | detected, **not named** | **named in 8 s** |
+
+A slowly drifting position keeps landing on *some* road when there are a
+hundred of them, and being on *a* road is not evidence of being on the right
+one. With thirty it runs out of carriageway, the road check fails, and blame
+convicts the receiver outright — which is why the same replay attack that
+could only be detected on the old corridor is named on this one.
+
+**The honest trade, and do not hide it:** the floor halved, but the slowest
+attack now takes 130 s to prove rather than 37 s at twice the speed. We catch
+slower attackers; we take longer to be sure about them.
+
+### The map draws what is between the roads, not only the roads
+
+Roads on their own are a diagram. `bake_map.py` takes a second, optional
+extract — buildings, water, landuse — and bakes it into the same offline file:
+**1579 roads, 462 buildings, 61 water bodies, 29 green areas, 74 named
+landmarks**, 630 KB, still read from disk with the wifi off.
+
+The corridor turned out to carry the **VIT campus itself**, **Maambakkam Lake**
+a kilometre from the junction, and the **TAFE and TAL works** at the far end —
+which is worth saying out loud, because it means this really is a lorry
+corridor and not just a road we liked the look of. Names come from OSM, not
+from a list somebody typed.
+
+Three rules that keep it from getting in the way:
+
+- **Detail is decided in pixels, not hectares.** Buildings vanish below 3 px
+  and names below 70 px, so whole-run zoom stays clean and follow zoom becomes
+  a street map. One rule, every scale.
+- **Place names are bottom priority (20).** A lake name must never be what
+  pushes the separation figure off the map.
+- **Draw order is areas, then roads, then trails.** Nothing filled can paint
+  over the two tracks, which are the only things on the map anyone must see.
+
+**`HALF_BOX_M` is a measured number, not a chosen one.** It was 2600 while the
+route itself ends 2544 m out — 56 m of margin — so a judge steering the spoofed
+GPS drove it straight off into blank canvas. It is 3500 now, which leaves 2 km
+of real map beyond the end of a hard 90-second drive.
+
+Raising it is **not free, and the cost lands on detection**: every road in the
+box is a road the check must honour. 2600 m gives the check 30 roads, 3500
+gives 43, 4000 gives 75 — most of the way back to the hundred that cost a
+metre per second at Sriperumbudur. At 3500 the sweep came back *identical*,
+because the added roads sit 2.6-3.5 km out while a walk-off drags the position
+only a few hundred metres. Measured, not assumed — and it would not have held
+at 4000.
+
+**Drawing and checking use the same box, deliberately.** Drawing roads we do
+not check would put a spoofed position visibly on a road while the console
+called it off-road, and a judge would be right to ask.
 
 ### Owners
 
@@ -379,7 +429,8 @@ moving them in the stylesheet cannot silently start hiding labels again.
 
 ### The map follows the vehicle now, and there are two view modes
 
-Fitting the whole 1331 m route every frame is what produced 0.29 px/m. The
+Fitting the whole route every frame (1331 m then, 3960 m now) is what produced
+0.29 px/m. The
 camera now follows the vehicle at **4 px/m** and pulls back only as far as it
 must to keep the spoofed position on screen beside the real one — so the
 harder the attacker drags, the wider the shot. It frames itself.
@@ -399,7 +450,8 @@ vehicle switch the camera back to fit-everything. Idle does too.
 
 **The inset is not decoration.** At 4 px/m the map covers ~300 m and a lorry
 crosses it in twenty seconds, while the truck walk-off does not settle to a
-verdict until 64-70 s. Without the whole run in the corner, the place where
+verdict for the better part of a minute. Without the whole run in the corner,
+the place where
 the two tracks separated is hundreds of metres off the edge by the time the
 console names the sensor — the evidence gone exactly when the answer arrives.
 
@@ -428,6 +480,9 @@ it out loud instead.
   truck. Slower than our own drift. At 1 m/s an attacker needs a quarter of an
   hour to move a lorry a kilometre off its route — which is the honest way to
   put it: we do not stop the attack, we make it slow enough to notice.
+- **And the truck floor depends on the map, not only on us.** 1 m/s here, 2 m/s
+  on the denser Sriperumbudur corridor. Quote the floor with the corridor it
+  was measured on, or it is not a number.
 - **Dead reckoning buys about 40 seconds**, not minutes. Past that our drift
   overtakes even a 3 m/s spoof, which is why the console counts down and then
   says "stop or land".
@@ -436,11 +491,13 @@ it out loud instead.
   The magnet and the noisy compass are solid; this middle case is not.
 - **Detection latency is 15-18 s** on a drone because the course check needs a
   straight segment. The attack is caught at the next one. On the truck run it
-  is 47 s, because the road check has to wait for the reported position to walk
-  the full 45 m tolerance off the carriageway.
-- **The truck alerts about 20 s before it can name the sensor.** From 47 s the
-  console reads `cannot_isolate`; the verdict settles to `gnss / attack` around
-  64-70 s. This is rule 5 behaving correctly, not a bug — but **narrate it**, or
+  is 36-46 s at 3 m/s, because the road check has to wait for the reported
+  position to walk the full 45 m tolerance off the carriageway.
+- **The truck alerts before it can name the sensor.** The console reads
+  `cannot_isolate` first and the verdict settles to `gnss / attack` a few
+  seconds later — 66 s in the last dress rehearsal, against a 3 m/s walk-off
+  starting at 35 s. This is rule 5 behaving correctly, not a bug — but
+  **narrate it**, or
   it looks like one. "It is telling you something is wrong the moment it knows,
   and refusing to name a culprit until the evidence supports one." A judge who
   sees that gap unexplained reads it as flakiness; a judge who is told to expect
@@ -486,7 +543,7 @@ is the normal outcome, not bad luck.
 | Map | own canvas, **no online tiles** | Demo runs with wifi off; tiles would fail silently |
 | Filter | simple residuals first | Kalman innovation test is a Phase 11 upgrade — credibility, not capability |
 | Vehicles | trucks **and** drones | Logistics is the better first market; same engine either way |
-| Where the demo drives | **Sriperumbudur to Oragadam**, real names, half true scale | A buyer recognises the road their own lorries take. Half scale because at full scale a three-minute run never reaches the turn-off, which is the only part of the journey the story needs — see `simulator/chennai.py` |
+| Where the demo drives | **VIT Chennai to the Mambakkam junction**, real names, real geometry | The judges drove in on this road. Moved here from Sriperumbudur once the corridor was swappable; the origin, the road name and a re-bake are the whole change — see `simulator/chennai.py` and `bake_map.py` |
 
 ---
 
