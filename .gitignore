@@ -24,6 +24,12 @@ desktop.ini
 *.jpg
 *.jpeg
 !console/assets/*.png
+# The app's launcher icon is source, not a screenshot. The manifest names it,
+# so without these files the build fails outright — "resource mipmap/ic_launcher
+# not found" — on every machine except the one that generated them. Which is
+# exactly what happened: they came from a script hardcoded to one developer's
+# paths, and this rule meant they could never have been committed anyway.
+!android/app/src/main/res/mipmap-*/*.png
 
 # Simulator truth logs — generated output, never committed.
 # Truth lives on the simulator side only (CLAUDE.md rule 2).

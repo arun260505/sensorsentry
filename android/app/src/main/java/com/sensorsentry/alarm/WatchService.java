@@ -12,6 +12,8 @@ import android.media.RingtoneManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.IBinder;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
 import android.util.Log;
@@ -50,6 +52,23 @@ public class WatchService extends Service {
     public static final String EXTRA_DETAIL = "detail";
     public static final String EXTRA_ALERT = "alert";
     public static final String EXTRA_CONNECTED = "connected";
+    // Trail data for the map view
+    public static final String EXTRA_TRAILS_GNSS    = "trails_gnss";
+    public static final String EXTRA_TRAILS_WITNESS  = "trails_witness";
+    public static final String EXTRA_GAP_M           = "gap_m";
+    // Rich map and status panel extras
+    public static final String EXTRA_BASEMAP         = "basemap";       // roads JSON, sent once
+    public static final String EXTRA_HEADING_DEG     = "heading_deg";   // float, gyro heading
+    public static final String EXTRA_VERT_M          = "vert_m";        // float, vertical residual
+    public static final String EXTRA_COMPASS_DEG     = "compass_deg";   // float, compass offset °
+    public static final String EXTRA_CAUSE_LABEL     = "cause_label";   // "attack" / "fault" / ""
+    public static final String EXTRA_CAUSE_REASON    = "cause_reason";  // why we say that
+    public static final String EXTRA_CAUSE_ACTION    = "cause_action";  // what to do about it
+    public static final String EXTRA_GUILTY          = "guilty";        // which sensor
+    public static final String EXTRA_VEHICLE_ID      = "vehicle_id";    // "DRONE-07" etc.
+    public static final String EXTRA_SIGMA_M         = "sigma_m";       // float, position sigma (Our uncertainty)
+    public static final String EXTRA_RATIO           = "ratio_x";       // float, worst pair ratio
+
 
     static final String CHANNEL_ALERT = "sensorsentry.alert.v3";
     static final String CHANNEL_WATCHING = "sensorsentry.watching";
@@ -85,6 +104,24 @@ public class WatchService extends Service {
     /** True while the console is already alerting, so one incident rings once
      *  rather than every second for as long as it lasts. */
     private boolean alerting = false;
+
+    // Basemap — fetched once from /basemap, then broadcast on the next tick.
+    private String  basemapJson  = null;
+    private boolean basemapSent  = false;
+    public static String cachedBasemapJson = null;
+    public static boolean hasNewBasemap = false;
+
+    // Per-broadcast state extracted from the snapshot.
+    private float  lastHeadingDeg  = Float.NaN;
+    private float  lastVertM       = 0f;
+    private String lastCauseLabel  = "";
+    private String lastCauseReason = "";
+    private String lastCauseAction = "";
+    private String lastGuilty      = "";
+    private float  lastCompassDeg  = Float.NaN;
+    private String lastVehicleId   = "VEHICLE";
+    private float  lastSigmaM      = 0f;
+    private float  lastRatio       = 0f;
 
     @Override
     public void onCreate() {
@@ -127,13 +164,14 @@ public class WatchService extends Service {
             try {
                 JSONObject snapshot = fetch();
                 if (snapshot == null) {
-                    publish("Cannot reach the console", server, false, false);
+                    publish("Cannot reach the console", server, false, false, "[]", "[]", 0f);
                 } else {
+                    if (basemapJson == null) fetchBasemap(); // once only
                     read(snapshot);
                 }
             } catch (Exception e) {
                 Log.w(TAG, "poll failed", e);
-                publish("Cannot reach the console", server, false, false);
+                publish("Cannot reach the console", server, false, false, "[]", "[]", 0f);
             }
             try {
                 Thread.sleep(POLL_MS);
@@ -163,15 +201,62 @@ public class WatchService extends Service {
         }
     }
 
+    /** Fetch road/place data once from /basemap and cache it. */
+    private void fetchBasemap() {
+        try {
+            HttpURLConnection c =
+                    (HttpURLConnection) new URL("http://" + server + "/basemap").openConnection();
+            c.setConnectTimeout(4000);
+            c.setReadTimeout(8000);
+            c.setRequestMethod("GET");
+            try {
+                if (c.getResponseCode() == 200) {
+                    StringBuilder sb = new StringBuilder();
+                    try (BufferedReader r = new BufferedReader(
+                            new InputStreamReader(c.getInputStream()))) {
+                        String line;
+                        while ((line = r.readLine()) != null) sb.append(line);
+                    }
+                    basemapJson = sb.toString();
+                }
+            } finally {
+                c.disconnect();
+            }
+        } catch (Exception e) {
+            Log.d(TAG, "basemap fetch skipped: " + e.getMessage());
+        }
+    }
+
     /** Turn one snapshot into the single sentence this app exists to show. */
     private void read(JSONObject snapshot) {
+        // Extract trails from the snapshot's focus vehicle — same vehicle the
+        // detail panels describe on the console. Passed to the MapView in every
+        // broadcast so the map tracks the vehicle in real time, not just on alert.
+        JSONObject trailsObj  = snapshot.optJSONObject("trails");
+        org.json.JSONArray gnssArr    = trailsObj == null ? null : trailsObj.optJSONArray("gnss");
+        org.json.JSONArray witnessArr = trailsObj == null ? null : trailsObj.optJSONArray("witness");
+        String gnssTrailJson    = gnssArr    != null ? gnssArr.toString()    : "[]";
+        String witnessTrailJson = witnessArr != null ? witnessArr.toString() : "[]";
+
+        // Separation in metres: the residual's horizontal_m is the distance
+        // between where GPS says it is and where the witness estimate places it.
+        float gapM = 0f;
+        JSONObject focusState = snapshot.optJSONObject("state");
+        if (focusState != null) {
+            JSONObject residual = focusState.optJSONObject("residual");
+            if (residual != null) {
+                gapM = (float) residual.optDouble("horizontal_m", 0.0);
+            }
+        }
+
         JSONObject vehicles = snapshot.optJSONObject("vehicles");
         if (vehicles == null || vehicles.length() == 0) {
             if (alerting) {
                 getSystemService(NotificationManager.class).cancel(NOTE_ALERT);
             }
             alerting = false;
-            publish("No vehicle running", "Start a run on the console", false, true);
+            publish("No vehicle running", "Start a run on the console", false, true,
+                    gnssTrailJson, witnessTrailJson, gapM);
             return;
         }
 
@@ -182,6 +267,45 @@ public class WatchService extends Service {
         String vehicle = state.optString("vehicle_id", "vehicle");
         boolean alert = "ALERT".equals(state.optString("state"));
 
+        // --- Extract rich map extras from the snapshot -----------------------
+        lastVehicleId = vehicle;
+
+        // gyro_heading_deg is a top-level field on the state JSON dict
+        // (set from crossvalidator.gyro_heading_deg in pipeline.py).
+        if (!state.isNull("gyro_heading_deg")) {
+            double hd = state.optDouble("gyro_heading_deg", Double.NaN);
+            lastHeadingDeg = Double.isNaN(hd) ? Float.NaN : (float) hd;
+        }
+
+        // vertical_m, sigma_m and ratio live in the residual sub-object.
+        // We already have the residual from focusState above — re-read from
+        // the per-vehicle state block to be safe (they are the same vehicle).
+        JSONObject residualBlk = state.optJSONObject("residual");
+        if (residualBlk != null) {
+            double vt = residualBlk.optDouble("vertical_m", Double.NaN);
+            lastVertM = Double.isNaN(vt) ? 0f : (float) vt;
+            double sig = residualBlk.optDouble("sigma_m", Double.NaN);
+            lastSigmaM = Double.isNaN(sig) ? 0f : (float) sig;
+            double rat = residualBlk.optDouble("ratio", Double.NaN);
+            lastRatio = Double.isNaN(rat) ? 0f : (float) rat;
+        }
+
+        // Compass heading offset: look for the heading_offset pair score
+        // so we can show "N° off" in the sensor card, matching the target UI.
+        org.json.JSONArray pairs = state.optJSONArray("pairs");
+        if (pairs != null) {
+            for (int pi = 0; pi < pairs.length(); pi++) {
+                try {
+                    JSONObject pair = pairs.getJSONObject(pi);
+                    if (pair.optString("key", "").endsWith(":heading_offset")) {
+                        double val = pair.optDouble("value", Double.NaN);
+                        lastCompassDeg = Double.isNaN(val) ? Float.NaN : (float) val;
+                        break;
+                    }
+                } catch (Exception ignored) {}
+            }
+        }
+
         if (!alert) {
             // Take the old alarm out of the shade when the vehicle recovers.
             // Left there, the previous incident's banner sits over the next
@@ -191,7 +315,12 @@ public class WatchService extends Service {
                 getSystemService(NotificationManager.class).cancel(NOTE_ALERT);
             }
             alerting = false;
-            publish("All sensors agree", vehicle + " · nothing wrong", false, true);
+            // Clear the last incident's words, or the panel goes on explaining
+            // an attack that finished while the badge says everything agrees.
+            lastCauseLabel = ""; lastCauseReason = "";
+            lastCauseAction = ""; lastGuilty = "";
+            publish("All sensors agree", vehicle + " · nothing wrong", false, true,
+                    gnssTrailJson, witnessTrailJson, gapM);
             return;
         }
 
@@ -201,9 +330,18 @@ public class WatchService extends Service {
         String label = cause == null ? "" : cause.optString("label", "");
         String action = cause == null ? "" : cause.optString("action", "");
 
+        lastCauseLabel  = label;
+        // The reason and the action are two different sentences and the phone
+        // needs both. This was sending the action under the name "reason", so
+        // the screen showed what to do and never why — which is the half that
+        // makes an operator believe the other half.
+        lastCauseReason = cause == null ? "" : cause.optString("reason", "");
+        lastCauseAction = action;
+        lastGuilty      = guilty == null ? "" : guilty;
+
         String headline = headline(label, guilty);
         String detail = vehicle + (action.isEmpty() ? "" : " · " + action);
-        publish(headline, detail, true, true);
+        publish(headline, detail, true, true, gnssTrailJson, witnessTrailJson, gapM);
 
         // Ring once per incident, not once per second.
         if (!alerting) {
@@ -254,13 +392,35 @@ public class WatchService extends Service {
 
     // --- telling somebody --------------------------------------------------
 
-    private void publish(String headline, String detail, boolean alert, boolean connected) {
+    private void publish(String headline, String detail, boolean alert, boolean connected,
+                         String gnssJson, String witnessJson, float gapM) {
         Intent update = new Intent(ACTION_UPDATE);
         update.setPackage(getPackageName());
-        update.putExtra(EXTRA_HEADLINE, headline);
-        update.putExtra(EXTRA_DETAIL, detail);
-        update.putExtra(EXTRA_ALERT, alert);
-        update.putExtra(EXTRA_CONNECTED, connected);
+        update.putExtra(EXTRA_HEADLINE,      headline);
+        update.putExtra(EXTRA_DETAIL,        detail);
+        update.putExtra(EXTRA_ALERT,         alert);
+        update.putExtra(EXTRA_CONNECTED,     connected);
+        update.putExtra(EXTRA_TRAILS_GNSS,   gnssJson);
+        update.putExtra(EXTRA_TRAILS_WITNESS, witnessJson);
+        update.putExtra(EXTRA_GAP_M,          gapM);
+        // Rich map extras — sent on every tick so the UI always has fresh data.
+        update.putExtra(EXTRA_VEHICLE_ID,    lastVehicleId);
+        update.putExtra(EXTRA_HEADING_DEG,   lastHeadingDeg);
+        update.putExtra(EXTRA_VERT_M,        lastVertM);
+        update.putExtra(EXTRA_COMPASS_DEG,   lastCompassDeg);
+        update.putExtra(EXTRA_CAUSE_LABEL,   lastCauseLabel);
+        update.putExtra(EXTRA_CAUSE_REASON,  lastCauseReason);
+        update.putExtra(EXTRA_CAUSE_ACTION,  lastCauseAction);
+        update.putExtra(EXTRA_GUILTY,        lastGuilty);
+        update.putExtra(EXTRA_SIGMA_M,       lastSigmaM);
+        update.putExtra(EXTRA_RATIO,         lastRatio);
+        // Basemap: pass via static field to avoid TransactionTooLargeException
+        // since the JSON can be > 512KB, which drops the Intent.
+        if (basemapJson != null && !basemapSent) {
+            cachedBasemapJson = basemapJson;
+            hasNewBasemap = true;
+            basemapSent = true;
+        }
         sendBroadcast(update);
 
         NotificationManager manager = getSystemService(NotificationManager.class);
@@ -277,16 +437,33 @@ public class WatchService extends Service {
         PendingIntent tap = PendingIntent.getActivity(
                 this, 0, open, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
 
-        Notification note = new Notification.Builder(this, CHANNEL_ALERT)
+        // Two icons, and they are not interchangeable.
+        //
+        // The SMALL icon is drawn as a silhouette — Android throws away every
+        // colour in it and keeps the alpha. Putting the logo here would render
+        // it as a solid white blob, which is what "use the logo in the
+        // notification" usually turns into. So it stays the warning triangle,
+        // which was drawn as a single opaque path for exactly this reason.
+        //
+        // The LARGE icon is a real bitmap, in colour, and that is where the
+        // logo belongs: it is the one the manager actually sees in the shade.
+        Notification.Builder builder = new Notification.Builder(this, CHANNEL_ALERT)
                 .setSmallIcon(R.drawable.ic_alert)
                 .setContentTitle(headline)
                 .setContentText(detail)
                 .setStyle(new Notification.BigTextStyle().bigText(detail))
                 .setCategory(Notification.CATEGORY_ALARM)
                 .setPriority(Notification.PRIORITY_MAX)
+                .setColor(0xFFCC4030)
                 .setAutoCancel(true)
-                .setContentIntent(tap)
-                .build();
+                .setContentIntent(tap);
+        try {
+            Bitmap logo = BitmapFactory.decodeResource(getResources(), R.mipmap.ic_launcher);
+            if (logo != null) builder.setLargeIcon(logo);
+        } catch (Exception e) {
+            Log.w(TAG, "no large icon", e);   // the alarm matters; the picture does not
+        }
+        Notification note = builder.build();
         manager.notify(NOTE_ALERT, note);
 
         // Two separate choices, and they are not the same thing.
