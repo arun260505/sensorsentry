@@ -808,10 +808,14 @@ function label(x, y, text, color, strong, align) {
  */
 
 const DIAL_R = 26;
-const DIAL_GAP = 14;
+const DIAL_GAP = 26;   // room for the two source names under each dial
 
 function fittedHere(sensor) {
   const type = latest && latest.vehicle_type;
+  // Before a run there is no vehicle and no readings, so only the compass
+  // rose is drawn — it is a map reference in its own right. Two empty dials
+  // sitting there beforehand read as instruments that are not working.
+  if (!type) return false;
   if (type === "truck") return sensor !== "baro";
   if (type === "drone") return sensor !== "odom";
   return true;
@@ -826,6 +830,25 @@ function drawCompass(w, h) {
   drawHeadingDial(x, y);
   if (fittedHere("baro")) { y += DIAL_R * 2 + DIAL_GAP; drawHeightDial(x, y); }
   if (fittedHere("odom")) { y += DIAL_R * 2 + DIAL_GAP; drawSpeedDial(x, y); }
+}
+
+/* Name both needles under the dial, in their own colours.
+ *
+ * Orange means "GPS says" on the map, and the same orange was drawing the
+ * compass needle here — so a judge who selected the compass saw an orange
+ * arrow and quite reasonably read it as the GPS. Reusing a colour across two
+ * meanings is the mistake; saying which is which fixes it without giving up
+ * the one honest convention the page has, that orange is the reading under
+ * suspicion and blue is what the vehicle worked out for itself.
+ */
+function dialKey(x, y, claimed, own) {
+  ctx.font = "600 7.5px system-ui, sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillStyle = COLOR.claimed;
+  ctx.fillText(claimed, x - DIAL_R * 0.52, y + DIAL_R + 19);
+  ctx.fillStyle = COLOR.witness;
+  ctx.fillText(own, x + DIAL_R * 0.52, y + DIAL_R + 19);
+  ctx.textAlign = "left";
 }
 
 function dialFace(x, y, label) {
@@ -873,6 +896,8 @@ function drawHeadingDial(x, y) {
   if (gyro != null) needle(x, y, gyro, COLOR.witness, 2, DIAL_R - 8);
   if (compass != null) needle(x, y, compass, COLOR.claimed, 2.6, DIAL_R - 6);
 
+  dialKey(x, y, "compass", "gyro");
+
   if (compass != null && gyro != null) {
     let gap = Math.abs(((compass - gyro + 540) % 360) - 180);
     if (gap > 12) dialAlarm(x, y, `${Math.round(gap)}°`);
@@ -902,6 +927,8 @@ function drawHeightDial(x, y) {
   mark(own, COLOR.witness, 2);
   mark(gps, COLOR.claimed, 2.6);
 
+  dialKey(x, y, "GPS", "baro");
+
   if (gps != null && own != null && Math.abs(gps - own) > 12) {
     dialAlarm(x, y, `${Math.round(Math.abs(gps - own))}m`);
   }
@@ -917,6 +944,8 @@ function drawSpeedDial(x, y) {
   const sweep = (v) => -120 + Math.max(0, Math.min(1, v / top)) * 240;
   if (own != null) needle(x, y, sweep(own), COLOR.witness, 2, DIAL_R - 8);
   if (wheels != null) needle(x, y, sweep(wheels), COLOR.claimed, 2.6, DIAL_R - 6);
+
+  dialKey(x, y, "wheels", "own");
 
   if (wheels != null && own != null && Math.abs(wheels - own) > 4) {
     dialAlarm(x, y, `${Math.round(Math.abs(wheels - own))}`);
