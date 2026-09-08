@@ -29,3 +29,9 @@ desktop.ini
 # Truth lives on the simulator side only (CLAUDE.md rule 2).
 truth*.jsonl
 *.truth.jsonl
+
+# Android build output and machine-local SDK path
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties

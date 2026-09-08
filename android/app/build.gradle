@@ -1,0 +1,27 @@
+plugins { id 'com.android.application' }
+
+android {
+    namespace 'com.sensorsentry.alarm'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.sensorsentry.alarm"
+        minSdk 26            // notification channels
+        targetSdk 34
+        versionCode 1
+        versionName "1.0"
+    }
+
+    buildTypes {
+        // Debug only. This is installed over USB onto a known phone, not
+        // shipped, so there is no release signing config to get wrong.
+        debug { minifyEnabled false }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+dependencies { }

@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import socket
 import subprocess
 import sys
 import mimetypes
@@ -576,11 +577,38 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
 
+def _lan_addresses() -> list[str]:
+    """This machine's addresses on the local network.
+
+    Found by asking the routing table which interface would be used to reach
+    somewhere else — no packet is sent. Reading the hostname instead returns
+    the loopback address on plenty of Windows machines, which is exactly the
+    address that does not work from another laptop.
+    """
+    found = []
+    for probe in ("10.255.255.255", "192.168.1.1", "172.16.0.1"):
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            sock.connect((probe, 1))
+            address = sock.getsockname()[0]
+            if address not in found and not address.startswith("127."):
+                found.append(address)
+        except OSError:
+            pass
+        finally:
+            sock.close()
+    return found
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="SensorSentry console server")
     parser.add_argument("--http-port", type=int, default=8080)
     parser.add_argument("--udp-port", type=int, default=DEFAULT_PORT)
     parser.add_argument("--vehicle-type", default=None)
+    parser.add_argument(
+        "--host", default="0.0.0.0",
+        help="interface to serve on. 0.0.0.0 so the display laptop and the "
+             "phone can reach it; pass 127.0.0.1 to keep it to this machine.")
     args = parser.parse_args(argv)
 
     shared = Shared()
@@ -591,9 +619,18 @@ def main(argv: list[str] | None = None) -> int:
     )
     thread.start()
 
-    server = ThreadingHTTPServer(("127.0.0.1", args.http_port), Handler)
+    server = ThreadingHTTPServer((args.host, args.http_port), Handler)
     print(f"detector listening on UDP {args.udp_port}")
     print(f"console at http://127.0.0.1:{args.http_port}")
+
+    # The demo runs on three screens now — this laptop drives, a second one
+    # shows the room, and a phone carries the alarm — so the address the other
+    # two have to type is worth printing rather than making somebody hunt for
+    # it with ipconfig two minutes before starting.
+    if args.host not in ("127.0.0.1", "localhost"):
+        for address in _lan_addresses():
+            print(f"  on this network:  http://{address}:{args.http_port}")
+        print("  phone app: put that address in its Server field")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

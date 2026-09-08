@@ -29,12 +29,60 @@ python -m detector.server
 python -m simulator.control --quiet
 ```
 
+### Three screens
+
+The detector now serves on the network, not just this laptop, and prints the
+address to use when it starts. Everything runs on **one** laptop — the second
+one and the phone are only viewers, so the simulator and detector stay on the
+same machine where their UDP link cannot be disturbed.
+
+**Windows firewall blocks port 8080 inbound by default**, so nothing else can
+reach it until this is run **once**, in an Administrator PowerShell:
+
+```powershell
+New-NetFirewallRule -DisplayName "SensorSentry console 8080" `
+  -Direction Inbound -LocalPort 8080 -Protocol TCP -Action Allow -Profile Any
+```
+
+If the phone still cannot reach the laptop after that, the wifi has **client
+isolation** — normal on campus and hotel networks, and it blocks device to
+device no matter what the laptop allows. Use a phone hotspot or a travel
+router instead. Both laptops and the phone join that; it needs no internet.
+
+**The phone can also work over the USB cable, with no network at all:**
+
+```powershell
+adb reverse tcp:8080 tcp:8080     # then use 127.0.0.1:8080 in the app
+```
+
+That is the most robust option available and it makes the offline claim
+stronger rather than weaker — worth keeping as the fallback even if the
+hotspot works.
+
 Two browser windows, side by side:
 
 | Window | URL | Who looks at it |
 |---|---|---|
 | **Display** | http://localhost:8080 | the room |
 | **Controls** | http://localhost:8080/drive | you, and then them |
+
+### The phone
+
+Install once over USB:
+
+```powershell
+cd android
+gradle assembleDebug
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+```
+
+Open **SensorSentry** on the phone, put the laptop's address in the box —
+the one the server printed — and press **Watch**. Grant the notification
+permission when it asks; on Android 13 and later it will otherwise stay silent
+while looking perfectly healthy, which is the worst way for it to fail.
+
+It should read *connected · All sensors agree*. Leave it running; the alarm
+works with the app in a pocket.
 
 Then: **turn the wifi off** and reload both. If anything breaks, it breaks now
 and not in front of anybody. Nothing in the demo needs a network — the map is
@@ -133,6 +181,21 @@ It will say *not sure yet* first. **Say so before they ask:**
 > a sensor until the evidence supports one. There: the compass, and it is
 > interference, not an attack. Three different findings, three different
 > responses."
+
+---
+
+## Scene 3b · The phone goes off (20 s)
+
+Hold it up as the banner appears on the display.
+
+> "That is the fleet manager's phone, and they are not in this room. It rang
+> by itself — nobody pressed anything on it."
+
+Tap the notification.
+
+> "**GPS spoofing detected.** One line, and what to do about it. No map, no
+> charts — the person reading this is driving, or asleep, and needs to know
+> one thing."
 
 ---
 

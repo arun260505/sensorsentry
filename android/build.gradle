@@ -1,0 +1,6 @@
+// Deliberately bare. No Kotlin plugin, no AndroidX, no third-party library:
+// the app is two files, and every dependency is another thing that can fail
+// to resolve on the morning of a demo.
+plugins {
+    id 'com.android.application' version '8.13.0' apply false
+}

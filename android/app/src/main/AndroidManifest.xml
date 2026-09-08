@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+
+    <!-- The watcher keeps running while the phone is in a pocket or the
+         screen is off. Without a foreground service Android stops the polling
+         within a minute and the alarm never arrives, which is the one thing
+         this app exists to do. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+
+    <!-- Android 13 and later. Asked for at runtime on first launch. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <application
+        android:allowBackup="false"
+        android:icon="@drawable/ic_alert"
+        android:label="@string/app_name"
+        android:roundIcon="@drawable/ic_alert"
+        android:supportsRtl="true"
+        android:theme="@android:style/Theme.Material.NoActionBar"
+        android:usesCleartextTraffic="true">
+        <!-- Cleartext on purpose. The demo runs on a hotspot with no internet
+             and the console is served over plain HTTP from a laptop on that
+             hotspot; there is no certificate to be had for a LAN address, and
+             a self-signed one throws a warning at the worst moment. A native
+             app has no secure-context rule, which is the whole reason this is
+             an APK rather than a web page. -->
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:screenOrientation="portrait">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <service
+            android:name=".WatchService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+    </application>
+</manifest>
