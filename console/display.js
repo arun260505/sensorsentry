@@ -233,6 +233,7 @@ function draw() {
   drawSeparation(view, w, h);
   drawHeads(view, w, h);
   drawOffscreen(view, w, h);
+  drawCompassRays(view, w, h);
   drawCompass(w, h);
   drawInset(view, w, h);
   updateScaleBar(view);
@@ -808,6 +809,144 @@ function label(x, y, text, color, strong, align) {
   ctx.textAlign = "left";
 }
 
+
+/* --- the legend, one line per sensor -------------------------------------
+ *
+ * It used to say two things, both about position: "GPS says" and "own sensors
+ * say". So whichever sensor you were driving, the map talked about the GPS —
+ * take over the compass, turn it forty degrees, and the only caption on the
+ * map still concerned a position that had not moved.
+ *
+ * Every sensor now has its own colour and its own line, showing what it is
+ * currently disagreeing by, in its own units. Nothing wrong reads as five
+ * quiet rows; one sensor lying reads as one row in red with a number in it.
+ */
+
+const SENSOR_COLOUR = themeColours({
+  mag:  "--sensor-mag",
+  odom: "--sensor-odom",
+  baro: "--sensor-baro",
+});
+
+function angleGap(a, b) {
+  return Math.abs(((a - b + 540) % 360) - 180);
+}
+
+/* What each sensor is out by, right now, in the unit that sensor measures in.
+ * Read off the ordinary stream — nothing is recomputed for display. */
+function sensorDeviations() {
+  const st = latest;
+  if (!st) return {};
+  const out = {};
+
+  // GPS: metres between where it claims to be and where the vehicle worked
+  // out it is.
+  //
+  // Note the wording: "from our estimate", not "off". Touch only the compass
+  // and the GPS reading itself stays perfectly honest — but our own GPS-free
+  // estimate leans on the compass to know which way it is going, so the two
+  // positions separate anyway. The gap is real and worth showing; calling it
+  // the GPS being wrong would be a lie, and it is the exact confusion this
+  // legend exists to end.
+  if (st.gnss && st.witness && st.gnss.e != null && st.witness.e != null) {
+    out.gnss = {
+      off: Math.hypot(st.gnss.e - st.witness.e, st.gnss.n - st.witness.n),
+      text: (v) => `${v.toFixed(0)} m from our estimate`,
+      quiet: 12,
+    };
+  }
+  // Compass: degrees between it and the gyro's own integrated heading.
+  const compass = rawFrame && rawFrame.mag ? rawFrame.mag.heading_deg : null;
+  if (compass != null && st.gyro_heading_deg != null) {
+    out.mag = {
+      off: angleGap(compass, st.gyro_heading_deg),
+      text: (v) => `${v.toFixed(0)}° off`,
+      quiet: 10,
+    };
+  }
+  // Wheels: metres per second against our own estimate of speed.
+  const wheels = rawFrame && rawFrame.odom ? rawFrame.odom.wheel_speed_mps : null;
+  if (wheels != null && st.witness && st.witness.speed_mps != null) {
+    out.odom = {
+      off: Math.abs(wheels - st.witness.speed_mps),
+      text: (v) => `${v.toFixed(1)} m/s off`,
+      quiet: 4,
+    };
+  }
+  // Height: metres between the GPS altitude and the barometric one.
+  if (st.gnss && st.witness && st.gnss.u != null && st.witness.u != null) {
+    out.baro = {
+      off: Math.abs(st.gnss.u - st.witness.u),
+      text: (v) => `${v.toFixed(0)} m off`,
+      quiet: 10,
+    };
+  }
+  return out;
+}
+
+function renderLegend() {
+  const dev = sensorDeviations();
+  for (const row of document.querySelectorAll(".legend .lg")) {
+    const key = row.dataset.key;
+    if (key === "witness") continue;          // the reference; nothing to report
+    const value = el(`lg-${key}`);
+    const reading = dev[key];
+    // A sensor this vehicle does not carry is hidden rather than shown as a
+    // dash — a lorry has no barometer, and an empty row reads as a fault.
+    row.hidden = !reading;
+    if (!reading) continue;
+    value.textContent = reading.text(reading.off);
+
+    // Red is reserved for the sensor the detector has actually named. Every
+    // number here is a fact; the accusation is not ours to make from a gap.
+    //
+    // This is the difference the question "if I only touch the compass, the
+    // GPS should be perfect" is really asking about. It is: the GPS reading
+    // is untouched. The positions still separate, because our own estimate
+    // is built partly on the compass — and the system still says compass,
+    // not GPS, which is the whole reason blame exists.
+    const named = latest && latest.blame ? latest.blame.guilty : null;
+    const accused = key === named;
+    row.classList.toggle("off", accused);
+    row.classList.toggle("agree", !accused && reading.off <= reading.quiet);
+  }
+}
+
+/* --- the compass, drawn on the map ---------------------------------------
+ *
+ * The GPS had two positions to pull apart and the compass had nothing, so
+ * turning it was invisible on the map however far it went. Two rays from the
+ * vehicle, one for where the compass says we point and one for where the gyro
+ * says, with the angle between them written on it once they part.
+ */
+function drawCompassRays(view, w, h) {
+  const wit = trails.witness[trails.witness.length - 1];
+  const compass = rawFrame && rawFrame.mag ? rawFrame.mag.heading_deg : null;
+  const gyro = latest ? latest.gyro_heading_deg : null;
+  if (!wit || compass == null || gyro == null) return;
+
+  const gap = angleGap(compass, gyro);
+  if (gap < 6) return;         // agreeing: one arrow already says everything
+
+  const [x, y] = project(wit[0], wit[1], view, w, h);
+  const ray = (deg, colour, width, len) => {
+    const rad = (deg - 90) * Math.PI / 180;
+    ctx.strokeStyle = colour;
+    ctx.lineWidth = width;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + Math.cos(rad) * len, y + Math.sin(rad) * len);
+    ctx.stroke();
+  };
+  ray(gyro, COLOR.witness, 2, 52);
+  ray(compass, SENSOR_COLOUR.mag, 3, 62);
+
+  const mid = (compass - 90) * Math.PI / 180;
+  label(x + Math.cos(mid) * 70, y + Math.sin(mid) * 70,
+        `compass ${Math.round(gap)}° off`, SENSOR_COLOUR.mag, true);
+}
+
 /* --- instruments ---------------------------------------------------------
  *
  * Three dials in the corner, each showing two independent measurements of one
@@ -1206,6 +1345,7 @@ onSnapshot((snapshot) => {
   }
 
   renderPanels(snapshot);
+  renderLegend();
   pushTrace(snapshot);
   renderTraces(snapshot);
   renderProof(snapshot);

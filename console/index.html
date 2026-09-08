@@ -42,9 +42,20 @@
 <main>
   <section class="mapwrap">
     <canvas id="map"></canvas>
-    <div class="legend">
-      <span><i class="swatch claimed"></i>GPS says</span>
-      <span><i class="swatch witness"></i>Own sensors say</span>
+    <!-- One line per sensor, each with its own colour and its live
+         disagreement. Two lines about position only meant that whichever
+         sensor you were driving, the map talked about the GPS. -->
+    <div class="legend" id="legend">
+      <span class="lg" data-key="witness"><i class="swatch"></i>
+        <b>Own sensors</b><em id="lg-witness">the truth</em></span>
+      <span class="lg" data-key="gnss"><i class="swatch"></i>
+        <b>GPS</b><em id="lg-gnss">—</em></span>
+      <span class="lg" data-key="mag"><i class="swatch"></i>
+        <b>Compass</b><em id="lg-mag">—</em></span>
+      <span class="lg" data-key="odom"><i class="swatch"></i>
+        <b>Wheels</b><em id="lg-odom">—</em></span>
+      <span class="lg" data-key="baro"><i class="swatch"></i>
+        <b>Height</b><em id="lg-baro">—</em></span>
     </div>
     <div class="scalebar"><span id="scaletext">100 m</span></div>
   </section>

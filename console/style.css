@@ -40,6 +40,13 @@
   /* meaning — never decoration */
   --accent:  #0b5c7a;
   --claimed: #a35d07;   /* what GPS asserts */
+
+  /* One colour per sensor, so each can be drawn and named on its own. The
+     compass had no colour and no line, which is why driving it changed
+     nothing anyone could see. */
+  --sensor-mag:  #7a3fa8;   /* compass  */
+  --sensor-odom: #0f7a6c;   /* wheels   */
+  --sensor-baro: #1f6f9a;   /* height   */
   --witness: #0b5c7a;   /* what the vehicle itself felt */
 
   --ok:    #1f7a4d;
@@ -259,6 +266,23 @@ main {
 .swatch { width: 18px; height: 4px; border-radius: 2px; display: inline-block; flex: none; }
 .swatch.claimed { background: var(--claimed); }
 .swatch.witness { background: var(--witness); }
+
+/* one row per sensor: colour, name, and what it is currently disagreeing by */
+.legend .lg { display: grid; grid-template-columns: 18px auto 1fr; gap: 10px; }
+.legend .lg b { font-weight: 600; }
+.legend .lg em {
+  font-style: normal; font-family: var(--mono); font-size: .74rem;
+  text-align: right; color: var(--ink-3);
+}
+.legend .lg[hidden] { display: none; }
+/* agreeing: present but quiet, so the one that is not stands out */
+.legend .lg.agree { opacity: .55; }
+.legend .lg.off em { color: var(--alert); font-weight: 700; }
+.legend .lg[data-key="witness"] .swatch { background: var(--witness); }
+.legend .lg[data-key="gnss"]    .swatch { background: var(--claimed); }
+.legend .lg[data-key="mag"]     .swatch { background: var(--sensor-mag); }
+.legend .lg[data-key="odom"]    .swatch { background: var(--sensor-odom); }
+.legend .lg[data-key="baro"]    .swatch { background: var(--sensor-baro); }
 
 .scalebar {
   position: absolute; left: 18px; bottom: 18px;
