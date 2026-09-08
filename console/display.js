@@ -57,9 +57,28 @@ window.addEventListener("resize", resize);
  * scale bar can never disagree about how long a metre is.
  */
 
-/* Every vehicle shares one origin-relative frame, so their local metres are
- * directly comparable and the whole fleet fits in one view. */
-function computeView(w, h) {
+/* Fit a set of points into a box. Used by the overview and by the inset, so
+ * the two cannot disagree about what "the whole run" looks like. */
+function fitPoints(pts, w, h, pad) {
+  if (!pts.length) return { cx: 0, cy: 0, scale: 1.2 };
+
+  let minE = Infinity, maxE = -Infinity, minN = Infinity, maxN = -Infinity;
+  for (const [e, n] of pts) {
+    if (e < minE) minE = e;
+    if (e > maxE) maxE = e;
+    if (n < minN) minN = n;
+    if (n > maxN) maxN = n;
+  }
+
+  const spanE = Math.max(maxE - minE, 40);
+  const spanN = Math.max(maxN - minN, 40);
+  const scale = Math.min((w - pad * 2) / spanE, (h - pad * 2) / spanN);
+
+  return { cx: (minE + maxE) / 2, cy: (minN + maxN) / 2, scale };
+}
+
+/* Everything worth keeping in frame when the whole run is the subject. */
+function overviewPoints() {
   const pts = trails.gnss.concat(trails.witness);
   for (const v of Object.values(fleet)) {
     if (v.trails) pts.push(...v.trails.gnss, ...v.trails.witness);
@@ -74,25 +93,84 @@ function computeView(w, h) {
     pts.push([z.e - z.radius_m, z.n - z.radius_m],
              [z.e + z.radius_m, z.n + z.radius_m]);
   }
+  return pts;
+}
 
-  if (pts.length === 0) {
-    return { cx: 0, cy: 0, scale: 1.2 };
+/* --- the camera ----------------------------------------------------------
+ *
+ * The view used to be fitted to the whole route, every frame. That is a
+ * defensible thing to do and it was killing the demo: the route spans 1331 m,
+ * so on a normal window it resolved to 0.29 px per metre. At that scale the
+ * 45 m the road check tolerates is thirteen pixels, our headline "34 m from
+ * truth against GPS's 91" is a smudge, and the two vehicle markers — 22 and
+ * 28 px wide — are individually larger than the gap they exist to show.
+ *
+ * So the camera follows the vehicle instead, at a scale where a metre is
+ * visible, and pulls back only as far as it must to keep the spoofed position
+ * on screen beside the real one. The further the attacker drags the reported
+ * position, the wider the shot: the picture frames itself.
+ *
+ * The whole run is still on screen — as the inset, bottom right. That is not
+ * a nicety. At 4 px/m the map covers ~300 m and a lorry crosses it in twenty
+ * seconds, while the truck walk-off does not settle to a verdict until 64-70
+ * s. Without the inset, the moment the two tracks came apart has scrolled
+ * hundreds of metres off the edge by the time the console names the sensor,
+ * and the evidence is gone exactly when the answer arrives.
+ */
+
+const FOLLOW_SCALE = 4.0;    // px per metre when nothing forces us wider
+const FOLLOW_MIN = 1.2;      // never pull back past this; point off-screen instead
+const FOLLOW_PAD = 90;       // px of room kept around the pair
+
+let cam = null;              // the eased camera; null until the first frame
+
+/* Fleet work is a different question — "where is the attacker" rather than
+ * "what is this vehicle doing" — and it needs kilometres in frame. A zone is
+ * 400 m across at minimum; at follow zoom its circle would be five times the
+ * width of the map. One zoom cannot serve both, so there are two. */
+function isOverview() {
+  return zones.length > 0
+      || Object.keys(fleet).length > 1
+      || trails.witness.length === 0;
+}
+
+function followTarget(w, h) {
+  const wit = trails.witness[trails.witness.length - 1];
+  if (!wit) return null;
+
+  let scale = FOLLOW_SCALE;
+  const g = trails.gnss[trails.gnss.length - 1];
+  if (g) {
+    // Centred on where the vehicle actually is — not on the midpoint, which
+    // would slide the roads underneath at half the vehicle's speed and read
+    // as the map being broken. So the claimed position has to fit within half
+    // the frame, which is what widens the shot.
+    const gap = Math.hypot(g[0] - wit[0], g[1] - wit[1]);
+    if (gap > 1) {
+      const room = Math.min(w, h) / 2 - FOLLOW_PAD;
+      if (room > 0) scale = Math.min(scale, room / gap);
+    }
+  }
+  return { cx: wit[0], cy: wit[1], scale: Math.max(scale, FOLLOW_MIN) };
+}
+
+function computeView(w, h) {
+  const target = (isOverview() ? null : followTarget(w, h))
+              || fitPoints(overviewPoints(), w, h, 70);
+
+  if (!cam) {
+    cam = { cx: target.cx, cy: target.cy, scale: target.scale };
+    return cam;
   }
 
-  let minE = Infinity, maxE = -Infinity, minN = Infinity, maxN = -Infinity;
-  for (const [e, n] of pts) {
-    if (e < minE) minE = e;
-    if (e > maxE) maxE = e;
-    if (n < minN) minN = n;
-    if (n > maxN) maxN = n;
-  }
-
-  const pad = 70;
-  const spanE = Math.max(maxE - minE, 40);
-  const spanN = Math.max(maxN - minN, 40);
-  const scale = Math.min((w - pad * 2) / spanE, (h - pad * 2) / spanN);
-
-  return { cx: (minE + maxE) / 2, cy: (minN + maxN) / 2, scale };
+  // Eased, or every change of separation snaps the world sideways. Scale is
+  // eased in log space so pulling out by four feels like pushing in by four.
+  const k = 0.14;
+  cam.cx += (target.cx - cam.cx) * k;
+  cam.cy += (target.cy - cam.cy) * k;
+  cam.scale = Math.exp(
+    Math.log(cam.scale) + (Math.log(target.scale) - Math.log(cam.scale)) * k);
+  return cam;
 }
 
 /* Metres to pixels. North is up, so the vertical axis is flipped. */
@@ -130,6 +208,7 @@ function draw() {
   ctx.fillRect(0, 0, w, h);
 
   const view = computeView(w, h);
+  prepareRoads();
 
   // A map has either a graticule or streets, never both. When the baked road
   // network is there it is the ground; the grid and the range rings only come
@@ -152,8 +231,117 @@ function draw() {
 
   drawSeparation(view, w, h);
   drawHeads(view, w, h);
+  drawOffscreen(view, w, h);
   drawCompass(w, h);
+  drawInset(view, w, h);
   updateScaleBar(view);
+}
+
+/* --- the whole run, small -------------------------------------------------
+ *
+ * The follow camera can only show a few hundred metres, and the truck
+ * walk-off takes 64-70 s to reach a verdict. Without this, the place where
+ * the two tracks separated is long off the edge by the time the console names
+ * the sensor. Here it stays visible for the entire run, with a box showing
+ * which part of it the big map is currently looking at.
+ */
+function drawInset(view, w, h) {
+  if (isOverview()) return;
+  if (trails.witness.length < 2) return;
+
+  const iw = Math.min(210, w * 0.28), ih = Math.min(150, h * 0.3);
+  const x0 = w - iw - 18, y0 = h - ih - 18;
+
+  const pts = trails.gnss.concat(trails.witness);
+  for (const [lat, lon] of basemap.route || []) pts.push(toLocal(lat, lon));
+  const v = fitPoints(pts, iw, ih, 14);
+  const at = (e, n) => [x0 + iw / 2 + (e - v.cx) * v.scale,
+                        y0 + ih / 2 - (n - v.cy) * v.scale];
+
+  ctx.save();
+  ctx.fillStyle = COLOR.chip;
+  ctx.strokeStyle = COLOR.roadCase;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.rect(x0, y0, iw, ih);
+  ctx.fill();
+  ctx.stroke();
+  ctx.clip();
+
+  // The route it is supposed to be driving, then what each side says it did.
+  ctx.strokeStyle = COLOR.roadCase;
+  ctx.lineWidth = 3;
+  ctx.lineJoin = "round";
+  ctx.beginPath();
+  let on = false;
+  for (const [lat, lon] of basemap.route || []) {
+    const [x, y] = at(...toLocal(lat, lon));
+    if (!on) { ctx.moveTo(x, y); on = true; } else { ctx.lineTo(x, y); }
+  }
+  ctx.stroke();
+
+  for (const [points, colour] of [[trails.gnss, COLOR.claimed],
+                                  [trails.witness, COLOR.witness]]) {
+    if (points.length < 2) continue;
+    ctx.strokeStyle = colour;
+    ctx.lineWidth = 1.8;
+    ctx.beginPath();
+    points.forEach(([e, n], i) => {
+      const [x, y] = at(e, n);
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+  }
+
+  // Where the big map is looking.
+  const bw = (w / view.scale) * v.scale, bh = (h / view.scale) * v.scale;
+  const [bx, by] = at(view.cx, view.cy);
+  ctx.strokeStyle = COLOR.text;
+  ctx.lineWidth = 1.2;
+  ctx.setLineDash([3, 3]);
+  ctx.strokeRect(bx - bw / 2, by - bh / 2, bw, bh);
+  ctx.setLineDash([]);
+  ctx.restore();
+
+  ctx.font = "600 10px system-ui, sans-serif";
+  ctx.fillStyle = COLOR.text;
+  ctx.textAlign = "right";
+  ctx.fillText("the whole run", x0 + iw, y0 - 5);
+  ctx.textAlign = "left";
+}
+
+/* When the spoof has dragged the reported position further than the camera is
+ * willing to pull back for, say which way it went and how far — rather than
+ * letting it leave the frame with nothing to mark that it was ever there. */
+function drawOffscreen(view, w, h) {
+  const g = trails.gnss[trails.gnss.length - 1];
+  const wit = trails.witness[trails.witness.length - 1];
+  if (!g || !wit || isOverview()) return;
+
+  const [x, y] = project(g[0], g[1], view, w, h);
+  const m = 26;
+  if (x >= m && x <= w - m && y >= m && y <= h - m) return;
+
+  const [cx, cy] = project(wit[0], wit[1], view, w, h);
+  const angle = Math.atan2(y - cy, x - cx);
+  const ex = Math.min(Math.max(x, m), w - m);
+  const ey = Math.min(Math.max(y, m), h - m);
+
+  ctx.save();
+  ctx.translate(ex, ey);
+  ctx.rotate(angle);
+  ctx.fillStyle = COLOR.claimed;
+  ctx.beginPath();
+  ctx.moveTo(11, 0);
+  ctx.lineTo(-7, 7);
+  ctx.lineTo(-7, -7);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+
+  const gap = latest && latest.residual ? latest.residual.horizontal_m : 0;
+  label(ex, ey - 16, `GPS SAYS ${gap.toFixed(0)} m THAT WAY`,
+        COLOR.claimed, true, "center");
 }
 
 /* A steady repaint keeps the pulse smooth even when frames arrive at 10 Hz. */
@@ -204,14 +392,40 @@ function drawGrid(w, h, view) {
  * a field is visibly in a field.
  */
 
-/* Width on screen for each class, as [casing, carriageway]. */
-const ROAD_WIDTH = {
-  4: [11, 7.5],   // trunk / motorway
-  3: [8, 5],      // primary / secondary
-  2: [6, 3.6],    // tertiary
-  1: [4.4, 2.6],  // residential / unclassified
-  0: [3, 1.7],    // service
+/* How wide each class of road actually is on the ground, as
+ * [with verges, carriageway] in metres.
+ *
+ * Drawn to scale rather than at a fixed pixel width, which matters more than
+ * it sounds. At follow zoom a fixed 16 px trunk road is 4 m wide while the
+ * lorry drawn on it is 5 — a vehicle wider than the national highway it is
+ * driving down, which reads as a broken picture. To scale, the truck sits in
+ * a lane, and a spoofed position that has left the carriageway is visibly off
+ * the road instead of being described as off the road. That is the road check
+ * from blame.py, drawn.
+ */
+const ROAD_METRES = {
+  4: [24, 20],    // trunk / motorway
+  3: [15, 12],    // primary / secondary
+  2: [10, 8],     // tertiary
+  1: [7.5, 6],    // residential / unclassified
+  0: [5, 4],      // service
 };
+
+/* Pulled far enough out, a road drawn to scale is thinner than a hair. These
+ * are the floors that keep the network legible in the overview. */
+const ROAD_MIN_PX = {
+  4: [11, 7.5],
+  3: [8, 5],
+  2: [6, 3.6],
+  1: [4.4, 2.6],
+  0: [3, 1.7],
+};
+
+function roadWidth(rank, layer, scale) {
+  const metres = (ROAD_METRES[rank] || ROAD_METRES[1])[layer];
+  const floor = (ROAD_MIN_PX[rank] || ROAD_MIN_PX[1])[layer];
+  return Math.max(metres * scale, floor);
+}
 
 /* Which classes of road are worth drawing at this zoom.
  *
@@ -228,15 +442,45 @@ function roadRanks(scale) {
   return [3, 4];
 }
 
-function roadScale(view) {
-  return Math.max(0.8, Math.min(3.0, view.scale * 2.4));
+/* The roads do not move. Projecting all 4662 of their points on every frame
+ * cost 233,000 calls a second, each one a Math.cos of a latitude that is the
+ * same every time — and at follow zoom all five classes draw, so nearly all
+ * of that work was for geometry hundreds of metres outside the frame.
+ *
+ * Projected once per run instead, with a bounding box so a road outside the
+ * view is skipped whole rather than point by point. Keyed on the reference
+ * object, which is replaced when a run starts, so a new run re-projects. */
+let roadsPreparedFor = null;
+
+function prepareRoads() {
+  if (!reference || !basemap.roads.length) return;
+  if (roadsPreparedFor === reference) return;
+  for (const road of basemap.roads) {
+    const local = road.points.map(([lat, lon]) => toLocal(lat, lon));
+    let minE = Infinity, maxE = -Infinity, minN = Infinity, maxN = -Infinity;
+    for (const [e, n] of local) {
+      if (e < minE) minE = e;
+      if (e > maxE) maxE = e;
+      if (n < minN) minN = n;
+      if (n > maxN) maxN = n;
+    }
+    road.local = local;
+    road.bbox = [minE, minN, maxE, maxN];
+  }
+  roadsPreparedFor = reference;
 }
 
 function drawRoads(view, w, h) {
-  if (!basemap.roads.length) return;
-  const k = roadScale(view);
+  if (!basemap.roads.length || !basemap.roads[0].local) return;
   const shown = roadRanks(view.scale);
   const margin = 60;
+
+  // What the frame covers, in metres, plus a margin so a road entering the
+  // view is already being drawn when its first point arrives.
+  const halfW = (w / 2 + margin) / view.scale;
+  const halfH = (h / 2 + margin) / view.scale;
+  const inView = (b) => b[0] <= view.cx + halfW && b[2] >= view.cx - halfW
+                     && b[1] <= view.cy + halfH && b[3] >= view.cy - halfH;
 
   // Two passes over the classes, casing first then carriageway, so junctions
   // join cleanly instead of every road drawing its own outline on top of its
@@ -246,13 +490,13 @@ function drawRoads(view, w, h) {
       ctx.strokeStyle = layer === 0 ? COLOR.roadCase : COLOR.road;
       ctx.lineJoin = "round";
       ctx.lineCap = "round";
-      ctx.lineWidth = (ROAD_WIDTH[rank] || ROAD_WIDTH[1])[layer] * k;
+      ctx.lineWidth = roadWidth(rank, layer, view.scale);
       ctx.beginPath();
       for (const road of basemap.roads) {
         if ((road.rank || 1) !== rank) continue;
+        if (!inView(road.bbox)) continue;
         let on = false;
-        for (const [lat, lon] of road.points) {
-          const [e, n] = toLocal(lat, lon);
+        for (const [e, n] of road.local) {
           const [x, y] = project(e, n, view, w, h);
           if (x < -margin || x > w + margin || y < -margin || y > h + margin) {
             on = false;
@@ -265,17 +509,17 @@ function drawRoads(view, w, h) {
     }
   }
 
-  drawRoadLabels(view, w, h, k, shown);
+  drawRoadLabels(view, w, h, shown);
   drawPlaces(view, w, h);
 }
 
-function drawRoadLabels(view, w, h, k, shown) {
-  if (k < 0.9) return;
+function drawRoadLabels(view, w, h, shown) {
+  if (view.scale < 0.3) return;
   const placed = [];
   for (const road of basemap.roads) {
     const rank = road.rank || 1;
     if (!road.name || rank < 2 || !shown.includes(rank)) continue;
-    const pts = road.points.map(([lat, lon]) => toLocal(lat, lon));
+    const pts = road.local;
     let best = 0, bi = 0;
     for (let i = 1; i < pts.length; i++) {
       const d = Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
@@ -363,21 +607,35 @@ function drawRangeRings(w, h, view) {
 /* The history is the evidence: where the two tracks came apart is the oldest
  * part of the divergence, so it must not be the faintest thing on screen. The
  * old fade bottomed out at 0.15 and took the moment of the attack with it. */
+/* Drawn in a handful of bands rather than a stroke per segment. Per-segment
+ * was 1063 canvas strokes per trail 55 seconds into a run and still climbing
+ * — 53,000 a second across the two of them, which is the kind of cost that
+ * shows up as a stutter on the one laptop that matters. Ten bands look the
+ * same and cost ten strokes. Bands share an endpoint so the line stays
+ * continuous. */
+const TRAIL_BANDS = 10;
+
 function drawTrail(points, color, view, w, h, width) {
-  if (points.length < 2) return;
+  const n = points.length;
+  if (n < 2) return;
   ctx.lineJoin = "round";
   ctx.lineCap = "round";
-  for (let i = 1; i < points.length; i++) {
-    const age = i / points.length;
-    const [x1, y1] = project(points[i - 1][0], points[i - 1][1], view, w, h);
-    const [x2, y2] = project(points[i][0], points[i][1], view, w, h);
+  ctx.strokeStyle = color;
+
+  const per = Math.max(1, Math.ceil((n - 1) / TRAIL_BANDS));
+  let start = 0;
+  while (start < n - 1) {
+    const end = Math.min(start + per, n - 1);
+    const age = end / (n - 1);
     ctx.globalAlpha = 0.45 + 0.55 * age;
-    ctx.strokeStyle = color;
     ctx.lineWidth = width * (0.7 + 0.3 * age);
     ctx.beginPath();
-    ctx.moveTo(x1, y1);
-    ctx.lineTo(x2, y2);
+    for (let i = start; i <= end; i++) {
+      const [x, y] = project(points[i][0], points[i][1], view, w, h);
+      if (i === start) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
     ctx.stroke();
+    start = end;
   }
   ctx.globalAlpha = 1;
 }
@@ -712,6 +970,10 @@ function onNewRun() {
   reference = null;
   trails = { gnss: [], witness: [] };
   fleet = {}; zones = []; advisories = []; latest = null;
+  // Or the camera eases across from wherever the last run finished, panning
+  // through a kilometre of countryside while the new one is already driving.
+  cam = null;
+  roadsPreparedFor = null;   // a new run anchors a new origin
   clearTraces();
 }
 

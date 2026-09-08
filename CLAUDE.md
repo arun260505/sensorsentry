@@ -323,6 +323,45 @@ the console. `#actions` was empty on every run. `harness.usecases` posts to
 `/control/inject` directly, so it passed 17/17 against buttons a judge could
 not press. **A harness that talks to the API cannot see a hole in the UI.**
 
+### The map follows the vehicle now, and there are two view modes
+
+Fitting the whole 1331 m route every frame is what produced 0.29 px/m. The
+camera now follows the vehicle at **4 px/m** and pulls back only as far as it
+must to keep the spoofed position on screen beside the real one — so the
+harder the attacker drags, the wider the shot. It frames itself.
+
+| separation | before | now |
+|---|---|---|
+| 20 m | 6 px | **80 px** |
+| 45 m — the road-check tolerance | 13 px | **180 px** |
+| 91 m — GPS's error in the fallback demo | 26 px | **332 px** |
+
+Measured live at 30 m of real walk-off: 9 px before, **119 px** now.
+
+**Fleet is a separate mode and has to be.** `CLUSTER_RADIUS_M` is 3000 and a
+zone runs 400 m+; the one we measure is 823 m across. At follow zoom its
+circle would be several times the width of the map, so zones or more than one
+vehicle switch the camera back to fit-everything. Idle does too.
+
+**The inset is not decoration.** At 4 px/m the map covers ~300 m and a lorry
+crosses it in twenty seconds, while the truck walk-off does not settle to a
+verdict until 64-70 s. Without the whole run in the corner, the place where
+the two tracks separated is hundreds of metres off the edge by the time the
+console names the sensor — the evidence gone exactly when the answer arrives.
+
+**Roads are drawn to scale in metres, not at a fixed pixel width.** A fixed
+16 px trunk road is 4 m wide at follow zoom while the lorry drawn on it is 5:
+a vehicle wider than the highway, which reads as a broken picture. To scale,
+the truck sits in a lane and a spoofed position off the carriageway is
+visibly off it. That is the road check in `blame.py`, drawn.
+
+Two costs found by running the paint loop against a live spoofed snapshot
+rather than by reading it: 4662 road points were being re-projected twice a
+frame — 233,000 `Math.cos` of a constant latitude per second — now projected
+once per run with a bounding box per road; and the trails were one canvas
+stroke per segment, 53,000 a second 55 s into a run and still climbing, now
+ten bands per trail. 430,788 strokes over 200 frames became 7,884.
+
 The stopwatch stays on `/drive` on purpose. Getting the number onto the big
 screen would mean routing the judge's click through the server, and although
 the pipeline would never read it, "the timer goes through the detector but the
