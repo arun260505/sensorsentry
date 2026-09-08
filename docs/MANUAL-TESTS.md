@@ -29,7 +29,17 @@ python -m detector.server
 python -m simulator.control --quiet
 ```
 
-Open **http://127.0.0.1:8080**.
+Open **two** windows:
+
+| | |
+|---|---|
+| **http://127.0.0.1:8080** | the display — map, banner, verdict, the working |
+| **http://127.0.0.1:8080/drive** | the controls — Start, the sensors, the raw feed |
+
+Every "press" and "do" below happens on **/drive**; every "reads" and "wait
+for" is on the display. Click the drive window before using the arrow keys —
+they go to whichever window has focus, and it says so across the top when it
+does not have it.
 
 ---
 

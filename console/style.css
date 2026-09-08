@@ -882,3 +882,8 @@ button.key.on     { background: var(--claimed); border-color: var(--claimed); co
 @media (pointer: coarse) {
   button { min-height: 44px; }
 }
+
+/* the pad, while its sensor has not been taken over yet: visible and named,
+   so switching target never looks like it failed */
+.drive.idle { opacity: .72; }
+.drive.idle .drivehead b { color: var(--ink-3); }

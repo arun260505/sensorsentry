@@ -379,8 +379,14 @@ function renderHeld() {
   const mine = Boolean(held[spec.sensor]);
   el("taketarget").textContent = mine ? "Let go of it" : "Take it over";
   el("taketarget").classList.toggle("ghost", mine);
-  el("drive").hidden = !mine;
-  el("drivewhat").textContent = spec.label;
+
+  // The pad stays on screen and always names the selected sensor, held or
+  // not. Hiding it meant switching target made the controls vanish, which
+  // reads as the switch having failed.
+  el("drive").hidden = !attackLive();
+  el("drivewhat").textContent = mine ? spec.label : spec.label + " — press an arrow";
+  el("drive").classList.toggle("idle", !mine);
+  if (!mine) el("driveheading").textContent = "—";
   for (const button of document.querySelectorAll(".target")) {
     button.classList.toggle("mine", Boolean(held[TARGETS[button.dataset.target].sensor]));
   }
@@ -485,9 +491,20 @@ async function steer(body) {
   } catch (err) { /* the run ended under us; the panel resets on its own */ }
 }
 
-function pressArrow(direction) {
+async function pressArrow(direction) {
   const spec = TARGETS[target];
-  if (!held[spec.sensor]) return;
+  // Pressing an arrow on a sensor you have selected but not yet taken over
+  // used to do nothing at all, silently. Switching from the GPS to the
+  // compass therefore left the arrows apparently still driving the GPS —
+  // they were driving nothing, and the panel was still showing the last
+  // thing that had been taken over.
+  //
+  // Selecting a sensor and pressing an arrow is an unmistakable statement of
+  // intent, so it now takes the sensor over and drives it in one go.
+  if (!held[spec.sensor]) {
+    await takeOver();
+    if (!held[spec.sensor]) return;      // refused: wrong vehicle, or alerting
+  }
   steer(spec.arrow(direction));
 }
 
