@@ -971,3 +971,9 @@ button.key.on { background: var(--claimed); border-color: var(--claimed); color:
 @media (pointer: coarse) {
   button { min-height: 44px; }
 }
+
+/* The pad is the reliable way to drive a sensor — the keyboard only reaches
+   whichever window is in front, and the display opens in its own. So the pad
+   is sized to be pressed, not squinted at. */
+button.key { min-width: 52px; min-height: 42px; }
+button.key:focus-visible { outline: 2px solid var(--claimed); outline-offset: 2px; }

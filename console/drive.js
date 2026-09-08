@@ -496,6 +496,17 @@ async function takeOver() {
   if (!ok) return;
   held[spec.sensor] = true;
   renderHeld();
+
+  // Put keyboard focus back on this page the moment a sensor is taken over.
+  //
+  // The header has a "Display ↗" link that opens the other screen in its own
+  // window, and clicking it hands focus over. Arrow keys then go to the
+  // display, which has no key handler on purpose — so the pad on screen kept
+  // working while the keyboard silently did nothing, which reads as the
+  // arrows being broken rather than as the wrong window listening.
+  const pad = el("driveoff");
+  if (pad) pad.focus({ preventScroll: true });
+
   startHunt("you took the " + target);
 }
 
@@ -545,12 +556,34 @@ function initAttackPanel() {
 
   const ARROWS = { ArrowUp: "up", ArrowRight: "right",
                    ArrowDown: "down", ArrowLeft: "left" };
+  /* Which elements are allowed to swallow an arrow key.
+   *
+   * Only somewhere you are typing. The first version bailed out on any
+   * <input>, and the speed slider is an <input type="range"> sitting directly
+   * above "Take the wheel" — so touching the speed, which everybody does,
+   * left it holding keyboard focus and every arrow press afterwards was
+   * silently discarded. The on-screen pad still worked, which is exactly why
+   * this survived: it looked like the keyboard specifically was broken.
+   */
+  const TYPING = new Set(["text", "url", "number", "email", "password", "search", "tel"]);
+  const isTyping = (node) => {
+    const tag = (node.tagName || "").toLowerCase();
+    if (tag === "textarea" || tag === "select") return true;
+    if (tag !== "input") return false;
+    return TYPING.has((node.type || "text").toLowerCase());
+  };
+
   window.addEventListener("keydown", (event) => {
-    const tag = (event.target.tagName || "").toLowerCase();
-    if (tag === "input" || tag === "select" || tag === "textarea") return;
+    if (isTyping(event.target)) return;
     if (event.key in ARROWS) { event.preventDefault(); pressArrow(ARROWS[event.key]); }
     if (event.key === " ") { event.preventDefault(); steer(TARGETS[target].stop()); }
   });
+
+  // And hand focus back once a slider has been set, so the arrows are driving
+  // the sensor rather than nudging the slider they were last touching.
+  for (const slider of document.querySelectorAll('#attackpanel input[type="range"]')) {
+    slider.addEventListener("change", () => slider.blur());
+  }
 
   /* Park it, or let it go again.
    *
