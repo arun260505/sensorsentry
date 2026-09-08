@@ -759,21 +759,38 @@ function drawVehicle(x, y, heading, color, alert, size) {
   ctx.restore();
 }
 
+/* Pixels between the two markers before they are labelled separately. */
+const HEADS_APART_PX = 26;
+
 function drawHeads(view, w, h) {
   const g = trails.gnss[trails.gnss.length - 1];
   const wit = trails.witness[trails.witness.length - 1];
   const alert = latest && latest.state === "ALERT";
 
-  if (g) {
-    const [x, y] = project(g[0], g[1], view, w, h);
-    drawVehicle(x, y, headingOf(trails.gnss), COLOR.claimed, false, 8);
-    label(x + 15, y + 4, "GPS SAYS", COLOR.claimed, true);
+  const gp = g ? project(g[0], g[1], view, w, h) : null;
+  const wp = wit ? project(wit[0], wit[1], view, w, h) : null;
+
+  if (gp) drawVehicle(gp[0], gp[1], headingOf(trails.gnss), COLOR.claimed, false, 8);
+  if (wp) drawVehicle(wp[0], wp[1], headingOf(trails.witness), COLOR.witness, alert, 10);
+
+  // While the two agree they are the same vehicle, so they get one name.
+  //
+  // Labelling them "GPS SAYS" and "ACTUALLY HERE" the whole time meant that
+  // on an honest run — every cross-check agreeing — the map still announced a
+  // disagreement, with both captions stacked on the same pixel. Someone who
+  // had just selected the compass read it as the display ignoring them and
+  // talking about the GPS instead. The two names are worth having only at the
+  // moment they stop describing the same place.
+  const together = gp && wp
+    && Math.hypot(gp[0] - wp[0], gp[1] - wp[1]) < HEADS_APART_PX;
+
+  if (together) {
+    const name = latest && latest.vehicle_id ? latest.vehicle_id : "vehicle";
+    label(wp[0] + 17, wp[1] + 4, name, COLOR.witness, true);
+    return;
   }
-  if (wit) {
-    const [x, y] = project(wit[0], wit[1], view, w, h);
-    drawVehicle(x, y, headingOf(trails.witness), COLOR.witness, alert, 10);
-    label(x + 17, y + 4, "ACTUALLY HERE", COLOR.witness, true);
-  }
+  if (gp) label(gp[0] + 15, gp[1] + 4, "GPS SAYS", COLOR.claimed, true);
+  if (wp) label(wp[0] + 17, wp[1] + 4, "ACTUALLY HERE", COLOR.witness, true);
 }
 
 /* Labels sit on a chip so they stay readable over a trail or a zone. */
