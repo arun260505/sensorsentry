@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SensorSentry — controls</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body class="page-drive">
+
+<!-- The control surface: everything a person presses.
+     The verdict, the map and the evidence are on the other screen. Keeping
+     them apart is the point — a judge attacks from here and watches the
+     detector answer over there, having touched nothing in between. -->
+
+<header class="bar">
+  <div class="brand">
+    <span class="mark"></span>
+    <span class="name">SensorSentry</span>
+    <span class="brandsub">controls</span>
+  </div>
+  <div class="runinfo">
+    <span id="runid">waiting for a run</span>
+    <span class="sep">·</span>
+    <span id="clock">t 0.0 s</span>
+  </div>
+  <a class="drivelink" href="/" target="_blank" rel="noopener">Display ↗</a>
+  <div class="statepill" id="statepill" data-state="IDLE">IDLE</div>
+</header>
+
+<!-- A rejected frame is the driver's problem to fix, not the room's, so it is
+     on both screens rather than only the one being watched. -->
+<div id="violation" class="violation" hidden></div>
+
+<!-- Arrow keys only reach the window that has focus, and a driver watching
+     the big screen will not notice that this one has lost it. -->
+<div class="focuswarn">Click here first — the arrow keys go to this window.</div>
+
+<main class="drivemain">
+
+  <section class="col">
+
+    <div class="panel run">
+      <h2>The run</h2>
+      <p class="panelnote">
+        The list comes from the simulator, not from this page. A judge picking
+        off a live list is part of the argument that nothing here is staged.
+      </p>
+      <div id="scenarios" class="scenarios"><span class="hint">loading…</span></div>
+      <div class="runrow">
+        <button id="reset">Stop</button>
+        <span id="hint" class="hint"></span>
+      </div>
+    </div>
+
+    <!-- The answer to "is this hardcoded?" is not an argument, it is this
+         panel. The vehicle drives its real route; the judge takes a sensor
+         over and drives it themselves. The detector is never told. -->
+    <div class="panel attack" id="attackpanel">
+      <h2>You are the sensor</h2>
+      <p class="attacknote">
+        The truck drives its real route. Take a sensor and drive it with the
+        <b>arrow keys</b> — or stop, and let it freeze. The detector is never
+        told you touched it.
+      </p>
+
+      <div class="score" id="score">
+        <div class="score-side"><b id="scoreyou">0</b><span>you got away with</span></div>
+        <div class="score-v">v</div>
+        <div class="score-side"><b id="scoreus">0</b><span>we caught</span></div>
+      </div>
+
+      <!-- What the detector currently believes. "not sure yet" is left on
+           screen rather than hidden: refusing to answer is the feature. -->
+      <div class="verdictread" id="verdictread" data-state="quiet">
+        <span class="vr-label">reading you as</span>
+        <b class="vr-word" id="verdictword">—</b>
+        <span class="vr-why" id="verdictwhy"></span>
+      </div>
+
+      <div class="targets" id="targets">
+        <button class="target on" data-target="gps">GPS</button>
+        <button class="target" data-target="compass">Compass</button>
+        <button class="target" data-target="altitude">Altitude</button>
+        <button class="target" data-target="wheels">Wheels</button>
+      </div>
+
+      <button id="taketarget" class="atk primary">Take it over</button>
+
+      <div class="drive" id="drive" hidden>
+        <div class="drivehead">
+          <span id="drivewhat">You are the GPS</span>
+          <b id="driveheading">—</b>
+        </div>
+        <div class="dpad">
+          <button class="key" data-arrow="up">&#9650;</button>
+          <div class="dpad-mid">
+            <button class="key" data-arrow="left">&#9664;</button>
+            <button class="key" id="driveoff" title="stop — let it freeze">&#9632;</button>
+            <button class="key" data-arrow="right">&#9654;</button>
+          </div>
+          <button class="key" data-arrow="down">&#9660;</button>
+        </div>
+        <div class="drivefoot">
+          <span>arrow keys work too</span>
+          <span>space = let go</span>
+        </div>
+      </div>
+
+      <!-- Everything else that can be done to the selected sensor. Built from
+           a table in drive.js so the list matches what the simulator actually
+           offers, and so harness/usecases.py can check every one of them. -->
+      <h3 class="subhead">Or do something to it</h3>
+      <div class="actions" id="actions"></div>
+
+      <button id="doclear" class="atk ghost">Let go of everything</button>
+
+      <!-- Timed in the browser, from the judge's own click. This number never
+           goes near the detector — it cannot, which is the point. -->
+      <div class="stopwatch" id="stopwatch" hidden>
+        <span class="sw-label" id="swlabel">waiting</span>
+        <span class="sw-time" id="swtime">0.0 s</span>
+      </div>
+      <p class="atk-hint" id="atkhint">Press Start above, then take a sensor.</p>
+    </div>
+
+  </section>
+
+  <section class="col">
+
+    <div class="panel report">
+      <h2>The written report</h2>
+      <p class="panelnote">
+        Written from the stored incident record, after the event. Detection
+        does not use it — turn it off and re-run the attack; the verdict is
+        identical.
+      </p>
+      <div class="runrow">
+        <button id="reporttoggle" class="toggle">Written report: off</button>
+        <button id="reportopen" hidden>Open report</button>
+      </div>
+    </div>
+
+    <!-- The anti-hardcoding proof, and it belongs next to the buttons rather
+         than under the map: here is what I am pressing, here is the complete
+         stream the detector receives, notice what is not in it. -->
+    <div class="panel feedpanel">
+      <h2>Everything the detector receives</h2>
+      <p class="panelnote">
+        No true position. No attack flag. There is nothing here it could cheat
+        with.
+      </p>
+      <pre id="feed" class="feed">waiting for frames…</pre>
+    </div>
+
+  </section>
+</main>
+
+<div id="reportsheet" class="reportsheet" hidden>
+  <div class="reportcard">
+    <div class="reporthead">
+      <h2 id="reporttitle">Incident report</h2>
+      <button id="reportclose">Close</button>
+    </div>
+    <pre id="reportbody"></pre>
+    <p class="reportnote">
+      Written from the stored incident record, after the event. Detection does
+      not use it — turn it off and re-run the attack; the verdict is identical.
+      <b>Generated by a template, not a language model.</b> This is where one
+      would be handed the same record.
+    </p>
+  </div>
+</div>
+
+<script src="common.js"></script>
+<script src="drive.js"></script>
+</body>
+</html>

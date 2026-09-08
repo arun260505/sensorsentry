@@ -1,32 +1,37 @@
-/* SensorSentry console.
+/* SensorSentry — the evidence display.
+ *
+ * The screen the room watches. Everything on it is a reading off the ordinary
+ * stream; nothing here can start, stop, attack or steer anything. The controls
+ * live on /drive, on a different screen, in the driver's hands.
  *
  * Draws its own map on a canvas. No tile server, no map library, nothing
  * fetched from the internet — the demo runs with wifi switched off, in front
  * of the judges, and a map that quietly fails to load would take the whole
- * thing with it. Local metres are what the detector works in anyway, so a grid
- * and a scale bar say more here than a street map would.
+ * thing with it.
  */
-
-const el = (id) => document.getElementById(id);
 
 const canvas = el("map");
 const ctx = canvas.getContext("2d");
 
-/* Canvas cannot read CSS variables, so these mirror style.css. Change one,
-   change the other, or the map stops matching its own legend. */
-const COLOR = {
-  grid: "#e6ecf1",
-  gridMajor: "#cfd9e0",
-  claimed: "#a35d07",
-  witness: "#0b5c7a",
-  link: "#b3352a",
-  text: "#788894",
-  road: "#ffffff",        /* carriageway */
-  roadCase: "#ddd6c6",    /* its casing, so trails stay readable over it */
-  roadText: "#8a8272",
-  building: "#ded6c6",
-};
-const CANVAS_BG = "#f4f1ea";
+/* The map's palette comes out of the stylesheet, not out of a table here that
+ * somebody has to remember to keep in step. See themeColours() in common.js
+ * for why that mattered. */
+const COLOR = themeColours({
+  grid:      "--map-grid",
+  gridMajor: "--map-grid-major",
+  claimed:   "--claimed",
+  witness:   "--witness",
+  link:      "--alert",
+  text:      "--ink-3",
+  road:      "--map-road",
+  roadCase:  "--map-road-case",
+  roadText:  "--map-road-text",
+  building:  "--map-building",
+  chip:      "--map-chip",
+  wash:      "--map-alert-wash",
+  fade:      "--map-alert-fade",
+});
+const CANVAS_BG = themeColours({ bg: "--map-bg" }).bg;
 
 let latest = null;
 let trails = { gnss: [], witness: [] };
@@ -125,16 +130,25 @@ function draw() {
   ctx.fillRect(0, 0, w, h);
 
   const view = computeView(w, h);
-  drawGrid(w, h, view);
-  drawRoads(view, w, h);
-  drawRangeRings(w, h, view);
+
+  // A map has either a graticule or streets, never both. When the baked road
+  // network is there it is the ground; the grid and the range rings only come
+  // out as the fallback for when it is not, where a bare canvas would leave
+  // no sense of distance at all.
+  if (basemap.roads.length) {
+    drawRoads(view, w, h);
+  } else {
+    drawGrid(w, h, view);
+    drawRangeRings(w, h, view);
+  }
+
   drawZones(view, w, h);
   drawFleet(view, w, h);
 
   // The claimed track sits under the real one: when they overlap, what the
   // vehicle actually did should be the line you see.
-  drawTrail(trails.gnss, COLOR.claimed, view, w, h, 3);
-  drawTrail(trails.witness, COLOR.witness, view, w, h, 3.5);
+  drawTrail(trails.gnss, COLOR.claimed, view, w, h, 4);
+  drawTrail(trails.witness, COLOR.witness, view, w, h, 4.5);
 
   drawSeparation(view, w, h);
   drawHeads(view, w, h);
@@ -177,32 +191,20 @@ function drawGrid(w, h, view) {
   }
 }
 
-/* Range rings around the focused vehicle. A grid tells you a metre is a
- * metre; rings tell you how far away something is at a glance, which is the
- * question actually being asked of this screen. */
-/* The roads the vehicles are actually driving on.
- *
- * Not decoration. When the fake track runs neatly up the highway while the
- * real truck sits at the warehouse, the whole cargo-theft story is on screen
- * instead of being narrated — and a spoofed position that wanders into a
- * field is visibly in a field.
- */
 /* Real surveyed geometry, drawn the way a map is drawn.
- *
- * Eight hundred roads with a casing under each one, widths by class, and
- * labels only where there is room. The previous version drew three
- * hand-placed polylines, which is a diagram — and it looked like a diagram,
- * which made the whole thing look like a drawing of a demo rather than a
- * demo.
  *
  * Everything comes from simulator/chennai_map.json, baked once from
  * OpenStreetMap and read off disk. The demo never goes online: a tile server
  * fails silently, and a grey rectangle in front of judges is the worst
  * possible failure mode.
+ *
+ * Not decoration, either. When the fake track runs neatly up the highway while
+ * the real truck sits at the warehouse, the whole cargo-theft story is on
+ * screen instead of being narrated — and a spoofed position that wanders into
+ * a field is visibly in a field.
  */
 
-/* Width on screen for each class, as [casing, carriageway]. Scaled with zoom
- * so a road looks like a road at any scale rather than a hairline. */
+/* Width on screen for each class, as [casing, carriageway]. */
 const ROAD_WIDTH = {
   4: [11, 7.5],   // trunk / motorway
   3: [8, 5],      // primary / secondary
@@ -211,23 +213,36 @@ const ROAD_WIDTH = {
   0: [3, 1.7],    // service
 };
 
+/* Which classes of road are worth drawing at this zoom.
+ *
+ * 682 of the 787 baked roads are service lanes and residential streets. Drawn
+ * all at once over a 1.3 km view they are not a map, they are a texture — and
+ * the two tracks that matter have to compete with it. Real cartography drops
+ * features as it zooms out rather than thinning them, so this does too: pull
+ * back far enough and only the trunk road the lorry is actually on survives.
+ */
+function roadRanks(scale) {
+  if (scale >= 2.5) return [0, 1, 2, 3, 4];
+  if (scale >= 1.0) return [1, 2, 3, 4];
+  if (scale >= 0.45) return [2, 3, 4];
+  return [3, 4];
+}
+
 function roadScale(view) {
-  // Below a certain zoom the small roads are noise, so they thin out rather
-  // than crowding the picture.
-  return Math.max(0.55, Math.min(1.5, view.scale * 3.2));
+  return Math.max(0.8, Math.min(3.0, view.scale * 2.4));
 }
 
 function drawRoads(view, w, h) {
   if (!basemap.roads.length) return;
   const k = roadScale(view);
+  const shown = roadRanks(view.scale);
   const margin = 60;
 
   // Two passes over the classes, casing first then carriageway, so junctions
   // join cleanly instead of every road drawing its own outline on top of its
   // neighbour.
-  const byRank = [0, 1, 2, 3, 4];
   for (const layer of [0, 1]) {
-    for (const rank of byRank) {
+    for (const rank of shown) {
       ctx.strokeStyle = layer === 0 ? COLOR.roadCase : COLOR.road;
       ctx.lineJoin = "round";
       ctx.lineCap = "round";
@@ -235,13 +250,14 @@ function drawRoads(view, w, h) {
       ctx.beginPath();
       for (const road of basemap.roads) {
         if ((road.rank || 1) !== rank) continue;
-        if (rank === 0 && k < 0.85) continue;      // hide lanes when zoomed out
         let on = false;
         for (const [lat, lon] of road.points) {
           const [e, n] = toLocal(lat, lon);
           const [x, y] = project(e, n, view, w, h);
-          const visible = x > -margin && x < w + margin && y > -margin && y < h + margin;
-          if (!visible && !on) continue;
+          if (x < -margin || x > w + margin || y < -margin || y > h + margin) {
+            on = false;
+            continue;
+          }
           if (!on) { ctx.moveTo(x, y); on = true; } else { ctx.lineTo(x, y); }
         }
       }
@@ -249,18 +265,16 @@ function drawRoads(view, w, h) {
     }
   }
 
-  drawRoadLabels(view, w, h, k);
+  drawRoadLabels(view, w, h, k, shown);
   drawPlaces(view, w, h);
 }
 
-/* Names, on the bigger roads only, and only one per road. A map that labels
- * every service lane is unreadable at a glance, and a glance is all an
- * operator gets. */
-function drawRoadLabels(view, w, h, k) {
-  if (k < 0.7) return;
+function drawRoadLabels(view, w, h, k, shown) {
+  if (k < 0.9) return;
   const placed = [];
   for (const road of basemap.roads) {
-    if (!road.name || (road.rank || 1) < 2) continue;
+    const rank = road.rank || 1;
+    if (!road.name || rank < 2 || !shown.includes(rank)) continue;
     const pts = road.points.map(([lat, lon]) => toLocal(lat, lon));
     let best = 0, bi = 0;
     for (let i = 1; i < pts.length; i++) {
@@ -274,7 +288,7 @@ function drawRoadLabels(view, w, h, k) {
 
     const mx = (ax + bx) / 2, my = (ay + by) / 2;
     if (mx < 40 || mx > w - 40 || my < 20 || my > h - 20) continue;
-    if (placed.some(([px, py]) => Math.hypot(px - mx, py - my) < 110)) continue;
+    if (placed.some(([px, py]) => Math.hypot(px - mx, py - my) < 130)) continue;
     placed.push([mx, my]);
 
     let angle = Math.atan2(by - ay, bx - ax);
@@ -284,17 +298,18 @@ function drawRoadLabels(view, w, h, k) {
     ctx.save();
     ctx.translate(mx, my);
     ctx.rotate(angle);
-    ctx.font = "600 10px system-ui, sans-serif";
+    ctx.font = "600 11px system-ui, sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     // Halo, so a name stays readable where it crosses a vehicle trail.
-    ctx.lineWidth = 3;
+    ctx.lineWidth = 3.5;
     ctx.strokeStyle = CANVAS_BG;
     ctx.strokeText(name, 0, 0);
     ctx.fillStyle = COLOR.roadText;
     ctx.fillText(name, 0, 0);
     ctx.restore();
   }
+  ctx.textBaseline = "alphabetic";
 }
 
 function drawPlaces(view, w, h) {
@@ -314,9 +329,9 @@ function drawPlaces(view, w, h) {
       ctx.arc(x, y, 3, 0, Math.PI * 2);
       ctx.fill();
     }
-    ctx.font = "600 10px system-ui, sans-serif";
+    ctx.font = "600 11px system-ui, sans-serif";
     ctx.textAlign = "center";
-    ctx.lineWidth = 3;
+    ctx.lineWidth = 3.5;
     ctx.strokeStyle = CANVAS_BG;
     ctx.strokeText(place.name, x, y + 20);
     ctx.fillStyle = COLOR.roadText;
@@ -325,37 +340,40 @@ function drawPlaces(view, w, h) {
   }
 }
 
+/* Range rings around the focused vehicle. A grid tells you a metre is a
+ * metre; rings tell you how far away something is at a glance. Only drawn in
+ * the no-basemap fallback — with roads on screen they are clutter. */
 function drawRangeRings(w, h, view) {
-  const here = trails.witness[trails.witness.length - 1];
+  const here = focus && trails.witness.length
+    ? trails.witness[trails.witness.length - 1] : null;
   if (!here) return;
   const [cx, cy] = project(here[0], here[1], view, w, h);
-  const step = gridStep(view.scale) * 2;
   ctx.strokeStyle = COLOR.grid;
   ctx.lineWidth = 1;
-  for (let i = 1; i <= 4; i++) {
+  const step = gridStep(view.scale) * 2;
+  for (let i = 1; i <= 3; i++) {
     const r = step * i * view.scale;
-    if (r < 30 || r > Math.max(w, h)) continue;
+    if (r > Math.hypot(w, h)) break;
     ctx.beginPath();
     ctx.arc(cx, cy, r, 0, Math.PI * 2);
     ctx.stroke();
   }
 }
 
-/* Trails fade with age, so the eye reads direction of travel without an
- * arrow cluttering every segment. */
+/* The history is the evidence: where the two tracks came apart is the oldest
+ * part of the divergence, so it must not be the faintest thing on screen. The
+ * old fade bottomed out at 0.15 and took the moment of the attack with it. */
 function drawTrail(points, color, view, w, h, width) {
-  if (!points || points.length < 2) return;
+  if (points.length < 2) return;
   ctx.lineJoin = "round";
   ctx.lineCap = "round";
-  const n = points.length;
-  const tailStart = Math.max(0, n - 400);
-  for (let i = Math.max(1, tailStart); i < n; i++) {
-    const age = (i - tailStart) / Math.max(1, n - tailStart);
-    ctx.globalAlpha = 0.15 + 0.85 * age;
-    ctx.strokeStyle = color;
-    ctx.lineWidth = width * (0.5 + 0.5 * age);
+  for (let i = 1; i < points.length; i++) {
+    const age = i / points.length;
     const [x1, y1] = project(points[i - 1][0], points[i - 1][1], view, w, h);
     const [x2, y2] = project(points[i][0], points[i][1], view, w, h);
+    ctx.globalAlpha = 0.45 + 0.55 * age;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = width * (0.7 + 0.3 * age);
     ctx.beginPath();
     ctx.moveTo(x1, y1);
     ctx.lineTo(x2, y2);
@@ -364,42 +382,35 @@ function drawTrail(points, color, view, w, h, width) {
   ctx.globalAlpha = 1;
 }
 
-function drawPath(points, color, view, w, h, width) {
-  drawTrail(points, color, view, w, h, width || 2.5);
-}
-
 function drawFleet(view, w, h) {
   for (const [id, v] of Object.entries(fleet)) {
-    if (id === focus || !v.trails) continue;
-    const attacked = v.state && v.state.state === "ALERT";
+    if (focus && id === focus) continue;     // drawn full strength below
     ctx.save();
     ctx.globalAlpha = 0.5;
-    drawTrail(v.trails.witness, attacked ? COLOR.link : COLOR.witness, view, w, h, 2);
+    drawTrail(v.trails.witness, COLOR.witness, view, w, h, 2.5);
+    drawTrail(v.trails.gnss, COLOR.claimed, view, w, h, 2);
     ctx.restore();
 
-    const last = v.trails.witness[v.trails.witness.length - 1];
-    if (!last) continue;
-    const [x, y] = project(last[0], last[1], view, w, h);
-    drawVehicle(x, y, headingOf(v.trails.witness),
-                attacked ? COLOR.link : COLOR.witness, attacked, 7);
-    label(x + 13, y + 4, id, attacked ? COLOR.link : COLOR.text, attacked);
+    const head = v.trails.witness[v.trails.witness.length - 1];
+    if (!head) continue;
+    const [x, y] = project(head[0], head[1], view, w, h);
+    drawVehicle(x, y, headingOf(v.trails.witness), COLOR.witness,
+                v.state === "ALERT", 7);
+    label(x + 12, y + 4, id, COLOR.text, false);
   }
 }
 
-/* Where the attacker probably is.
- *
- * Soft-edged and slowly breathing on purpose: a hard circle reads as a
- * measurement, and this is an estimate from a handful of witnesses. */
+/* Where the attacker probably is. A circle rather than a point, because that
+ * is genuinely what we know — and saying so is more credible than a pin. */
 function drawZones(view, w, h) {
   for (const z of zones) {
     if (z.e === undefined) continue;
     const [x, y] = project(z.e, z.n, view, w, h);
-    const r = Math.max(12, z.radius_m * view.scale);
+    const r = Math.max(z.radius_m * view.scale, 24);
 
     const glow = ctx.createRadialGradient(x, y, 0, x, y, r);
-    glow.addColorStop(0, "rgba(179,53,42,.22)");
-    glow.addColorStop(0.6, "rgba(179,53,42,.10)");
-    glow.addColorStop(1, "rgba(179,53,42,0)");
+    glow.addColorStop(0, COLOR.wash);
+    glow.addColorStop(1, COLOR.fade);
     ctx.fillStyle = glow;
     ctx.beginPath();
     ctx.arc(x, y, r, 0, Math.PI * 2);
@@ -415,7 +426,6 @@ function drawZones(view, w, h) {
     ctx.setLineDash([]);
     ctx.globalAlpha = 1;
 
-    // A cross at the estimated centre — the thing you would send someone to.
     ctx.strokeStyle = COLOR.link;
     ctx.lineWidth = 2;
     ctx.beginPath();
@@ -423,11 +433,12 @@ function drawZones(view, w, h) {
     ctx.moveTo(x, y - 7); ctx.lineTo(x, y + 7);
     ctx.stroke();
 
-    label(x, y - r - 14, `LIKELY TRANSMITTER · ${z.vehicles.length} HIT`,
-          COLOR.link, true, "center");
+    label(x, y - r - 8, "LIKELY TRANSMITTER", COLOR.link, true, "center");
   }
 }
 
+/* The gap itself, called out in metres. This is the number the whole project
+ * exists to produce, so it is written on the map and not only in a panel. */
 function drawSeparation(view, w, h) {
   const g = trails.gnss[trails.gnss.length - 1];
   const wit = trails.witness[trails.witness.length - 1];
@@ -467,7 +478,7 @@ function headingOf(points) {
 function drawVehicle(x, y, heading, color, alert, size) {
   const r = size || 9;
   if (alert) {
-    ctx.fillStyle = "rgba(179,53,42,.20)";
+    ctx.fillStyle = COLOR.wash;
     ctx.beginPath();
     ctx.arc(x, y, r * (2.2 + 0.8 * pulse(1.2)), 0, Math.PI * 2);
     ctx.fill();
@@ -508,14 +519,14 @@ function drawHeads(view, w, h) {
 
 /* Labels sit on a chip so they stay readable over a trail or a zone. */
 function label(x, y, text, color, strong, align) {
-  ctx.font = strong ? "700 11px system-ui, sans-serif"
-                    : "500 11px system-ui, sans-serif";
+  ctx.font = strong ? "700 12px system-ui, sans-serif"
+                    : "500 12px system-ui, sans-serif";
   ctx.textAlign = align || "left";
   const pad = 5;
-  const w = ctx.measureText(text).width;
-  const left = align === "center" ? x - w / 2 - pad : x - pad;
-  ctx.fillStyle = "rgba(255,255,255,.82)";
-  ctx.fillRect(left, y - 11, w + pad * 2, 15);
+  const width = ctx.measureText(text).width;
+  const left = align === "center" ? x - width / 2 - pad : x - pad;
+  ctx.fillStyle = COLOR.chip;
+  ctx.fillRect(left, y - 12, width + pad * 2, 16);
   ctx.fillStyle = color;
   ctx.fillText(text, x, y);
   ctx.textAlign = "left";
@@ -533,7 +544,7 @@ function drawCompass(w, h) {
   ctx.lineTo(x, y - r + 3);
   ctx.stroke();
   ctx.fillStyle = COLOR.text;
-  ctx.font = "700 10px system-ui, sans-serif";
+  ctx.font = "700 11px system-ui, sans-serif";
   ctx.textAlign = "center";
   ctx.fillText("N", x, y - r - 4);
   ctx.textAlign = "left";
@@ -549,40 +560,15 @@ function updateScaleBar(view) {
 
 /* --- panels ------------------------------------------------------------- */
 
-const SENSOR_LABEL = { gnss: "GPS", imu: "Motion", baro: "Height", mag: "Compass", odom: "Wheels" };
-const FLAG_LABEL = {
-  stuck: "frozen",
-  out_of_range: "impossible reading",
-  dropped: "silent",
-  noisy: "degraded",
-  no_fix: "no fix",
-};
-
 function renderPanels(snapshot) {
   const s = snapshot.state;
-
-  el("violation").hidden = !snapshot.violation;
-  if (snapshot.violation) el("violation").textContent = `SCHEMA VIOLATION — ${snapshot.violation}`;
-
-  if (!s) {
-    el("statepill").textContent = "IDLE";
-    el("statepill").dataset.state = "IDLE";
-    el("runid").textContent = "waiting for a run";
-    el("vehicle").textContent = "no vehicle";
-    return;
-  }
+  if (!s) return;
 
   const count = Object.keys(fleet).length;
   el("mode").textContent = count > 1 ? `FLEET · ${count} VEHICLES` : "SINGLE VEHICLE";
   el("mode").dataset.mode = count > 1 ? "fleet" : "single";
 
-  el("vehicle").textContent = `${s.vehicle_id} (${s.vehicle_type})`;
-  el("runid").textContent = s.run_id;
-  el("clock").textContent = `t ${s.t.toFixed(1)} s`;
-
   const state = s.anchored ? s.state : "IDLE";
-  el("statepill").textContent = s.anchored ? state : "ANCHORING";
-  el("statepill").dataset.state = state;
 
   const r = s.residual;
   el("sep").textContent = r ? r.horizontal_m.toFixed(1) : "—";
@@ -687,10 +673,6 @@ function renderPanels(snapshot) {
       list.appendChild(li);
     }
   }
-
-  if (snapshot.raw) {
-    el("feed").textContent = JSON.stringify(snapshot.raw, null, 1);
-  }
 }
 
 /* One frame for the whole page.
@@ -717,274 +699,94 @@ function pathToLocal(points) {
   return (points || []).map(([lat, lon]) => toLocal(lat, lon));
 }
 
-/* --- stream ------------------------------------------------------------- */
+/* --- the stream ---------------------------------------------------------
+ *
+ * The run is started from the other page now, so this one cannot reset itself
+ * when a button is pressed — it has to notice. A new run_id means a new
+ * origin, and an origin left anchored on the previous run puts the whole map
+ * a kilometre out with nothing on screen saying so.
+ */
+let lastRunId = null;
 
-function connect() {
-  const source = new EventSource("/stream");
+function onNewRun() {
+  reference = null;
+  trails = { gnss: [], witness: [] };
+  fleet = {}; zones = []; advisories = []; latest = null;
+  clearTraces();
+}
 
-  source.onmessage = (event) => {
-    const snapshot = JSON.parse(event.data);
-    latest = snapshot.state;
-    focus = snapshot.focus;
-    advisories = snapshot.advisories || [];
+onSnapshot((snapshot) => {
+  const runId = snapshot.state ? snapshot.state.run_id : null;
+  if (runId !== lastRunId) {
+    lastRunId = runId;
+    onNewRun();
+  }
 
-    // Anchor the page frame on the focused vehicle, once.
-    if (reference === null && latest && latest.witness && latest.witness.lat != null) {
-      reference = { lat: latest.witness.lat, lon: latest.witness.lon };
-    }
+  latest = snapshot.state;
+  focus = snapshot.focus;
+  advisories = snapshot.advisories || [];
 
-    trails = {
-      gnss: pathToLocal(snapshot.trails.gnss),
-      witness: pathToLocal(snapshot.trails.witness),
+  // Anchor the page frame on the focused vehicle, once.
+  if (reference === null && latest && latest.witness && latest.witness.lat != null) {
+    reference = { lat: latest.witness.lat, lon: latest.witness.lon };
+  }
+
+  trails = {
+    gnss: pathToLocal(snapshot.trails.gnss),
+    witness: pathToLocal(snapshot.trails.witness),
+  };
+  fleet = {};
+  for (const [id, v] of Object.entries(snapshot.vehicles || {})) {
+    fleet[id] = {
+      state: v.state,
+      trails: {
+        gnss: pathToLocal(v.trails.gnss),
+        witness: pathToLocal(v.trails.witness),
+      },
     };
-    fleet = {};
-    for (const [id, v] of Object.entries(snapshot.vehicles || {})) {
-      fleet[id] = {
-        state: v.state,
-        trails: {
-          gnss: pathToLocal(v.trails.gnss),
-          witness: pathToLocal(v.trails.witness),
-        },
-      };
-    }
-    zones = (snapshot.zones || []).map((z) => {
-      const [e, n] = toLocal(z.lat, z.lon);
-      return { ...z, e, n };
-    });
+  }
+  zones = (snapshot.zones || []).map((z) => {
+    const [e, n] = toLocal(z.lat, z.lon);
+    return { ...z, e, n };
+  });
 
-    renderReportControls(Boolean(snapshot.report_enabled));
-    renderPanels(snapshot);
-    pushTrace(snapshot);
-    renderTraces(snapshot);
-    renderProof(snapshot);
-    attackWatch(latest);
-    setAttackEnabled();
+  if (!renderStatus(snapshot)) {
+    // No run. Everything that describes one goes away rather than sitting
+    // there showing the last one's numbers as though they were current.
+    for (const id of ["banner", "verdictpanel", "navpanel", "fleetpanel",
+                      "proofpanel", "tracepanel"]) {
+      el(id).hidden = true;
+    }
+    el("mode").textContent = "SINGLE VEHICLE";
     draw();
-  };
-
-  source.onerror = () => {
-    el("statepill").textContent = "NO LINK";
-    el("statepill").dataset.state = "IDLE";
-    // EventSource reconnects on its own; restarting the server mid-demo
-    // should not need a page reload.
-  };
-}
-
-/* --- controls ----------------------------------------------------------- */
-
-async function post(path, body) {
-  const hint = el("hint");
-  try {
-    const response = await fetch(path, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body || {}),
-    });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      hint.className = "hint bad";
-      hint.textContent = data.hint || data.error || `failed (${response.status})`;
-      return false;
-    }
-    return true;
-  } catch (err) {
-    hint.className = "hint bad";
-    hint.textContent = String(err);
-    return false;
+    return;
   }
-}
 
-/* --- scenario buttons ---------------------------------------------------
- * Built from whatever the simulator says it has, rather than hardcoded here.
- * A judge picking the scenario off a live list is part of the argument that
- * nothing is staged: the list comes from the other process.
- */
-
-/* Two words each: what it is, and what it is for. The vehicle has to be in
-   the name — stripping the prefix left a "clean" button for the drone and
-   another for the truck, side by side and indistinguishable. */
-const SCENARIOS = {
-  truck_clean:     ["Start · truck",     "the Sriperumbudur delivery"],
-  drone_clean:     ["Start · drone",     "a survey flight"],
-  drone_manoeuvre: ["drone · manoeuvre", "hard flying, no attack"],
-  drone_walkoff:   ["drone · walkoff",   "GPS spoofing"],
-  drone_fault:     ["drone · fault",     "sensor failure"],
-  drone_magnet:    ["drone · magnet",    "magnet on compass"],
-  truck_theft:     ["truck · theft",     "cargo theft"],
-};
-
-/* The honest runs are the way in: press Start, then attack it yourself. The
- * scripted attacks are demoted rather than deleted — they are the fallback if
- * a laptop misbehaves in the room, and harness/results.py still measures
- * against them. They just stop being the first thing a judge sees, because a
- * row of buttons named "truck · theft" is what made this look canned. */
-const START_WITH = ["truck_clean", "drone_clean"];
-
-let running = null;
-
-async function loadScenarios() {
-  const box = el("scenarios");
-  try {
-    const res = await fetch("/control/scenarios");
-    const data = await res.json();
-    // A 503 still parses as JSON, so "no scenarios" and "nothing is
-    // listening" looked identical — the page said "none offered" when the
-    // simulator simply was not running.
-    if (!res.ok || !Array.isArray(data.scenarios)) {
-      box.innerHTML = '<span class="hint bad">' +
-        (data.hint || data.error || "simulator control not reachable") + '</span>';
-      return;
-    }
-    box.innerHTML = "";
-    const offered = data.scenarios || [];
-    const make = (name, scripted) => {
-      const b = document.createElement("button");
-      const [label, note] = SCENARIOS[name] || [name.replace(/_/g, " "), ""];
-      b.textContent = label;
-      b.dataset.note = note;
-      if (scripted) b.classList.add("scripted");
-      b.addEventListener("click", () => startScenario(name, b));
-      box.appendChild(b);
-    };
-    for (const name of offered) if (START_WITH.includes(name)) make(name, false);
-    const rest = offered.filter((n) => !START_WITH.includes(n));
-    if (rest.length) {
-      const tag = document.createElement("span");
-      tag.className = "scripted-label";
-      tag.textContent = "scripted runs";
-      box.appendChild(tag);
-      for (const name of rest) make(name, true);
-    }
-    // The fleet finale is not a simulator scenario — it needs four vehicles
-    // at once — but on stage it should be one more button, not a terminal.
-    const fleetBtn = document.createElement("button");
-    fleetBtn.textContent = "fleet · attack zone";
-    fleetBtn.dataset.note = "4 vehicles, 3 attacked";
-    fleetBtn.addEventListener("click", async () => {
-      await post("/control/reset");
-      await post("/control/fleet");
-      reference = null;
-      for (const b of box.children) if (b.classList) b.classList.remove("running");
-      fleetBtn.classList.add("running");
-      el("hint").className = "hint";
-      el("hint").textContent = "running fleet — 4 vehicles";
-    });
-    box.appendChild(fleetBtn);
-
-    if (!box.children.length) box.innerHTML = '<span class="hint">none offered</span>';
-  } catch (err) {
-    box.innerHTML = '<span class="hint bad">simulator control not running — ' +
-      'start it with: python -m simulator.control</span>';
-  }
-}
-
-async function startScenario(name, button) {
-  // Stop whatever is running first, so switching mid-flight cannot leave two
-  // vehicles talking over each other on the same port.
-  await post("/control/stopfleet");
-  await post("/control/reset");
-  await post("/control/clear");
-  latest = null;
-  trails = { gnss: [], witness: [] };
-  fleet = {}; zones = []; advisories = []; reference = null;
+  renderPanels(snapshot);
+  pushTrace(snapshot);
+  renderTraces(snapshot);
+  renderProof(snapshot);
   draw();
-
-  const ok = await post("/control/start", { scenario: name });
-  running = ok ? name : null;
-  for (const b of el("scenarios").children) {
-    if (b.classList) b.classList.toggle("running", b === button && ok);
-  }
-  el("hint").className = "hint";
-  el("hint").textContent = ok ? `running ${name}` : "";
-}
-
-el("reset").addEventListener("click", async () => {
-  await post("/control/stopfleet");
-  await post("/control/reset");
-  await post("/control/clear");
-  running = null;
-  for (const b of el("scenarios").children) {
-    if (b.classList) b.classList.remove("running");
-  }
-  latest = null;
-  trails = { gnss: [], witness: [] };
-  fleet = {}; zones = []; advisories = []; reference = null;
-  draw();
-  el("hint").textContent = "stopped";
 });
-
-/* --- the written report -------------------------------------------------
- *
- * Two buttons, not one. The switch turns the feature on and off; a separate
- * action opens the report. Conflating them let the page and the server drift
- * apart — the button read "off" while the feature was on, and the sheet
- * opened empty because the fetch that fills it belonged to the other action.
- *
- * The server owns the state. The page reads it back from the stream every
- * frame rather than tracking its own copy, so the two cannot disagree.
- */
-
-function renderReportControls(enabled) {
-  el("reporttoggle").textContent = `Written report: ${enabled ? "on" : "off"}`;
-  el("reporttoggle").dataset.on = enabled ? "1" : "0";
-  el("reportopen").hidden = !enabled;
-  if (!enabled) el("reportsheet").hidden = true;
-}
-
-el("reporttoggle").addEventListener("click", async () => {
-  try {
-    const res = await fetch("/report/toggle", { method: "POST" });
-    const data = await res.json();
-    renderReportControls(Boolean(data.enabled));
-    if (data.enabled) openReport();
-  } catch (err) {
-    el("hint").className = "hint bad";
-    el("hint").textContent = String(err);
-  }
-});
-
-el("reportopen").addEventListener("click", openReport);
-el("reportclose").addEventListener("click", () => {
-  el("reportsheet").hidden = true;
-});
-
-async function openReport() {
-  el("reporttitle").textContent = "Incident report";
-  el("reportbody").textContent = "Reading the record…";
-  el("reportsheet").hidden = false;
-  try {
-    const r = await (await fetch("/report")).json();
-    if (r.report) {
-      el("reporttitle").textContent = r.report.title;
-      el("reportbody").textContent = r.report.body;
-    } else {
-      // Say why there is nothing, rather than showing an empty box and
-      // leaving the reader to wonder whether it broke.
-      el("reporttitle").textContent = "Nothing to report yet";
-      el("reportbody").textContent =
-        r.note || "No run has been recorded on this vehicle yet. " +
-        "Start a scenario and let it reach a verdict.";
-    }
-  } catch (err) {
-    el("reporttitle").textContent = "Could not read the record";
-    el("reportbody").textContent = String(err);
-  }
-}
 
 async function loadBasemap() {
+  let data = null;
   try {
-    basemap = await (await fetch("/basemap")).json();
+    data = await (await fetch("/basemap")).json();
   } catch (err) {
-    basemap = { roads: [], places: [] };   // a grid is still usable
+    data = null;                           // a grid is still usable
   }
+  // Normalised rather than trusted. draw() reads roads.length on every frame,
+  // so a response missing that key does not lose the roads — it throws out of
+  // the paint loop and leaves a blank rectangle in front of the room, with
+  // nothing in the console saying why.
+  basemap = {
+    roads: (data && Array.isArray(data.roads)) ? data.roads : [],
+    places: (data && Array.isArray(data.places)) ? data.places : [],
+    route: (data && Array.isArray(data.route)) ? data.route : [],
+  };
   draw();
 }
-
-resize();
-connect();
-loadScenarios();
-loadBasemap();
-requestAnimationFrame(animate);
 
 /* --- the readings themselves ---------------------------------------------
  *
@@ -1012,8 +814,8 @@ const TRACES = [
     unit: "°",
     wrap: true,                    // degrees, so 359 -> 1 is a small change
     lines: [
-      { key: "compass", name: "compass", colour: "#a35d07" },
-      { key: "gyro", name: "gyro", colour: "#0b5c7a" },
+      { key: "compass", name: "compass", colour: COLOR.claimed },
+      { key: "gyro", name: "gyro", colour: COLOR.witness },
     ],
     read: (snap) => {
       const st = snap.state, raw = snap.raw;
@@ -1028,8 +830,8 @@ const TRACES = [
     title: "How high we are",
     unit: " m",
     lines: [
-      { key: "gps", name: "GPS", colour: "#a35d07" },
-      { key: "own", name: "barometer", colour: "#0b5c7a" },
+      { key: "gps", name: "GPS", colour: COLOR.claimed },
+      { key: "own", name: "barometer", colour: COLOR.witness },
     ],
     // Both sides straight off the state, in the same frame and the same
     // units. Reading the GPS height out of the raw frame instead meant three
@@ -1047,8 +849,8 @@ const TRACES = [
     title: "How fast we are going",
     unit: " m/s",
     lines: [
-      { key: "own", name: "own sensors", colour: "#0b5c7a" },
-      { key: "wheels", name: "wheels", colour: "#a35d07" },
+      { key: "own", name: "own sensors", colour: COLOR.witness },
+      { key: "wheels", name: "wheels", colour: COLOR.claimed },
     ],
     read: (snap) => {
       const st = snap.state, raw = snap.raw;
@@ -1146,13 +948,13 @@ function renderTraces(snapshot) {
 }
 
 function drawTrace(spec, store, series) {
-  const canvas = el(`canvas-${spec.id}`);
-  const c = canvas.getContext("2d");
+  const chart = el(`canvas-${spec.id}`);
+  const c = chart.getContext("2d");
   const dpr = window.devicePixelRatio || 1;
-  const rect = canvas.getBoundingClientRect();
+  const rect = chart.getBoundingClientRect();
   const w = rect.width || 280, h = 58;
-  canvas.width = Math.round(w * dpr);
-  canvas.height = Math.round(h * dpr);
+  chart.width = Math.round(w * dpr);
+  chart.height = Math.round(h * dpr);
   c.setTransform(dpr, 0, 0, dpr, 0, 0);
   c.clearRect(0, 0, w, h);
 
@@ -1222,6 +1024,15 @@ const WEB_AT = {
   imu:  [0.28, 0.85],
   road: [0.14, 0.42],
 };
+
+const WEB_COLOUR = themeColours({
+  bad:   "--alert",
+  good:  "--web-good",
+  node:  "--panel",
+  edge:  "--ink-3",
+  text:  "--ink-2",
+  onBad: "--panel",
+});
 
 function pairFailing(pair, states) {
   return (states[pair.key] || "OK") !== "OK";
@@ -1305,13 +1116,13 @@ function renderProof(snapshot) {
  * between them. Green where they agree, red where they do not. A liar shows
  * up as the one node with red running to everything it touches. */
 function drawWeb(pairs, states, guilty) {
-  const canvas = el("web");
-  const ctx2 = canvas.getContext("2d");
+  const web = el("web");
+  const ctx2 = web.getContext("2d");
   const dpr = window.devicePixelRatio || 1;
-  const rect = canvas.getBoundingClientRect();
+  const rect = web.getBoundingClientRect();
   const w = rect.width || 300, h = 190;
-  canvas.width = Math.round(w * dpr);
-  canvas.height = Math.round(h * dpr);
+  web.width = Math.round(w * dpr);
+  web.height = Math.round(h * dpr);
   ctx2.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx2.clearRect(0, 0, w, h);
 
@@ -1327,7 +1138,7 @@ function drawWeb(pairs, states, guilty) {
     const from = at[pair.a], to = at[pair.b];
     if (!from || !to) continue;
     const bad = (states[pair.key] || "OK") !== "OK";
-    ctx2.strokeStyle = bad ? "#b3352a" : "#9dc3ad";
+    ctx2.strokeStyle = bad ? WEB_COLOUR.bad : WEB_COLOUR.good;
     ctx2.lineWidth = bad ? 2.6 : 1.2;
     if (!bad) ctx2.setLineDash([]);
     ctx2.beginPath();
@@ -1341,358 +1152,26 @@ function drawWeb(pairs, states, guilty) {
     const accused = sensor === guilty;
     ctx2.beginPath();
     ctx2.arc(x, y, accused ? 15 : 12, 0, Math.PI * 2);
-    ctx2.fillStyle = accused ? "#b3352a" : "#ffffff";
+    ctx2.fillStyle = accused ? WEB_COLOUR.bad : WEB_COLOUR.node;
     ctx2.fill();
     ctx2.lineWidth = accused ? 0 : 1.4;
-    ctx2.strokeStyle = "#9aa8b2";
+    ctx2.strokeStyle = WEB_COLOUR.edge;
     if (!accused) ctx2.stroke();
 
-    ctx2.fillStyle = accused ? "#ffffff" : "#4a5c69";
+    ctx2.fillStyle = accused ? WEB_COLOUR.onBad : WEB_COLOUR.text;
     ctx2.font = accused
       ? "700 10px ui-sans-serif, system-ui, sans-serif"
       : "600 10px ui-sans-serif, system-ui, sans-serif";
     ctx2.textAlign = "center";
     ctx2.textBaseline = "middle";
-    const label = SENSOR_NAME[sensor] || sensor;
-    ctx2.fillText(label.length > 7 ? label.slice(0, 7) : label, x, y);
+    const name = SENSOR_NAME[sensor] || sensor;
+    ctx2.fillText(name.length > 7 ? name.slice(0, 7) : name, x, y);
   }
 }
 
-/* --- you are the sensor --------------------------------------------------
- *
- * The vehicle drives its real route. The judge takes a sensor over and drives
- * that instead, with the arrow keys, at a moment nobody scripted.
- *
- * The two cases that matter come from the same control:
- *   drive it   -> the reading moves in a way the vehicle never moved -> TAMPERED
- *   let go     -> the reading stops dead while everything else moves -> FAILED
- *
- * THE RULE THIS SECTION MUST NOT BREAK: the detector is never told any of it.
- * The click happens here, the stopwatch runs here, and it is compared against
- * an alert arriving over the ordinary stream. That is the only reason the
- * number on screen is worth anything.
- */
+/* --- go ------------------------------------------------------------------ */
 
-const AWAY_AFTER_S = 90;
-
-const TARGETS = {
-  gps: {
-    sensor: "gnss", label: "You are the GPS",
-    hint: "Arrows drive it. Stop, and it freezes where it is.",
-    arrow: (dir) => ({ bearing_deg: { up: 0, right: 90, down: 180, left: 270 }[dir],
-                       moving: true }),
-    stop:  () => ({ moving: false }),
-    show:  (d) => d.moving
-      ? String(Math.round(d.bearing_deg || 0)).padStart(3, "0") + "°"
-      : "frozen",
-  },
-  compass: {
-    sensor: "mag", label: "You are the compass",
-    hint: "Left and right turn it. The gyro does not follow.",
-    arrow: (dir) => ({ turn_deg: (dir === "right" || dir === "up") ? 5 : -5 }),
-    stop:  () => ({}),
-    // null until the puppet has seen one frame and learned the real heading
-    // to take over from. Showing "—" for that instant beats showing NaN.
-    show:  (d) => d.heading_deg == null ? "—" : Math.round(d.heading_deg) + "°",
-  },
-  altitude: {
-    sensor: "baro", label: "You are the barometer",
-    hint: "Up and down move its reported height.",
-    arrow: (dir) => ({ step_m: (dir === "up" || dir === "right") ? 10 : -10 }),
-    stop:  () => ({ height_offset_m: 0 }),
-    show:  (d) => (d.height_offset_m > 0 ? "+" : "")
-                  + Math.round(d.height_offset_m || 0) + " m",
-  },
-  wheels: {
-    sensor: "odom", label: "You are the wheel sensor",
-    hint: "Hold it at zero while the truck drives on.",
-    arrow: (dir) => ({ step_mps: (dir === "up" || dir === "right") ? 2 : -2 }),
-    stop:  () => ({ speed_mps: 0 }),
-    show:  (d) => d.speed_mps == null ? "—"
-                  : (Math.round(d.speed_mps * 10) / 10) + " m/s",
-  },
-};
-
-/* Everything else that can be done to each sensor, beyond taking it over.
- *
- * One table, so the console offers exactly what the simulator implements and
- * harness/usecases.py can check every entry end to end. If a button is here,
- * a case in that file says what it should produce; if it is not, a judge
- * cannot press it and be surprised.
- */
-const ACTIONS = {
-  gnss: [
-    ["Jump it 300 m",     { kind: "attack", type: "teleport", strength: 300, bearing_deg: 90 },
-     "you jumped the GPS 300 m"],
-    ["Replay elsewhere",  { kind: "attack", type: "replay", strength: 250, bearing_deg: 45 },
-     "you replayed a signal from elsewhere"],
-    ["Slow walk-off",     { kind: "attack", type: "walkoff", strength: 3, bearing_deg: 90 },
-     "you started a slow walk-off"],
-    ["Cut it off",        { kind: "fault", type: "dropout", sensor: "gnss" },
-     "you cut the GPS off"],
-  ],
-  mag: [
-    ["Hold a magnet",     { kind: "interference", type: "magnet", strength: 30 },
-     "you held a magnet to the compass"],
-    ["Freeze it",         { kind: "fault", type: "stuck", sensor: "mag" },
-     "you froze the compass"],
-    ["Make it noisy",     { kind: "fault", type: "noisy", sensor: "mag", strength: 18 },
-     "you made the compass noisy"],
-    ["Cut it off",        { kind: "fault", type: "dropout", sensor: "mag" },
-     "you cut the compass off"],
-  ],
-  baro: [
-    ["Squeeze it",        { kind: "interference", type: "pressure", strength: -6 },
-     "you squeezed the barometer"],
-    ["Spoof height only", { kind: "attack", type: "altitude_only", strength: 60 },
-     "you spoofed the height only"],
-    ["Freeze it",         { kind: "fault", type: "stuck", sensor: "baro" },
-     "you froze the barometer"],
-    ["Make it noisy",     { kind: "fault", type: "noisy", sensor: "baro", strength: 12 },
-     "you made the barometer noisy"],
-  ],
-  odom: [
-    ["Freeze it",         { kind: "fault", type: "stuck", sensor: "odom" },
-     "you froze the wheel sensor"],
-    ["Make it noisy",     { kind: "fault", type: "noisy", sensor: "odom", strength: 12 },
-     "you made the wheels noisy"],
-    ["Cut it off",        { kind: "fault", type: "dropout", sensor: "odom" },
-     "you cut the wheel sensor off"],
-  ],
-};
-
-/* What the detector currently believes, in the judge's own words. */
-const VERDICT = {
-  attack:       ["TAMPERED", "someone is inventing this reading"],
-  fault:        ["FAILED SENSOR", "the sensor has stopped telling the truth"],
-  interference: ["INTERFERENCE", "something physical is affecting it"],
-};
-
-/* Which sensors each vehicle actually carries. A lorry has no barometer and a
- * drone has no wheels, so offering those targets on the wrong vehicle gives a
- * judge a button that does nothing — which reads as broken, not as absent. */
-const FITTED = {
-  drone: ["gnss", "mag", "baro"],
-  truck: ["gnss", "mag", "odom"],
-};
-
-function fitted(sensor) {
-  const type = latest && latest.vehicle_type;
-  if (!type || !FITTED[type]) return true;      // unknown vehicle: offer all
-  return FITTED[type].includes(sensor);
-}
-
-let target = "gps";       // which one the arrows drive
-let held = {};            // sensor -> true, everything taken over
-let hunting = null;
-let swTimer = null;
-const score = { you: 0, us: 0 };
-
-function attackLive() { return latest !== null && latest !== undefined; }
-
-function setAttackEnabled() {
-  const live = attackLive();
-  for (const node of document.querySelectorAll(
-        "#attackpanel button, #attackpanel input, #attackpanel select")) {
-    node.disabled = !live;
-  }
-  if (!live && Object.keys(held).length) { held = {}; renderHeld(); }
-
-  // A target the running vehicle does not carry is disabled and says so,
-  // rather than accepting a press and doing nothing.
-  for (const button of document.querySelectorAll(".target")) {
-    const has = fitted(TARGETS[button.dataset.target].sensor);
-    button.disabled = !live || !has;
-    button.classList.toggle("absent", live && !has);
-  }
-  const here = fitted(TARGETS[target].sensor);
-  for (const button of el("actions").querySelectorAll("button")) {
-    button.disabled = !live || !here;
-  }
-  el("taketarget").disabled = !live || !here;
-  const type = latest && latest.vehicle_type;
-  el("atkhint").textContent = !live
-    ? "Press Start below, then take a sensor."
-    : !fitted(TARGETS[target].sensor)
-      ? `This ${type} has no ${target}. Try one of the others.`
-      : TARGETS[target].hint;
-}
-
-function selectTarget(name) {
-  target = name;
-  for (const button of document.querySelectorAll(".target")) {
-    button.classList.toggle("on", button.dataset.target === name);
-  }
-  renderHeld();
-  setAttackEnabled();
-}
-
-function renderActions() {
-  const box = el("actions");
-  box.innerHTML = "";
-  for (const [label, body, said] of ACTIONS[TARGETS[target].sensor] || []) {
-    const button = document.createElement("button");
-    button.textContent = label;
-    button.disabled = !attackLive();
-    button.addEventListener("click", async () => {
-      if (latest && latest.state === "ALERT" && !hunting) {
-        el("atkhint").textContent = "It is already alerting — let go of everything first.";
-        return;
-      }
-      if (await post("/control/inject", body)) startHunt(said);
-    });
-    box.appendChild(button);
-  }
-}
-
-function renderHeld() {
-  const spec = TARGETS[target];
-  const mine = Boolean(held[spec.sensor]);
-  el("taketarget").textContent = mine ? "Let go of it" : "Take it over";
-  el("taketarget").classList.toggle("ghost", mine);
-  el("drive").hidden = !mine;
-  el("drivewhat").textContent = spec.label;
-  for (const button of document.querySelectorAll(".target")) {
-    button.classList.toggle("mine", Boolean(held[TARGETS[button.dataset.target].sensor]));
-  }
-}
-
-/* --- the stopwatch, timed here and nowhere else -------------------------- */
-
-function startHunt(label) {
-  hunting = { at: performance.now(), label };
-  const sw = el("stopwatch");
-  sw.hidden = false;
-  sw.dataset.state = "hunting";
-  if (swTimer) clearInterval(swTimer);
-  swTimer = setInterval(tickHunt, 100);
-  tickHunt();
-}
-
-function tickHunt() {
-  if (!hunting) return;
-  const secs = (performance.now() - hunting.at) / 1000;
-  el("swlabel").textContent = hunting.label + " · not caught yet";
-  el("swtime").textContent = secs.toFixed(1) + " s";
-  if (secs >= AWAY_AFTER_S) endHunt(false, secs);
-}
-
-function endHunt(caught, secs) {
-  if (!hunting) return;
-  if (swTimer) { clearInterval(swTimer); swTimer = null; }
-  const sw = el("stopwatch");
-  sw.dataset.state = caught ? "caught" : "away";
-  el("swlabel").textContent = caught ? "caught you in" : "you got away with it";
-  el("swtime").textContent = secs.toFixed(1) + " s";
-  if (caught) score.us += 1; else score.you += 1;
-  el("scoreus").textContent = String(score.us);
-  el("scoreyou").textContent = String(score.you);
-  hunting = null;
-}
-
-/* Called on every snapshot: the live readout, and the stopwatch. An alert
- * only counts as a catch if it arrives after the judge's click — otherwise a
- * previous attack's alert is scored for this one, which would be us cheating
- * in our own favour, on stage. */
-function attackWatch(state) {
-  const box = el("verdictread");
-  if (!state || state.state !== "ALERT") {
-    box.dataset.state = "quiet";
-    el("verdictword").textContent = Object.keys(held).length ? "nothing yet" : "—";
-    el("verdictwhy").textContent = "";
-  } else {
-    const known = VERDICT[state.cause && state.cause.label];
-    const named = state.blame && state.blame.guilty;
-    if (known && named && named !== "cannot_isolate") {
-      box.dataset.state = state.cause.label;
-      el("verdictword").textContent = known[0];
-      el("verdictwhy").textContent = SENSOR_LABEL[named] + " — " + known[1];
-    } else {
-      box.dataset.state = "unsure";
-      el("verdictword").textContent = "not sure yet";
-      el("verdictwhy").textContent =
-        "something is wrong; not enough evidence to name one sensor";
-    }
-  }
-  if (hunting && state && state.state === "ALERT") {
-    endHunt(true, (performance.now() - hunting.at) / 1000);
-  }
-}
-
-/* --- taking a sensor over ------------------------------------------------ */
-
-async function takeOver() {
-  const spec = TARGETS[target];
-  if (held[spec.sensor]) {
-    await post("/control/inject", { kind: "clear", which: "puppet:" + spec.sensor });
-    delete held[spec.sensor];
-    if (hunting) endHunt(false, (performance.now() - hunting.at) / 1000);
-    renderHeld();
-    return;
-  }
-  if (!attackLive()) return;
-  if (latest && latest.state === "ALERT" && !hunting) {
-    el("atkhint").textContent = "It is already alerting — let go of everything first.";
-    return;
-  }
-  const ok = await post("/control/inject", { kind: "puppet", sensor: spec.sensor });
-  if (!ok) return;
-  held[spec.sensor] = true;
-  renderHeld();
-  startHunt("you took the " + target);
-}
-
-async function steer(body) {
-  const spec = TARGETS[target];
-  if (!held[spec.sensor]) return;
-  try {
-    const res = await fetch("/control/steer", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(Object.assign({ target: target }, body)),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) return;
-    el("driveheading").textContent = spec.show(data);
-  } catch (err) { /* the run ended under us; the panel resets on its own */ }
-}
-
-function pressArrow(direction) {
-  const spec = TARGETS[target];
-  if (!held[spec.sensor]) return;
-  steer(spec.arrow(direction));
-}
-
-/* --- wiring -------------------------------------------------------------- */
-
-function initAttackPanel() {
-  for (const button of document.querySelectorAll(".target")) {
-    button.addEventListener("click", () => selectTarget(button.dataset.target));
-  }
-  el("taketarget").addEventListener("click", takeOver);
-
-  for (const key of document.querySelectorAll(".key[data-arrow]")) {
-    key.addEventListener("click", () => pressArrow(key.dataset.arrow));
-  }
-  el("driveoff").addEventListener("click", () => steer(TARGETS[target].stop()));
-
-  const ARROWS = { ArrowUp: "up", ArrowRight: "right",
-                   ArrowDown: "down", ArrowLeft: "left" };
-  window.addEventListener("keydown", (event) => {
-    const tag = (event.target.tagName || "").toLowerCase();
-    if (tag === "input" || tag === "select" || tag === "textarea") return;
-    if (event.key in ARROWS) { event.preventDefault(); pressArrow(ARROWS[event.key]); }
-    if (event.key === " ") { event.preventDefault(); steer(TARGETS[target].stop()); }
-  });
-
-  el("doclear").addEventListener("click", async () => {
-    await post("/control/inject", { kind: "clear" });
-    if (hunting) endHunt(false, (performance.now() - hunting.at) / 1000);
-    held = {};
-    renderHeld();
-  });
-
-  selectTarget("gps");
-  setAttackEnabled();
-}
-
-initAttackPanel();
+resize();
+loadBasemap();
+startStream();
+requestAnimationFrame(animate);

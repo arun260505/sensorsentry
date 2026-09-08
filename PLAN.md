@@ -114,7 +114,8 @@ confirms **GNSS is never read in the dead-reckoning path**.
 ## Phase 3 — Console v1 · ~6h · D ⛔ GATE
 
 - [x] `detector/server.py` — SSE out on :8080 *(was WebSocket, see docs/schema.md)*
-- [x] `console/app.js` — browser client *(one file, not ws/map/panels split)*
+- [x] `console/{common,display,drive}.js` — browser client *(was one app.js;
+      split when the console became two pages, `/` and `/drive`)*
 - [x] canvas map: grid, scale bar, auto-fit (**no online tiles**)
 - [x] Draw GNSS-claimed path and dead-reckoned path, plus the gap between them
 - [x] Raw-feed panel showing incoming frames

@@ -337,6 +337,14 @@ class Handler(BaseHTTPRequestHandler):
             self._stream()
         elif path in ("/", "/index.html"):
             self._static("index.html")
+        elif path == "/drive":
+            # The console is two pages, not two servers. /stream is SSE and
+            # this is a ThreadingHTTPServer, so the control surface costs one
+            # more thread reading the same shared snapshot — while a second
+            # *port* would mean a second process to kill before a demo, and a
+            # stale one answering on the old port has cost us a rehearsal
+            # already. Same origin also keeps every /control POST unchanged.
+            self._static("drive.html")
         elif path == "/snapshot":
             self._json(self.shared.snapshot())
         elif path == "/report":

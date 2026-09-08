@@ -3,10 +3,15 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>SensorSentry Console</title>
+<title>SensorSentry</title>
 <link rel="stylesheet" href="style.css">
 </head>
-<body>
+<body class="page-display">
+
+<!-- The evidence display: the screen the room watches.
+     Nothing on this page can start, stop, attack or steer anything. The
+     controls are on /drive, on another screen, in the driver's hands — which
+     is the anti-hardcoding argument made visible instead of asserted. -->
 
 <header class="bar">
   <div class="brand">
@@ -21,6 +26,7 @@
     <span class="sep">·</span>
     <span id="clock">t 0.0 s</span>
   </div>
+  <a class="drivelink" href="/drive" target="_blank" rel="noopener">Controls ↗</a>
   <div class="statepill" id="statepill" data-state="IDLE">IDLE</div>
 </header>
 
@@ -44,74 +50,67 @@
   </section>
 
   <aside class="side">
-    <!-- The answer to "is this hardcoded?" is not an argument, it is this
-         panel. The vehicle drives its real route; the judge takes a sensor
-         over and drives it themselves. The detector is never told. -->
-    <div class="panel attack" id="attackpanel">
-      <h2>You are the sensor</h2>
-      <p class="attacknote">
-        The truck drives its real route. Take a sensor and drive it with the
-        <b>arrow keys</b> — or stop, and let it freeze. The detector is never
-        told you touched it.
-      </p>
 
-      <div class="score" id="score">
-        <div class="score-side"><b id="scoreyou">0</b><span>you got away with</span></div>
-        <div class="score-v">v</div>
-        <div class="score-side"><b id="scoreus">0</b><span>we caught</span></div>
+    <div class="panel verdict" id="verdictpanel" hidden>
+      <h2>Verdict</h2>
+      <div class="guilty">
+        <span id="guilty">—</span>
+        <span class="cause" id="cause">—</span>
       </div>
+      <p class="reason" id="reason"></p>
+      <p class="action" id="action"></p>
+      <ul class="evidence" id="evidence"></ul>
+    </div>
 
-      <!-- What the detector currently believes. "not sure yet" is left on
-           screen rather than hidden: refusing to answer is the feature. -->
-      <div class="verdictread" id="verdictread" data-state="quiet">
-        <span class="vr-label">reading you as</span>
-        <b class="vr-word" id="verdictword">—</b>
-        <span class="vr-why" id="verdictwhy"></span>
-      </div>
-
-      <div class="targets" id="targets">
-        <button class="target on" data-target="gps">GPS</button>
-        <button class="target" data-target="compass">Compass</button>
-        <button class="target" data-target="altitude">Altitude</button>
-        <button class="target" data-target="wheels">Wheels</button>
-      </div>
-
-      <button id="taketarget" class="atk primary">Take it over</button>
-
-      <!-- Everything else that can be done to the selected sensor. Built from
-           a table in app.js so the list matches what the simulator actually
-           offers, and so harness/usecases.py can check every one of them. -->
-      <div class="actions" id="actions"></div>
-
-      <div class="drive" id="drive" hidden>
-        <div class="drivehead">
-          <span id="drivewhat">You are the GPS</span>
-          <b id="driveheading">—</b>
+    <!-- The proof. A verdict is an assertion; this is the working. Four
+         sensors agreeing with each other and one disagreeing with all of them
+         is the entire argument, and until this existed it lived only inside
+         the detector where nobody could see it. -->
+    <div class="panel proof" id="proofpanel" hidden>
+      <h2>Why we say that</h2>
+      <p class="prooflede" id="prooflede"></p>
+      <canvas id="web" class="web" width="300" height="190"></canvas>
+      <div class="prooflists">
+        <div class="proofgroup bad" id="disagreegroup" hidden>
+          <h3><span class="tick">✗</span> These do not match</h3>
+          <ul id="disagree"></ul>
         </div>
-        <div class="dpad">
-          <button class="key" data-arrow="up">&#9650;</button>
-          <div class="dpad-mid">
-            <button class="key" data-arrow="left">&#9664;</button>
-            <button class="key" id="driveoff" title="stop — let it freeze">&#9632;</button>
-            <button class="key" data-arrow="right">&#9654;</button>
-          </div>
-          <button class="key" data-arrow="down">&#9660;</button>
-        </div>
-        <div class="drivefoot">
-          <span>arrow keys work too</span>
-          <span>space = let go</span>
+        <div class="proofgroup good" id="agreegroup" hidden>
+          <h3><span class="tick">✓</span> These match each other</h3>
+          <ul id="agree"></ul>
         </div>
       </div>
+    </div>
 
-      <button id="doclear" class="atk ghost">Let go of everything</button>
-
-      <!-- Timed in the browser, from the judge's own click. This number never
-           goes near the detector — it cannot, which is the point. -->
-      <div class="stopwatch" id="stopwatch" hidden>
-        <span class="sw-label" id="swlabel">waiting</span>
-        <span class="sw-time" id="swtime">0.0 s</span>
+    <div class="panel headline">
+      <h2>Separation</h2>
+      <div class="big" id="sep">—</div>
+      <div class="sub">metres between the two positions</div>
+      <div class="rows">
+        <div><span>Our uncertainty</span><b id="sigma">—</b></div>
+        <div><span>Ratio</span><b id="ratio">—</b></div>
+        <div><span>Vertical</span><b id="vert">—</b></div>
       </div>
-      <p class="atk-hint" id="atkhint">Press Start below, then take a sensor.</p>
+    </div>
+
+    <div class="panel nav" id="navpanel" hidden>
+      <h2>Navigating on</h2>
+      <div class="navsource" id="navsource">—</div>
+      <div class="rows">
+        <div><span>Accurate to about</span><b id="navbudget">—</b></div>
+        <div><span>Safe for another</span><b id="navremaining">—</b></div>
+      </div>
+      <p class="navnote" id="navnote"></p>
+    </div>
+
+    <div class="panel fleet" id="fleetpanel" hidden>
+      <h2>Attack zone</h2>
+      <div class="zoneline" id="zoneline">—</div>
+      <div class="rows">
+        <div><span>Vehicles hit</span><b id="zonevehicles">—</b></div>
+        <div><span>Area</span><b id="zoneradius">—</b></div>
+      </div>
+      <ul class="advisories" id="advisories"></ul>
     </div>
 
     <!-- Two independent measurements of the same physical thing. While
@@ -141,68 +140,6 @@
       </p>
     </div>
 
-    <!-- The proof. A verdict is an assertion; this is the working. Four
-         sensors agreeing with each other and one disagreeing with all of them
-         is the entire argument, and until now it only existed inside the
-         detector where nobody could see it. -->
-    <div class="panel proof" id="proofpanel" hidden>
-      <h2>Why we say that</h2>
-      <p class="prooflede" id="prooflede"></p>
-      <canvas id="web" class="web" width="300" height="190"></canvas>
-      <div class="prooflists">
-        <div class="proofgroup bad" id="disagreegroup" hidden>
-          <h3><span class="tick">✗</span> These do not match</h3>
-          <ul id="disagree"></ul>
-        </div>
-        <div class="proofgroup good" id="agreegroup" hidden>
-          <h3><span class="tick">✓</span> These match each other</h3>
-          <ul id="agree"></ul>
-        </div>
-      </div>
-    </div>
-
-    <div class="panel verdict" id="verdictpanel" hidden>
-      <h2>Verdict</h2>
-      <div class="guilty">
-        <span id="guilty">—</span>
-        <span class="cause" id="cause">—</span>
-      </div>
-      <p class="reason" id="reason"></p>
-      <p class="action" id="action"></p>
-      <ul class="evidence" id="evidence"></ul>
-    </div>
-
-    <div class="panel nav" id="navpanel" hidden>
-      <h2>Navigating on</h2>
-      <div class="navsource" id="navsource">—</div>
-      <div class="rows">
-        <div><span>Accurate to about</span><b id="navbudget">—</b></div>
-        <div><span>Safe for another</span><b id="navremaining">—</b></div>
-      </div>
-      <p class="navnote" id="navnote"></p>
-    </div>
-
-    <div class="panel fleet" id="fleetpanel" hidden>
-      <h2>Attack zone</h2>
-      <div class="zoneline" id="zoneline">—</div>
-      <div class="rows">
-        <div><span>Vehicles hit</span><b id="zonevehicles">—</b></div>
-        <div><span>Area</span><b id="zoneradius">—</b></div>
-      </div>
-      <ul class="advisories" id="advisories"></ul>
-    </div>
-
-    <div class="panel">
-      <h2>Separation</h2>
-      <div class="big" id="sep">—</div>
-      <div class="sub">metres between the two positions</div>
-      <div class="rows">
-        <div><span>Our uncertainty</span><b id="sigma">—</b></div>
-        <div><span>Ratio</span><b id="ratio">—</b></div>
-        <div><span>Vertical</span><b id="vert">—</b></div>
-      </div>
-    </div>
-
     <div class="panel">
       <h2>Sensors</h2>
       <div id="sensors" class="sensors"><p class="empty">no run</p></div>
@@ -220,40 +157,7 @@
   </aside>
 </main>
 
-<section class="feedwrap">
-  <div class="feedhead">
-    <h2>Everything the detector receives</h2>
-    <p>No true position. No attack flag. There is nothing here it could cheat with.</p>
-  </div>
-  <pre id="feed" class="feed">waiting for frames…</pre>
-</section>
-
-<footer class="controls">
-  <span class="ctrl-label">Scenario</span>
-  <div id="scenarios" class="scenarios"><span class="hint">loading…</span></div>
-  <span class="spacer"></span>
-  <button id="reset">Stop</button>
-  <button id="reporttoggle" class="toggle">Written report: off</button>
-  <button id="reportopen" hidden>Open report</button>
-  <span id="hint" class="hint"></span>
-</footer>
-
-<div id="reportsheet" class="reportsheet" hidden>
-  <div class="reportcard">
-    <div class="reporthead">
-      <h2 id="reporttitle">Incident report</h2>
-      <button id="reportclose">Close</button>
-    </div>
-    <pre id="reportbody"></pre>
-    <p class="reportnote">
-      Written from the stored incident record, after the event. Detection does
-      not use it — turn it off and re-run the attack; the verdict is identical.
-      <b>Generated by a template, not a language model.</b> This is where one
-      would be handed the same record.
-    </p>
-  </div>
-</div>
-
-<script src="app.js"></script>
+<script src="common.js"></script>
+<script src="display.js"></script>
 </body>
 </html>

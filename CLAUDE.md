@@ -101,7 +101,10 @@ simulator/   vehicle + sensor models, attack/fault injectors, scenarios
              corridor can be swapped for another city without touching code
 detector/    the ten-stage pipeline — the actual product
 fleet/       incident clustering, attack-zone estimation, advisories
-console/     one responsive page: operator console and phone app
+console/     two pages, one server. `/` is the evidence display — the screen
+             the room watches. `/drive` is the control surface — the screen
+             the driver touches. common.js is what they share. Both are
+             responsive, so either is also the phone view.
 harness/     measurement sweeps, regression runs, results card
 docs/        contract, briefs, requirements, plans, handovers
 ```
@@ -136,7 +139,11 @@ Run it:
 ```bash
 python -m detector.server                     # terminal 1 — console on :8080
 python -m simulator.control --quiet           # terminal 2 — scenario buttons
-# open http://127.0.0.1:8080 and pick a scenario
+# 127.0.0.1:8080        the display   — put this on the screen the room sees
+# 127.0.0.1:8080/drive  the controls  — put this where only you can reach it
+#
+# Two windows, one server. The driving window must hold keyboard focus or the
+# arrow keys go nowhere; it says so across the top when it does not.
 
 python -m tests.run_all                       # 64 tests
 python -m harness.sweep                       # false alarms + detection curve
@@ -292,6 +299,35 @@ had just dismissed came back within a tenth of a second and the button looked
 broken. `/control/clear` now resets the simulator and kills any fleet sender
 first. Measured at 0.06 s, which is the phase-12 "reset under two seconds"
 requirement met with room to spare.
+
+### The console is two pages, and splitting it found a dead panel
+
+`/` is the evidence display, `/drive` is the control surface. One server, two
+paths — not two ports: `/stream` is SSE on a `ThreadingHTTPServer`, so a second
+page costs one more thread on the same shared snapshot, while a second port
+would mean a second process to kill, and a stale one answering has already cost
+us a rehearsal.
+
+**The display was losing to its own furniture.** The raw feed and the scenario
+row took 310 px off a 960 px window, and the map's scale is *height*-bound, so
+the two tracks were drawn at 0.29 px/m — a 45 m divergence is 13 px, and the
+vehicle markers are 22 and 28 px wide. **The markers were bigger than the gap
+they exist to show.** Moving both to `/drive` gives 0.53 px/m. Narrowing the
+side column buys nothing: width-fit is 1.05 px/m against height's 0.29, so
+height loses by 3.5x no matter how wide the rail is.
+
+**And `renderActions()` was never called.** Eleven attacks — jump it 300 m,
+replay elsewhere, hold a magnet, squeeze the barometer — had a table, had
+cases in `harness/usecases.py` checking them end to end, and had no button in
+the console. `#actions` was empty on every run. `harness.usecases` posts to
+`/control/inject` directly, so it passed 17/17 against buttons a judge could
+not press. **A harness that talks to the API cannot see a hole in the UI.**
+
+The stopwatch stays on `/drive` on purpose. Getting the number onto the big
+screen would mean routing the judge's click through the server, and although
+the pipeline would never read it, "the timer goes through the detector but the
+detector does not look at it" is not a sentence to be saying to a sceptic. Read
+it out loud instead.
 
 ### Known weaknesses — say these out loud, do not hide them
 
