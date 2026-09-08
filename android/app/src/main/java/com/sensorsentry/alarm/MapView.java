@@ -163,6 +163,17 @@ public class MapView extends View {
         float mg = dp(16);
         Proj proj = new Proj(box, w, h, mg, zoom, panX, panY);
 
+        // Center on the vehicle if following
+        if (following && gnsLat != null && gnsLat.length > 0) {
+            double headLat = gnsLat[gnsLat.length - 1];
+            double headLon = gnsLon[gnsLon.length - 1];
+            float cx = proj.x(headLon);
+            float cy = proj.y(headLat);
+            panX -= (cx - w / 2f);
+            panY -= (cy - h / 2f);
+            proj = new Proj(box, w, h, mg, zoom, panX, panY);
+        }
+
         if (hasMap)  drawRoads(canvas, proj, w, h);
         drawTrail(canvas, proj, witLat, witLon, trailWit);
         drawTrail(canvas, proj, gnsLat, gnsLon, trailGps);
@@ -367,13 +378,36 @@ public class MapView extends View {
     }
 
     private void drawZoomButtons(Canvas canvas, int w, int h) {
-        int bx = w - dp(46), bs = dp(36), gap = dp(8), by = h / 2 - bs - gap/2;
+        int bs = dp(36), gap = dp(8), bx = w - dp(8) - bs;
+        int by_plus = h / 2 - bs - gap/2;
+        int by_minus = by_plus + bs + gap;
+        int by_whole = by_minus + bs + gap;
+        int by_follow = by_whole + bs + gap;
+
+        // + and -
         cardPaint.setColor(C_CARD_BG);
-        canvas.drawRoundRect(new RectF(bx, by,            bx+bs, by+bs),      dp(7), dp(7), cardPaint);
-        canvas.drawRoundRect(new RectF(bx, by+bs+gap,     bx+bs, by+2*bs+gap),dp(7), dp(7), cardPaint);
+        canvas.drawRoundRect(new RectF(bx, by_plus,  bx+bs, by_plus+bs),  dp(7), dp(7), cardPaint);
+        canvas.drawRoundRect(new RectF(bx, by_minus, bx+bs, by_minus+bs), dp(7), dp(7), cardPaint);
         textPaint.setColor(C_CARD_TEXT); textPaint.setTextSize(dp(22));
-        canvas.drawText("+", bx + bs/2f - textPaint.measureText("+")/2f, by       + bs/2f + dp(8), textPaint);
-        canvas.drawText("-", bx + bs/2f - textPaint.measureText("-")/2f, by+bs+gap+ bs/2f + dp(8), textPaint);
+        canvas.drawText("+", bx + bs/2f - textPaint.measureText("+")/2f, by_plus  + bs/2f + dp(8), textPaint);
+        canvas.drawText("-", bx + bs/2f - textPaint.measureText("-")/2f, by_minus + bs/2f + dp(8), textPaint);
+
+        // Whole run and Follow (wide buttons, align right)
+        int wide_w = dp(75);
+        int bx_wide = w - dp(8) - wide_w;
+        canvas.drawRoundRect(new RectF(bx_wide, by_whole, bx_wide+wide_w, by_whole+bs), dp(7), dp(7), cardPaint);
+        
+        cardPaint.setColor(following ? 0xFF18A8D8 : C_CARD_BG); // Cyan if following
+        canvas.drawRoundRect(new RectF(bx_wide, by_follow, bx_wide+wide_w, by_follow+bs), dp(7), dp(7), cardPaint);
+        
+        textPaint.setTextSize(dp(12)); textPaint.setTypeface(Typeface.DEFAULT_BOLD);
+        textPaint.setColor(C_CARD_TEXT);
+        String s1 = "Whole run";
+        canvas.drawText(s1, bx_wide + wide_w/2f - textPaint.measureText(s1)/2f, by_whole + bs/2f + dp(4), textPaint);
+        textPaint.setColor(following ? 0xFF0A1620 : C_CARD_TEXT); // Dark text on cyan
+        String s2 = "Follow";
+        canvas.drawText(s2, bx_wide + wide_w/2f - textPaint.measureText(s2)/2f, by_follow + bs/2f + dp(4), textPaint);
+        textPaint.setTypeface(Typeface.DEFAULT); // reset
     }
 
     private void drawPlaceholder(Canvas canvas, int w, int h) {
@@ -384,29 +418,56 @@ public class MapView extends View {
 
     // --- Touch -----------------------------------------------------------------
 
+    private float downX, downY;
+    public interface OnMapClickListener { void onMapClick(); }
+    private OnMapClickListener clickListener;
+    public void setOnMapClickListener(OnMapClickListener l) { clickListener = l; }
+
+    public boolean following = false;
+
     @Override
     public boolean onTouchEvent(MotionEvent e) {
         int n = e.getPointerCount();
         switch (e.getActionMasked()) {
             case MotionEvent.ACTION_DOWN:
+                downX = e.getX(); downY = e.getY();
                 lastTX = e.getX(); lastTY = e.getY(); fingers = 1; return true;
             case MotionEvent.ACTION_POINTER_DOWN:
                 fingers = n;
                 if (n == 2) { pinchD0 = pinchDist(e); zoom0 = zoom; } return true;
             case MotionEvent.ACTION_MOVE:
                 if (fingers == 1 && n == 1) {
-                    panX += e.getX() - lastTX; panY += e.getY() - lastTY;
+                    float dx = e.getX() - lastTX, dy = e.getY() - lastTY;
+                    panX += dx; panY += dy;
+                    if (Math.abs(dx) > 2 || Math.abs(dy) > 2) following = false;
                     lastTX = e.getX(); lastTY = e.getY(); invalidate();
                 } else if (fingers >= 2 && n >= 2 && pinchD0 > 0) {
-                    zoom = Math.max(0.3f, Math.min(10f, zoom0 * pinchDist(e) / pinchD0)); invalidate();
+                    zoom = Math.max(0.3f, Math.min(10f, zoom0 * pinchDist(e) / pinchD0)); 
+                    following = false; invalidate();
                 } return true;
             case MotionEvent.ACTION_UP:
                 int w = getWidth(), h = getHeight();
-                int bx = w-dp(46), bs = dp(36), gap = dp(8), by = h/2-bs-gap/2;
+                int bs = dp(36), gap = dp(8), bx = w - dp(8) - bs;
+                int by_plus = h / 2 - bs - gap/2;
+                int by_minus = by_plus + bs + gap;
+                int by_whole = by_minus + bs + gap;
+                int by_follow = by_whole + bs + gap;
+                
                 float tx = e.getX(), ty = e.getY();
-                if (tx >= bx && tx <= bx+bs) {
-                    if (ty >= by        && ty <= by+bs)          { zoom = Math.min(10f, zoom*1.5f); invalidate(); return true; }
-                    if (ty >= by+bs+gap && ty <= by+2*bs+gap)    { zoom = Math.max(0.3f,zoom/1.5f); invalidate(); return true; }
+                boolean isTap = Math.abs(tx - downX) < dp(10) && Math.abs(ty - downY) < dp(10);
+                
+                if (isTap) {
+                    if (tx >= bx && tx <= bx + bs) {
+                        if (ty >= by_plus  && ty <= by_plus+bs)   { zoom = Math.min(10f, zoom*1.5f); following=false; invalidate(); return true; }
+                        if (ty >= by_minus && ty <= by_minus+bs)  { zoom = Math.max(0.3f, zoom/1.5f); following=false; invalidate(); return true; }
+                    }
+                    // Wide buttons
+                    float bx_wide = w - dp(8) - dp(80);
+                    if (tx >= bx_wide && tx <= w - dp(8)) {
+                        if (ty >= by_whole && ty <= by_whole+bs)  { zoom = 1f; panX = 0; panY = 0; following = false; invalidate(); return true; }
+                        if (ty >= by_follow && ty <= by_follow+bs){ following = true; invalidate(); return true; }
+                    }
+                    if (clickListener != null) clickListener.onMapClick();
                 }
                 fingers = 0; return true;
             case MotionEvent.ACTION_POINTER_UP:

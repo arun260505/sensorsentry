@@ -18,6 +18,7 @@ import android.view.Gravity;
 import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -41,7 +42,6 @@ public class MainActivity extends Activity {
     private static final String DEFAULT_SERVER = "172.16.130.172:8080";
 
     // --- Core UI references ------------------------------------------------
-    private LinearLayout root;
     private TextView     headline;
     private TextView     detail;
     private TextView     connection;
@@ -149,18 +149,27 @@ public class MainActivity extends Activity {
 
     // --- Screen layout -----------------------------------------------------
 
+    private FrameLayout outerRoot;
+    private LinearLayout innerContent;
+    private boolean isMapFullscreen = false;
+    private LinearLayout body;
+
     private View buildView() {
-        root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackgroundColor(0xFF0F1C25);
+        outerRoot = new FrameLayout(this);
+        outerRoot.setBackgroundColor(0xFF0F1C25);
+
+        innerContent = new LinearLayout(this);
+        innerContent.setOrientation(LinearLayout.VERTICAL);
+        outerRoot.addView(innerContent, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
 
         // ── Scrollable body (everything above the footer button) ─────────────
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
-        root.addView(scroll, new LinearLayout.LayoutParams(
+        innerContent.addView(scroll, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f));
 
-        LinearLayout body = new LinearLayout(this);
+        body = new LinearLayout(this);
         body.setOrientation(LinearLayout.VERTICAL);
         body.setPadding(dp(20), dp(36), dp(20), dp(12));
         scroll.addView(body);
@@ -258,7 +267,7 @@ public class MainActivity extends Activity {
         LinearLayout footer = new LinearLayout(this);
         footer.setOrientation(LinearLayout.VERTICAL);
         footer.setPadding(dp(20), dp(8), dp(20), dp(20));
-        root.addView(footer, new LinearLayout.LayoutParams(
+        innerContent.addView(footer, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT));
 
@@ -288,7 +297,9 @@ public class MainActivity extends Activity {
         btnLp.topMargin = dp(14);
         footer.addView(toggle, btnLp);
 
-        return root;
+        mapView.setOnMapClickListener(this::toggleFullscreenMap);
+
+        return outerRoot;
     }
 
     // --- Layout helpers ----------------------------------------------------
@@ -378,7 +389,7 @@ public class MainActivity extends Activity {
         if (head != null) headline.setText(head);
         if (note != null) detail.setText(note);
 
-        root.setBackgroundColor(alert ? 0xFF8C1D13 : 0xFF0F1C25);
+        outerRoot.setBackgroundColor(alert ? 0xFF8C1D13 : 0xFF0F1C25);
 
         connection.setText(connected ? "connected" : "not connected");
         connection.setTextColor(connected ? 0xFF5FBF8F : 0xFFC9736A);
@@ -414,6 +425,24 @@ public class MainActivity extends Activity {
             statusHeadline.setTextColor(0xFFA8BCC9);
             statusDesc.setText("Connect to a console to see live data.");
             statusDesc.setTextColor(0xFF7F97A6);
+        }
+    }
+
+    private void toggleFullscreenMap() {
+        isMapFullscreen = !isMapFullscreen;
+        if (isMapFullscreen) {
+            body.removeView(mapView);
+            outerRoot.addView(mapView, new FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+            innerContent.setVisibility(View.GONE);
+        } else {
+            outerRoot.removeView(mapView);
+            LinearLayout.LayoutParams mapLp = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, dp(270));
+            mapLp.topMargin = dp(8);
+            mapLp.bottomMargin = dp(0);
+            body.addView(mapView, 3, mapLp);
+            innerContent.setVisibility(View.VISIBLE);
         }
     }
 
