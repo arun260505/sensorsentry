@@ -1188,6 +1188,103 @@ def truck_theft_walkoff_blames_gps_as_attack() -> None:
         assert any(e[3] == "attack" for e in events), f"seed {seed} never said attack"
 
 
+def _drone_mag_run(kind, seed: int, secs: float = 150.0, onset: float = 40.0):
+    """Fly a clean drone and corrupt the compass from `onset`.
+
+    `kind` is a number of degrees for a magnet held beside it, or "wander" for
+    a compass degrading as a random walk. Returns the settled (guilty, cause)
+    pairs seen once the pipeline is confident.
+    """
+    rng = np.random.default_rng(seed)
+    waypoints, vtype = get_scenario("drone_clean")[:2]
+    vehicle = make_vehicle(vtype, waypoints, rng)
+    sensors = SensorSuite(rng, vehicle_type=vtype)
+    pipeline = Pipeline()
+    pipeline.accept({"type": "run_start", "run_id": "r", "vehicle_id": "V",
+                     "vehicle_type": vtype, "seed": seed, "rate_hz": 20,
+                     "gnss_rate_hz": 5, "t0": 0.0})
+
+    wander = 0.0
+    seen = []
+    for i in range(int(secs / DT)):
+        vehicle.step()
+        reading = sensors.update(vehicle)
+        t = i * DT
+        if t >= onset:
+            reading["mag"] = dict(reading["mag"])
+            if kind == "wander":
+                wander = wander * 0.995 + rng.normal(0, 3.0)
+                offset = wander
+            else:
+                offset = float(kind)
+            reading["mag"]["heading_deg"] = (
+                reading["mag"]["heading_deg"] + offset) % 360.0
+
+        frame = {"seq": i, "t": t, "vehicle_id": "V"}
+        frame.update({k: reading[k] for k in
+                      ("imu", "gnss", "baro", "mag", "odom") if k in reading})
+        state = pipeline.accept(frame)
+        if state is None or state.state != "ALERT" or not state.blame.guilty:
+            continue
+        seen.append((state.blame.guilty, state.cause.label))
+    return seen
+
+
+@test
+def a_wandering_compass_never_accuses_the_gps() -> None:
+    """A compass degrading as a random walk must never be read as an attack on
+    the GPS.
+
+    It used to be, and confidently. As the compass wanders it passes back
+    through the truth; at that instant the compass-gyro check flips to OK and
+    cleared the compass of a course failure that had been running for a minute
+    and a half. GNSS was the only suspect left and was named at confidence 1.0.
+
+    A wandering compass is a vehicle that needs a workshop. Calling it an
+    attack starts a security incident over a worn-out part — and calling an
+    attack a fault loses a lorry. Getting this the wrong way round is the
+    specific mistake stages 5 and 6 exist to prevent.
+    """
+    for seed in (4242, 77, 903):
+        seen = _drone_mag_run("wander", seed)
+        assert seen, f"seed {seed} never reached a verdict at all"
+        wrong = [v for v in seen if v[0] == "gnss"]
+        assert not wrong, (
+            f"seed {seed} blamed the GPS for a wandering compass: {wrong[:3]}")
+        assert any(g == "mag" for g, _c in seen), (
+            f"seed {seed} never once named the compass")
+
+
+@test
+def a_magnet_is_interference_and_a_wander_is_a_fault() -> None:
+    """The two compass cases must land on opposite causes.
+
+    They are genuinely hard to tell apart and the obvious features do not do
+    it: measured, the worst wander produces a *larger* single-sample step than
+    the strongest magnet, and over a ten-second window a slow random walk is a
+    steady offset. What separates them is the shape of the whole incident.
+    Something placed beside the compass pushes one way and keeps pushing; a
+    compass going bad has been wrong in both directions.
+    """
+    for seed in (4242, 77, 903):
+        magnet = [c for _g, c in _drone_mag_run(40.0, seed)
+                  if c != "unclassified"]
+        assert magnet and magnet[-1] == "interference", (
+            f"seed {seed}: magnet settled on {magnet[-1:] or 'nothing'}")
+
+        wander = [c for g, c in _drone_mag_run("wander", seed)
+                  if g == "mag" and c != "unclassified"]
+        assert wander, f"seed {seed}: wander never produced a cause for the compass"
+        # The *settled* verdict, not every frame of it — and the difference is
+        # not a loophole. A compass that has so far only drifted one way is
+        # genuinely indistinguishable from a magnet, because the evidence that
+        # separates them is having been wrong in *both* directions and it does
+        # not exist yet. Early frames may honestly say interference; what must
+        # be right is the answer the operator is left holding.
+        assert wander[-1] == "fault", (
+            f"seed {seed}: a wandering compass settled on {wander[-1]}")
+
+
 # --- runner ---------------------------------------------------------------
 
 def main() -> int:

@@ -107,6 +107,39 @@ to happen in fifty milliseconds. Measured: a step of 40 degrees against about
 Latched for the incident, because the step is only visible in the window that
 contains it, and a minute later the question is still being asked."""
 
+REVERSED = 0.25
+"""How far the error must have swung to the *other* side of zero, as a
+fraction of how far it swung to the nearer one, to call it a sensor wandering
+rather than something placed beside it.
+
+This is the real difference between interference and a compass going bad, and
+it took the step test failing to find it.
+
+**A step does not separate them.** Measured across three seeds and two magnet
+strengths: the 40 degree magnet steps 6.8-7.2, the 25 degree magnet 4.3-4.7,
+and a wandering compass 2.0, 2.2, 2.6 — and **7.8**. The worst wander steps
+harder than the strongest magnet, so no threshold on that number can work. The
+same is true of coherence and erraticness: over a ten-second window a slow
+random walk is indistinguishable from a magnet, because for ten seconds it *is*
+a steady offset.
+
+The difference only exists over the whole incident. Something placed beside a
+sensor pushes it one way and goes on pushing: across a minute and a half, both
+magnets stayed between -47 and -15 degrees and **never once crossed zero**. A
+compass going bad has no direction it is trying to go, so it wanders through
+the truth and out the other side — every wander seed spanned roughly -40 to
++68 and reversed, scoring 0.48 to 0.97.
+
+Zero against half. That is a gap to set a threshold in."""
+
+SPAN_GATE = 2.0
+"""How large a residual must be, in multiples of the check's noise, before it
+counts towards the swing.
+
+Without this the whole idea collapses: a healthy sensor's residual sits on zero
+and crosses it constantly, so every check would look like it had reversed. Only
+genuine excursions are evidence of anything."""
+
 STEP_WINDOW_S = 0.3
 """How quickly a jump must happen to count as one.
 
@@ -165,10 +198,17 @@ class Classifier:
         interference away is visible only in the window containing it, and the
         question is still being asked a minute later."""
 
+        self._span: dict[str, list[float]] = {}
+        """Furthest each check has been wrong in each direction, counting only
+        real excursions. Latched for the same reason as the step: the evidence
+        that a compass has been wrong *both ways* is spread over the whole
+        incident and is invisible in any one window of it."""
+
     def reset(self) -> None:
         self._history.clear()
         self._seen_at.clear()
         self._biggest_step.clear()
+        self._span.clear()
 
     def update(
         self,
@@ -189,6 +229,10 @@ class Classifier:
                     jump = abs(pair.signed - previous[1]) / pair.sigma
                     if jump > self._biggest_step[pair.key]:
                         self._biggest_step[pair.key] = jump
+            if pair.sigma > 0 and abs(pair.signed) >= SPAN_GATE * pair.sigma:
+                span = self._span.setdefault(pair.key, [pair.signed, pair.signed])
+                span[0] = min(span[0], pair.signed)
+                span[1] = max(span[1], pair.signed)
 
         if not blame.isolated or blame.guilty is None:
             return Cause()
@@ -255,12 +299,14 @@ class Classifier:
         coherence = _coherence(samples)
         erraticness = _erraticness(samples)
         arrived_at_once = self._biggest_step[check.key]
+        reversal = _reversal(self._span.get(check.key))
 
         features = {
             "check": 0.0,
             "coherence": round(coherence, 3),
             "erraticness": round(erraticness, 3),
             "step": round(arrived_at_once, 2),
+            "reversal": round(reversal, 3),
             "samples": float(len(samples)),
         }
         features.pop("check")
@@ -283,6 +329,20 @@ class Classifier:
                     "direction. It is told its answer by radio, so a consistent "
                     "error means somebody is transmitting.",
                     _ACTIONS[ATTACK], features,
+                )
+            if sensed == "field" and reversal >= REVERSED:
+                # Wrong in both directions over the incident. Nothing placed
+                # beside a sensor can do that — a magnet pushes one way and
+                # keeps pushing. This is the sensor itself wandering, and the
+                # only evidence that says so is the shape of the whole
+                # incident rather than any window of it.
+                return Cause(
+                    FAULT, min(1.0, 0.6 + reversal * 0.4),
+                    f"The {_friendly(guilty)} has been wrong in both directions "
+                    "— too far one way, then too far the other. Something placed "
+                    "beside it would pull one way and stay there, so this is the "
+                    "sensor itself wandering.",
+                    _ACTIONS[FAULT], features,
                 )
             if sensed == "field" and arrived_at_once < ARRIVED_AS_STEP:
                 # Coherent, but it crept in. Something placed beside a sensor
@@ -319,6 +379,22 @@ class Classifier:
             "enough to say whether it has failed or is being interfered with.",
             _ACTIONS[UNCLASSIFIED], features,
         )
+
+
+def _reversal(span: Optional[list[float]]) -> float:
+    """How two-sided the error has been, 0 to 1.
+
+    0 when every excursion went the same way — which is what something placed
+    beside the sensor produces, and what an attacker pulling in one direction
+    produces. Approaching 1 when the error has been as far wrong one way as the
+    other, which is a sensor with no direction it is trying to go.
+    """
+    if not span:
+        return 0.0
+    low, high = span
+    if not (low < 0.0 < high):
+        return 0.0
+    return min(abs(low), abs(high)) / max(abs(low), abs(high), 1e-9)
 
 
 _NAMES = {"gnss": "GPS", "imu": "motion sensor", "baro": "altitude sensor",
